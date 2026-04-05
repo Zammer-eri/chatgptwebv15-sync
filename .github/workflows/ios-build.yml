@@ -14,6 +14,8 @@ on:
 jobs:
   build-ios:
     runs-on: macos-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout
@@ -50,8 +52,16 @@ jobs:
           cd ipa
           /usr/bin/zip -qry ../ChatGPTWebV15-unsigned.ipa Payload
 
-      - name: Upload IPA artifact
-        uses: actions/upload-artifact@v4
+      - name: Publish IPA to rolling prerelease
+        uses: softprops/action-gh-release@v2
         with:
-          name: ChatGPTWebV15-unsigned-ipa
-          path: ChatGPTWebV15-unsigned.ipa
+          tag_name: ci-unsigned-latest
+          name: CI Unsigned IPA
+          prerelease: true
+          make_latest: false
+          files: ChatGPTWebV15-unsigned.ipa
+          overwrite_files: true
+          body: |
+            Latest unsigned TrollStore-oriented IPA built from `${{ github.sha }}`.
+            
+            This release is updated by GitHub Actions and is intended for quick testing.

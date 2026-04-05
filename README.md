@@ -56,4 +56,4 @@ An iOS 15 ChatGPT shell built around desktop-session syncing instead of fragile 
 
 - This still depends on the desktop Chrome session being the source of truth.
 - If Chrome itself truly needs a new login, you sign in there once and the phone app can recover on the next sync.
-- `.github/workflows/ios-build.yml` now builds an unsigned iOS artifact and uploads `ChatGPTWebV15-unsigned.ipa`, which is intended for TrollStore-style installation.
+- `.github/workflows/ios-build.yml` now builds an unsigned TrollStore-oriented IPA and publishes it to the rolling prerelease tag `ci-unsigned-latest`.
