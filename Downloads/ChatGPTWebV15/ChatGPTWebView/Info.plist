@@ -18,6 +18,19 @@
 	<string>1.0</string>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.akuma.chatgptv15.pairing</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>chatgptwebv15</string>
+			</array>
+		</dict>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
@@ -27,6 +40,8 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Camera access may be requested for image upload features.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>This app connects to your desktop helper on the local network to refresh your ChatGPT session.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>This app uses your mic to support speech-to-text input.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

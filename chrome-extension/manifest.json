@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "ChatGPTWebV15 Session Bridge",
+  "description": "Pushes ChatGPT/OpenAI browser cookies to the local desktop helper.",
+  "version": "1.0.0",
+  "permissions": [
+    "cookies",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://chatgpt.com/*",
+    "https://auth.openai.com/*",
+    "https://openai.com/*",
+    "https://chat.openai.com/*",
+    "http://127.0.0.1:48713/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "ChatGPTWebV15 Session Bridge",
+    "default_popup": "popup.html"
+  }
+}

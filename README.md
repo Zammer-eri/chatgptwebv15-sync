@@ -1,62 +1,59 @@
 # ChatGPTWebV15
-[![Download v1.0.0](https://img.shields.io/badge/download-v1.0.0-blue)](https://github.com/Akuma1tko/ChatGPTwebV15/releases/tag/v1.0.0)
 
+An iOS 15 ChatGPT shell built around desktop-session syncing instead of fragile on-device login.
 
-A standalone iOS 15 wrapper for ChatGPT, featuring a manual cookie-injection login fix and a modern multi-account floating button UI.
+## What changed
 
----
+- The iOS app is now a clean single-account shell.
+- The old floating account switcher flow is gone from the app code.
+- A local Windows helper and Chrome extension keep the iPhone session aligned with the logged-in desktop browser.
+- The app icon now uses the current official ChatGPT App Store artwork.
 
-## 🚀 Features
+## Repository layout
 
-- **Manual login** via `__Secure-next-auth.session-token`  
-- **Multi-account support** (add, rename, delete)  
-- **Floating draggable button** (44×44, white background, subtle shadow)  
-- **Modern bottom-sheet account manager** (inset-grouped style)  
-- **“No account”** option to log out and start fresh  
-- **Idle fade**: button fades to 30% after 5 s of inactivity  
-- **Full-screen WebView**, portrait & landscape support  
+- `Downloads/ChatGPTWebV15/`
+  The iOS app project.
+- `desktop-helper/`
+  Lightweight Windows helper that stores and serves the latest browser cookie bundle.
+- `chrome-extension/`
+  Chrome MV3 extension that pushes ChatGPT/OpenAI cookies into the helper.
 
----
+## Desktop setup
 
-## 📦 Installation
-  
-**Sideload** via AltStore, TrollStore, Cydia Impactor, etc.  
+1. Start the tray helper:
 
----
+   ```powershell
+   python .\desktop-helper\tray_app.py
+   ```
 
+   Or run the lightweight console helper if you only want the HTTP bridge:
 
-## 🔑 First-Time Login
+   ```powershell
+   python .\desktop-helper\helper.py
+   ```
 
-1. On your desktop Chrome, go to **https://chatgpt.com** (or `https://chat.openai.com`) and sign in.  
-2. Click the **⋮** menu in the top-right → **More tools** → **Developer tools**  
-   *(or press **Ctrl + Shift + I** on Windows/Linux, **⌘ + Option + I** on Mac)*  
-3. In DevTools, switch to the **Application** tab → **Storage** → **Cookies** → **chatgpt.com**  
-4. Find **`__Secure-next-auth.session-token`**, double-click its **Value**, press **⌘ +A** (Select All) then **⌘ +C** (Copy).  
-5. On your iOS 15 device, open **ChatGPTWebV15**, tap the floating button → **Add new…**, paste the token → **Save**.  
+2. Optionally install it into Windows Startup:
 
-Your session will load immediately in the WebView.  
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\desktop-helper\install-startup.ps1
+   ```
 
+3. Load the unpacked Chrome extension from `chrome-extension/`.
+4. Sign in to ChatGPT normally in Chrome.
+5. On the iPhone, use the tray menu `Show Pair QR` and scan it, or open the helper pairing page shown by the helper, then tap the deep link to connect the app.
 
----
+## iPhone behavior
 
-## 🔄 Switching & Managing Accounts
+- On launch, foreground, and logged-out detection, the app asks the helper for the latest cookie bundle.
+- If the desktop browser is still signed in, the phone session is refreshed without DevTools or manual token copying.
+- If the helper is unavailable, the app falls back to the existing local cookie store and the legacy single-token path.
 
-- **Tap** the floating app-icon button to open the account sheet.  
-- **No account** → wipes cookies and shows the logged-out page.  
-- **Add new…** → name + paste a new token.  
-- **Tap an existing account** → instantly reloads with that session.  
-- **Swipe left** on any account in the sheet to **Rename** or **Delete**.  
+## Hidden controls
 
-Changes are saved in Keychain; your **last selected** account is loaded automatically on app launch.
+- In the app, use a `two-finger triple-tap` near the top edge to open diagnostics.
 
----
+## Notes
 
-## 🙏 Shout-Outs
-
-Huge thanks to the community members who helped shape this:
-
-- **WhatTheOnEarth**  
-- **colorzpe**  
-- **No_Count2837**  
-
-Your feedback and testing made this for everyone on iOS 15. Enjoy!  
+- This still depends on the desktop Chrome session being the source of truth.
+- If Chrome itself truly needs a new login, you sign in there once and the phone app can recover on the next sync.
+- `.github/workflows/ios-build.yml` now builds an unsigned iOS artifact and uploads `ChatGPTWebV15-unsigned.ipa`, which is intended for TrollStore-style installation.

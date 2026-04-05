@@ -1,39 +1,26 @@
-# ChatGPT iOS 15 Wrapper
+# ChatGPTWebV15 iOS App
 
-This project is a lightweight WKWebView-based iOS app built for iOS 15 users to access ChatGPT. It bypasses the login error (400 route error) using a manual session cookie token and injects it via localStorage.
+This app keeps the reliable iOS 15 cookie-injection approach, but removes the noisy multi-account overlay and is designed to pair with the desktop session helper.
 
-## 🔥 Features
-- Login workaround using session token injection
-- Modern, mobile-optimized ChatGPT wrapper
-- Sidebar state fix (default: closed)
-- Voice input fix (rebinds hold-to-speak icon)
-- iOS 15+ support with custom user-agent override
+## Current behavior
 
-## 🛠 Setup Instructions
-1. Clone this repo:
-    ```bash
-    git clone https://github.com/Akuma1tko/chatgpt-ios15-wrapper.git
-    ```
+- Clean single-account `WKWebView` shell
+- Hidden diagnostics via a two-finger triple-tap near the top edge
+- Desktop-helper pairing through the `chatgptwebv15://pair` deep link
+- Helper-driven cookie refresh on app launch, foreground, and signed-out detection
+- Legacy `sessionCookie` fallback retained for compatibility with the old `v1.0` flow
 
-2. Open `ChatGPTWebV15.xcodeproj` in Xcode.
+## First-time setup
 
-3. Paste your session token manually into the app at launch.
+1. Build and install the app on the device.
+2. Run the desktop helper on the Windows PC.
+3. Load the unpacked Chrome extension.
+4. Sign in to ChatGPT normally in Chrome.
+5. On the iPhone, open `http://<pc-ip>:48713/pair` in Safari.
+6. Tap `Connect ChatGPTWebV15`.
 
-4. Relaunch the app. If the token is valid, you’ll skip the login screen.
+The app stores the helper host, port, and secret, then refreshes its own session from the desktop browser.
 
-## ⚠️ Warning
-- This project does not use the OpenAI API. It mimics browser behavior only.
-- Session tokens expire. You may need to refresh them every few days.
+## Why this path exists
 
-## 📦 Tech Stack
-- Swift 5
-- UIKit
-- WKWebView
-- LocalStorage injection
-
-## ✅ Status
-This is a working proof-of-concept for legacy devices. iOS 16 and newer are better served by the official ChatGPT app.
-
-## 👤 Author
-Created by **@Akuma1tko** – iOS tinker, wrapper architect, and jailbreak ecosystem explorer.
-
+On iOS 15, modern OpenAI web login is inconsistent enough that the stable solution is still to mirror a trusted desktop session rather than depend on on-device login flows.
