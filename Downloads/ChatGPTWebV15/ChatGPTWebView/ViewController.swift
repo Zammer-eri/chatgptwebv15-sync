@@ -3,6 +3,7 @@ import WebKit
 
 final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
     private var webView: WKWebView!
+    private let topInsetBackgroundView = UIView()
     private let activityIndicator = UIActivityIndicatorView(style: .large)
     private let sessionSyncService = SessionSyncService.shared
     private var isInitialLoadComplete = false
@@ -19,6 +20,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
+        configureTopInsetBackground()
         configureWebView()
         configureSpinner()
         configureHiddenDiagnosticsGesture()
@@ -116,9 +118,16 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         view.addSubview(webView)
     }
 
+    private func configureTopInsetBackground() {
+        topInsetBackgroundView.backgroundColor = UIColor(red: 0.13, green: 0.13, blue: 0.13, alpha: 1.0)
+        topInsetBackgroundView.isUserInteractionEnabled = false
+        view.addSubview(topInsetBackgroundView)
+    }
+
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         applyNativeTopInsetIfNeeded()
+        updateTopInsetBackgroundFrame()
     }
 
     private func configureSpinner() {
@@ -143,6 +152,11 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         if shouldResetToTop {
             webView.scrollView.setContentOffset(CGPoint(x: currentOffset.x, y: -topInset), animated: false)
         }
+    }
+
+    private func updateTopInsetBackgroundFrame() {
+        let topInset = webView.scrollView.contentInset.top
+        topInsetBackgroundView.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: topInset)
     }
 
     private func configureHiddenDiagnosticsGesture() {
