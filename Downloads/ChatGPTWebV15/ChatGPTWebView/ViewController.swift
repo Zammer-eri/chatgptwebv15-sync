@@ -23,6 +23,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
+        configureAudioSessionForVoiceFeatures()
         configureTopChrome()
         configureWebView()
         configureSpinner()
@@ -229,7 +230,22 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     }
 
     @objc private func handleForegroundSync() {
+        configureAudioSessionForVoiceFeatures()
         syncAndApply(reason: .foreground, forceRefresh: false, reloadAfterSync: false, completion: nil)
+    }
+
+    private func configureAudioSessionForVoiceFeatures() {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(
+                .playAndRecord,
+                mode: .default,
+                options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP]
+            )
+            try session.setActive(true, options: [])
+        } catch {
+            print("Audio session configuration failed: \(error.localizedDescription)")
+        }
     }
 
     private func syncAndApply(
@@ -485,6 +501,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     }
 
     private func handleCameraDecision(_ decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+        configureAudioSessionForVoiceFeatures()
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .authorized:
             decisionHandler(.grant)
@@ -500,6 +517,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     }
 
     private func handleMicrophoneDecision(_ decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+        configureAudioSessionForVoiceFeatures()
         switch AVAudioSession.sharedInstance().recordPermission {
         case .granted:
             decisionHandler(.grant)
