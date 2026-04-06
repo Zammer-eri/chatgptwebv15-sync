@@ -8,6 +8,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     private var isInitialLoadComplete = false
     private var syncInFlight = false
     private var lastRecoveryAttempt = Date.distantPast
+    private var lastAppliedTopInset: CGFloat = -1
     private let managedDomains = [
         "chatgpt.com",
         "auth.openai.com",
@@ -67,140 +68,32 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
               }
               meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
 
-              if (!window.__codexSafeAreaObserverInstalled) {
-                window.__codexSafeAreaObserverInstalled = true;
-
-                var scrollStyle = document.getElementById('codex-scroll-fix-style');
-                if (!scrollStyle) {
-                  scrollStyle = document.createElement('style');
-                  scrollStyle.id = 'codex-scroll-fix-style';
-                  scrollStyle.textContent = `
-                    html,
-                    body,
-                    main,
-                    nav,
-                    aside,
-                    section,
-                    article,
-                    [role="main"],
-                    [data-radix-scroll-area-viewport] {
-                      scroll-snap-type: none !important;
-                      scroll-behavior: auto !important;
-                      overscroll-behavior-y: auto !important;
-                    }
-
-                    * {
-                      scroll-snap-align: none !important;
-                      scroll-snap-stop: normal !important;
-                    }
-                  `;
-                  document.head.appendChild(scrollStyle);
-                }
-
-                var safeAreaValue = 'max(env(safe-area-inset-top, 0px), 8px)';
-                var controlSelector = 'button, [role="button"], a[role="button"]';
-                var findHeaderContainer = function(element) {
-                  var current = element.parentElement;
-                  while (current && current !== document.body) {
-                    var rect = current.getBoundingClientRect();
-                    if (
-                      rect.top <= 24 &&
-                      rect.height >= 40 &&
-                      rect.height <= 140 &&
-                      rect.width >= (window.innerWidth * 0.45)
-                    ) {
-                      return current;
-                    }
-                    current = current.parentElement;
+              var scrollStyle = document.getElementById('codex-scroll-fix-style');
+              if (!scrollStyle) {
+                scrollStyle = document.createElement('style');
+                scrollStyle.id = 'codex-scroll-fix-style';
+                scrollStyle.textContent = `
+                  html,
+                  body,
+                  main,
+                  nav,
+                  aside,
+                  section,
+                  article,
+                  [role="main"],
+                  [data-radix-scroll-area-viewport] {
+                    scroll-snap-type: none !important;
+                    scroll-behavior: auto !important;
+                    overscroll-behavior-y: auto !important;
+                    overflow-anchor: none !important;
                   }
-                  return null;
-                };
 
-                var applySafeAreaOffset = function() {
-                  document.querySelectorAll('[data-codex-safe-area="1"]').forEach(function(element) {
-                    if (!element.isConnected) {
-                      return;
-                    }
-                    element.style.removeProperty('margin-top');
-                    element.removeAttribute('data-codex-safe-area');
-                  });
-
-                  document.querySelectorAll('[data-codex-safe-area-container="1"]').forEach(function(element) {
-                    if (!element.isConnected) {
-                      return;
-                    }
-                    element.style.removeProperty('padding-top');
-                    element.style.removeProperty('min-height');
-                    element.removeAttribute('data-codex-safe-area-container');
-                  });
-
-                  document.querySelectorAll(controlSelector).forEach(function(element) {
-                    var rect = element.getBoundingClientRect();
-                    var label = (
-                      element.getAttribute('aria-label') ||
-                      element.getAttribute('data-testid') ||
-                      element.textContent ||
-                      ''
-                    ).toLowerCase();
-                    var isTopEdgeControl =
-                      rect.top <= 88 &&
-                      rect.height <= 64 &&
-                      (
-                        rect.left <= 180 ||
-                        rect.right >= (window.innerWidth - 180)
-                      ) &&
-                      (
-                        rect.width <= 180 ||
-                        label.includes('sidebar') ||
-                        label.includes('history') ||
-                        label.includes('close') ||
-                        label.includes('temporary chat') ||
-                        label.includes('gpt') ||
-                        label.includes('project')
-                      );
-                    if (
-                      isTopEdgeControl
-                    ) {
-                      var container = findHeaderContainer(element);
-                      if (container) {
-                        var containerRect = container.getBoundingClientRect();
-                        container.style.paddingTop = safeAreaValue;
-                        container.style.minHeight = 'calc(' + Math.round(containerRect.height) + 'px + ' + safeAreaValue + ')';
-                        container.setAttribute('data-codex-safe-area-container', '1');
-                      } else {
-                        element.style.marginTop = safeAreaValue;
-                        element.setAttribute('data-codex-safe-area', '1');
-                      }
-                    }
-                  });
-                };
-
-                var scheduled = false;
-                var scheduleApply = function() {
-                  if (scheduled) {
-                    return;
+                  * {
+                    scroll-snap-align: none !important;
+                    scroll-snap-stop: normal !important;
                   }
-                  scheduled = true;
-                  requestAnimationFrame(function() {
-                    scheduled = false;
-                    applySafeAreaOffset();
-                  });
-                };
-
-                var observer = new MutationObserver(scheduleApply);
-                observer.observe(document.documentElement, {
-                  childList: true,
-                  subtree: true,
-                  attributes: true,
-                  attributeFilter: ['class', 'style', 'aria-label', 'data-testid']
-                });
-
-                window.addEventListener('resize', scheduleApply);
-                window.addEventListener('orientationchange', scheduleApply);
-
-                scheduleApply();
-                setTimeout(scheduleApply, 300);
-                setTimeout(scheduleApply, 1200);
+                `;
+                document.head.appendChild(scrollStyle);
               }
             })();
             """,
@@ -218,17 +111,38 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
         webView.scrollView.contentInsetAdjustmentBehavior = .never
-        webView.scrollView.contentInset = .zero
-        webView.scrollView.scrollIndicatorInsets = .zero
         webView.backgroundColor = .systemBackground
         webView.isOpaque = false
         view.addSubview(webView)
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        applyNativeTopInsetIfNeeded()
     }
 
     private func configureSpinner() {
         activityIndicator.center = view.center
         activityIndicator.hidesWhenStopped = true
         view.addSubview(activityIndicator)
+    }
+
+    private func applyNativeTopInsetIfNeeded() {
+        let topInset = view.safeAreaInsets.top + 8
+        guard abs(topInset - lastAppliedTopInset) > 0.5 else {
+            return
+        }
+
+        let currentOffset = webView.scrollView.contentOffset
+        let shouldResetToTop = currentOffset.y <= (-lastAppliedTopInset + 2) || lastAppliedTopInset < 0
+        lastAppliedTopInset = topInset
+
+        webView.scrollView.contentInset.top = topInset
+        webView.scrollView.scrollIndicatorInsets.top = topInset
+
+        if shouldResetToTop {
+            webView.scrollView.setContentOffset(CGPoint(x: currentOffset.x, y: -topInset), animated: false)
+        }
     }
 
     private func configureHiddenDiagnosticsGesture() {
