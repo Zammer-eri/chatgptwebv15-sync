@@ -463,6 +463,9 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         alert.addAction(UIAlertAction(title: "Sync Now", style: .default) { [weak self] _ in
             self?.syncAndApply(reason: .manual, forceRefresh: true, reloadAfterSync: true, completion: nil)
         })
+        alert.addAction(UIAlertAction(title: "Refresh Current Page", style: .default) { [weak self] _ in
+            self?.refreshCurrentPage()
+        })
         alert.addAction(UIAlertAction(title: "Re-pair Desktop", style: .default) { [weak self] _ in
             let pairing = PairingViewController()
             pairing.modalPresentationStyle = .formSheet
@@ -493,19 +496,17 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         let settingsViewController = LightSessionSettingsViewController(settings: lightSessionSettingsStore.settings)
         settingsViewController.modalPresentationStyle = .formSheet
         settingsViewController.onSave = { [weak self] settings in
-            self?.applyLightSessionSettings(settings, reloadCurrentPage: true)
+            self?.applyLightSessionSettings(settings)
         }
         present(settingsViewController, animated: true)
     }
 
-    private func applyLightSessionSettings(_ settings: LightSessionSettings, reloadCurrentPage: Bool) {
+    private func applyLightSessionSettings(_ settings: LightSessionSettings) {
         lightSessionSettingsStore.save(settings)
         webView.evaluateJavaScript(lightSessionSettingsStore.makeRuntimeUpdateScript(), completionHandler: nil)
+    }
 
-        guard reloadCurrentPage else {
-            return
-        }
-
+    private func refreshCurrentPage() {
         if webView.url != nil {
             webView.reloadFromOrigin()
         } else {

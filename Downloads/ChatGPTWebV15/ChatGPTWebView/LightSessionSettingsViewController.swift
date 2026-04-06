@@ -8,8 +8,8 @@ final class LightSessionSettingsViewController: UIViewController {
     private let enabledSwitch = UISwitch()
     private let enabledLabel = UILabel()
     private let keepTitleLabel = UILabel()
-    private let keepValueLabel = UILabel()
-    private let keepStepper = UIStepper()
+    private let keepField = UITextField()
+    private let keepHintLabel = UILabel()
     private let noteLabel = UILabel()
     private let saveButton = UIButton(type: .system)
     private let cancelButton = UIButton(type: .system)
@@ -50,7 +50,11 @@ final class LightSessionSettingsViewController: UIViewController {
         keepTitleLabel.text = "Keep visible turns"
         keepTitleLabel.font = .systemFont(ofSize: 17, weight: .semibold)
 
-        noteLabel.text = "Changes reload the current page so the fetch interceptor can apply cleanly."
+        keepHintLabel.text = "Range: \(LightSessionSettings.minimumKeep)-\(LightSessionSettings.maximumKeep)"
+        keepHintLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        keepHintLabel.textColor = .secondaryLabel
+
+        noteLabel.text = "Saving updates the limit, but the current chat only re-trims when you manually refresh or reload."
         noteLabel.font = .systemFont(ofSize: 13, weight: .medium)
         noteLabel.textColor = .secondaryLabel
         noteLabel.numberOfLines = 0
@@ -60,11 +64,11 @@ final class LightSessionSettingsViewController: UIViewController {
         enabledSwitch.isOn = settings.enabled
         enabledSwitch.addTarget(self, action: #selector(handleEnabledChanged), for: .valueChanged)
 
-        keepStepper.minimumValue = Double(LightSessionSettings.minimumKeep)
-        keepStepper.maximumValue = Double(LightSessionSettings.maximumKeep)
-        keepStepper.stepValue = 1
-        keepStepper.value = Double(settings.keep)
-        keepStepper.addTarget(self, action: #selector(handleKeepChanged), for: .valueChanged)
+        keepField.borderStyle = .roundedRect
+        keepField.keyboardType = .numberPad
+        keepField.textAlignment = .right
+        keepField.text = "\(settings.keep)"
+        keepField.placeholder = "\(LightSessionSettings.defaultKeep)"
 
         saveButton.configuration = .filled()
         saveButton.configuration?.title = "Save"
@@ -80,10 +84,13 @@ final class LightSessionSettingsViewController: UIViewController {
         enabledRow.axis = .horizontal
         enabledRow.alignment = .center
 
-        let keepRow = UIStackView(arrangedSubviews: [keepTitleLabel, UIView(), keepValueLabel, keepStepper])
-        keepRow.axis = .horizontal
-        keepRow.alignment = .center
-        keepRow.spacing = 12
+        let keepHeaderRow = UIStackView(arrangedSubviews: [keepTitleLabel, UIView(), keepHintLabel])
+        keepHeaderRow.axis = .horizontal
+        keepHeaderRow.alignment = .center
+        keepHeaderRow.spacing = 12
+
+        keepField.translatesAutoresizingMaskIntoConstraints = false
+        keepField.widthAnchor.constraint(equalToConstant: 92).isActive = true
 
         let buttonRow = UIStackView(arrangedSubviews: [cancelButton, saveButton])
         buttonRow.axis = .horizontal
@@ -94,7 +101,8 @@ final class LightSessionSettingsViewController: UIViewController {
             titleLabel,
             bodyLabel,
             enabledRow,
-            keepRow,
+            keepHeaderRow,
+            keepField,
             noteLabel,
             buttonRow
         ])
@@ -112,14 +120,11 @@ final class LightSessionSettingsViewController: UIViewController {
 
     private func applyState() {
         let sanitized = settings.sanitized
-        keepValueLabel.text = "\(sanitized.keep)"
-        keepValueLabel.font = .monospacedDigitSystemFont(ofSize: 18, weight: .semibold)
-        keepValueLabel.textColor = .label
-
-        keepStepper.value = Double(sanitized.keep)
-        keepStepper.isEnabled = sanitized.enabled
+        keepField.text = "\(sanitized.keep)"
+        keepField.isEnabled = sanitized.enabled
         keepTitleLabel.textColor = sanitized.enabled ? .label : .secondaryLabel
-        keepValueLabel.alpha = sanitized.enabled ? 1.0 : 0.55
+        keepField.alpha = sanitized.enabled ? 1.0 : 0.55
+        keepHintLabel.alpha = sanitized.enabled ? 1.0 : 0.55
     }
 
     @objc private func handleEnabledChanged() {
@@ -127,17 +132,43 @@ final class LightSessionSettingsViewController: UIViewController {
         applyState()
     }
 
-    @objc private func handleKeepChanged() {
-        settings.keep = Int(keepStepper.value)
-        applyState()
+    private func parsedKeepValue() -> Int? {
+        let rawValue = keepField.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard let keep = Int(rawValue) else {
+            return nil
+        }
+
+        return keep
     }
 
     @objc private func saveTapped() {
+        view.endEditing(true)
+
+        if settings.enabled {
+            guard let keep = parsedKeepValue() else {
+                presentAlert(title: "Invalid value", message: "Enter a number between \(LightSessionSettings.minimumKeep) and \(LightSessionSettings.maximumKeep).")
+                return
+            }
+
+            guard (LightSessionSettings.minimumKeep...LightSessionSettings.maximumKeep).contains(keep) else {
+                presentAlert(title: "Out of range", message: "Choose a value between \(LightSessionSettings.minimumKeep) and \(LightSessionSettings.maximumKeep).")
+                return
+            }
+
+            settings.keep = keep
+        }
+
         onSave?(settings.sanitized)
         dismiss(animated: true)
     }
 
     @objc private func cancelTapped() {
         dismiss(animated: true)
+    }
+
+    private func presentAlert(title: String, message: String) {
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, animated: true)
     }
 }
