@@ -7,7 +7,10 @@ const RELEVANT_DOMAINS = [
 
 const DEFAULT_HELPER_BASE = "http://127.0.0.1:48713";
 const SNAPSHOT_DEBOUNCE_MS = 1000;
+const TEMP_REFRESH_TAB_IDLE_CLOSE_MS = 2500;
+const TEMP_REFRESH_TAB_FAILSAFE_MS = 20000;
 let debounceTimer = null;
+const temporaryRefreshTabs = new Map();
 
 async function getHelperBase() {
   const stored = await chrome.storage.local.get({ helperBase: DEFAULT_HELPER_BASE });
@@ -84,6 +87,79 @@ function scheduleSnapshot(reason) {
   }, SNAPSHOT_DEBOUNCE_MS);
 }
 
+function isTemporaryDesktopSyncUrl(rawUrl = "") {
+  try {
+    const parsed = new URL(rawUrl);
+    return RELEVANT_DOMAINS.some((candidate) => parsed.hostname === candidate || parsed.hostname.endsWith(`.${candidate}`))
+      && parsed.searchParams.has("desktop_sync");
+  } catch {
+    return false;
+  }
+}
+
+function clearTemporaryRefreshTracking(tabId) {
+  const entry = temporaryRefreshTabs.get(tabId);
+  if (!entry) {
+    return;
+  }
+
+  if (entry.closeTimer) {
+    clearTimeout(entry.closeTimer);
+  }
+
+  if (entry.failsafeTimer) {
+    clearTimeout(entry.failsafeTimer);
+  }
+
+  temporaryRefreshTabs.delete(tabId);
+}
+
+async function closeTemporaryRefreshTab(tabId) {
+  clearTemporaryRefreshTracking(tabId);
+  try {
+    await chrome.tabs.remove(tabId);
+  } catch {
+    // Tab may already be gone.
+  }
+}
+
+function scheduleTemporaryRefreshTabClose(tabId, delayMs = TEMP_REFRESH_TAB_IDLE_CLOSE_MS) {
+  const entry = temporaryRefreshTabs.get(tabId);
+  if (!entry) {
+    return;
+  }
+
+  if (entry.closeTimer) {
+    clearTimeout(entry.closeTimer);
+  }
+
+  entry.closeTimer = setTimeout(() => {
+    closeTemporaryRefreshTab(tabId).catch((error) => {
+      console.warn("Failed to close temporary desktop sync tab", error);
+    });
+  }, delayMs);
+}
+
+function trackTemporaryRefreshTab(tabId) {
+  const existing = temporaryRefreshTabs.get(tabId);
+  if (existing) {
+    return;
+  }
+
+  const entry = {
+    closeTimer: null,
+    failsafeTimer: null
+  };
+
+  entry.failsafeTimer = setTimeout(() => {
+    closeTemporaryRefreshTab(tabId).catch((error) => {
+      console.warn("Failed to close temporary desktop sync tab on failsafe", error);
+    });
+  }, TEMP_REFRESH_TAB_FAILSAFE_MS);
+
+  temporaryRefreshTabs.set(tabId, entry);
+}
+
 async function refreshChatGPT() {
   const matchingTabs = await chrome.tabs.query({
     url: [
@@ -118,7 +194,21 @@ async function helperHealth() {
 chrome.cookies.onChanged.addListener((changeInfo) => {
   if (isRelevantDomain(changeInfo.cookie?.domain || "")) {
     scheduleSnapshot("cookie_changed");
+    for (const tabId of temporaryRefreshTabs.keys()) {
+      scheduleTemporaryRefreshTabClose(tabId);
+    }
   }
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  const url = changeInfo.url || tab.url || "";
+  if (isTemporaryDesktopSyncUrl(url)) {
+    trackTemporaryRefreshTab(tabId);
+  }
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  clearTemporaryRefreshTracking(tabId);
 });
 
 chrome.runtime.onInstalled.addListener(() => {
