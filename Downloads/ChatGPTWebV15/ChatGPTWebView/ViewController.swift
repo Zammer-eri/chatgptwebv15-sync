@@ -28,6 +28,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         configureTopChrome()
         configureWebView()
         configureSpinner()
+        configureQuickRefreshGesture()
         configureHiddenDiagnosticsGesture()
         observeForegroundEvents()
         observeAudioSessionNotifications()
@@ -220,6 +221,14 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         let gesture = UILongPressGestureRecognizer(target: self, action: #selector(handleDiagnosticsLongPress(_:)))
         gesture.numberOfTouchesRequired = 2
         gesture.minimumPressDuration = 1.0
+        gesture.cancelsTouchesInView = false
+        view.addGestureRecognizer(gesture)
+    }
+
+    private func configureQuickRefreshGesture() {
+        let gesture = UITapGestureRecognizer(target: self, action: #selector(handleQuickRefreshGesture(_:)))
+        gesture.numberOfTouchesRequired = 2
+        gesture.numberOfTapsRequired = 2
         gesture.cancelsTouchesInView = false
         view.addGestureRecognizer(gesture)
     }
@@ -496,14 +505,20 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         let settingsViewController = LightSessionSettingsViewController(settings: lightSessionSettingsStore.settings)
         settingsViewController.modalPresentationStyle = .formSheet
         settingsViewController.onSave = { [weak self] settings in
-            self?.applyLightSessionSettings(settings)
+            self?.applyLightSessionSettings(settings, reloadCurrentPage: true)
         }
         present(settingsViewController, animated: true)
     }
 
-    private func applyLightSessionSettings(_ settings: LightSessionSettings) {
+    private func applyLightSessionSettings(_ settings: LightSessionSettings, reloadCurrentPage: Bool) {
         lightSessionSettingsStore.save(settings)
         webView.evaluateJavaScript(lightSessionSettingsStore.makeRuntimeUpdateScript(), completionHandler: nil)
+
+        guard reloadCurrentPage else {
+            return
+        }
+
+        refreshCurrentPage()
     }
 
     private func refreshCurrentPage() {
@@ -520,6 +535,14 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         }
 
         showDiagnostics()
+    }
+
+    @objc private func handleQuickRefreshGesture(_ gesture: UITapGestureRecognizer) {
+        guard gesture.state == .ended else {
+            return
+        }
+
+        refreshCurrentPage()
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {

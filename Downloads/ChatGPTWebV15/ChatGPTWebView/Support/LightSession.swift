@@ -4,21 +4,47 @@ struct LightSessionSettings: Codable {
     static let defaultKeep = 20
     static let minimumKeep = 1
     static let maximumKeep = 100
-    static let defaults = LightSessionSettings(enabled: true, keep: defaultKeep)
+    static let defaults = LightSessionSettings(enabled: true, keep: defaultKeep, ultraLean: false)
 
     var enabled: Bool
     var keep: Int
+    var ultraLean: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case enabled
+        case keep
+        case ultraLean
+    }
+
+    init(enabled: Bool, keep: Int, ultraLean: Bool) {
+        self.enabled = enabled
+        self.keep = keep
+        self.ultraLean = ultraLean
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        keep = try container.decodeIfPresent(Int.self, forKey: .keep) ?? Self.defaultKeep
+        ultraLean = try container.decodeIfPresent(Bool.self, forKey: .ultraLean) ?? false
+    }
 
     var sanitized: LightSessionSettings {
         LightSessionSettings(
             enabled: enabled,
-            keep: min(Self.maximumKeep, max(Self.minimumKeep, keep))
+            keep: min(Self.maximumKeep, max(Self.minimumKeep, keep)),
+            ultraLean: ultraLean
         )
     }
 
     var summaryText: String {
         let sanitized = sanitized
-        return sanitized.enabled ? "On - last \(sanitized.keep) turns" : "Off"
+        if !sanitized.enabled {
+            return sanitized.ultraLean ? "Off - ultra lean" : "Off"
+        }
+
+        let leanSuffix = sanitized.ultraLean ? " - ultra lean" : ""
+        return "On - last \(sanitized.keep) turns\(leanSuffix)"
     }
 }
 
@@ -59,7 +85,7 @@ final class LightSessionSettingsStore {
 
         return """
         (function() {
-          const DEFAULT_CONFIG = { enabled: true, keep: 20 };
+          const DEFAULT_CONFIG = { enabled: true, keep: 20, ultraLean: false };
 
           function sanitizeConfig(value) {
             const keepValue = Number(value && value.keep);
@@ -69,11 +95,60 @@ final class LightSessionSettingsStore {
 
             return {
               enabled: value && typeof value.enabled === 'boolean' ? value.enabled : DEFAULT_CONFIG.enabled,
-              keep: boundedKeep
+              keep: boundedKeep,
+              ultraLean: Boolean(value && value.ultraLean)
             };
           }
 
+          function ensureUltraLeanStyle() {
+            var style = document.getElementById('codex-ultra-lean-style');
+            if (style) {
+              return;
+            }
+
+            style = document.createElement('style');
+            style.id = 'codex-ultra-lean-style';
+            style.textContent = `
+              html.codex-ultra-lean *,
+              html.codex-ultra-lean *::before,
+              html.codex-ultra-lean *::after {
+                animation-duration: 0.01ms !important;
+                animation-delay: 0ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+                transition-delay: 0ms !important;
+                scroll-behavior: auto !important;
+              }
+
+              html.codex-ultra-lean [class*="backdrop-blur"],
+              html.codex-ultra-lean [class*="backdrop-blur-"],
+              html.codex-ultra-lean [style*="backdrop-filter"],
+              html.codex-ultra-lean header,
+              html.codex-ultra-lean nav,
+              html.codex-ultra-lean aside,
+              html.codex-ultra-lean [role="dialog"] {
+                -webkit-backdrop-filter: none !important;
+                backdrop-filter: none !important;
+              }
+
+              html.codex-ultra-lean [class*="shadow"],
+              html.codex-ultra-lean [class*="drop-shadow"],
+              html.codex-ultra-lean [style*="box-shadow"] {
+                box-shadow: none !important;
+              }
+            `;
+
+            (document.head || document.documentElement).appendChild(style);
+          }
+
+          function applyUltraLean(enabled) {
+            ensureUltraLeanStyle();
+            document.documentElement.classList.toggle('codex-ultra-lean', Boolean(enabled));
+          }
+
+          window.__codexApplyUltraLean__ = applyUltraLean;
           window.__codexLightSessionConfig__ = sanitizeConfig(\(configJSON));
+          applyUltraLean(window.__codexLightSessionConfig__.ultraLean);
 
           if (window.__codexLightSessionPatched__) {
             return;
@@ -290,6 +365,7 @@ final class LightSessionSettingsStore {
             }
 
             const config = sanitizeConfig(window.__codexLightSessionConfig__ || DEFAULT_CONFIG);
+            applyUltraLean(config.ultraLean);
             if (!config.enabled) {
               return nativeFetch(...args);
             }
@@ -342,7 +418,7 @@ final class LightSessionSettingsStore {
     }
 
     func makeRuntimeUpdateScript() -> String {
-        "window.__codexLightSessionConfig__ = (function(value) { const keep = Number(value && value.keep); return { enabled: Boolean(value && value.enabled), keep: Number.isFinite(keep) ? Math.min(100, Math.max(1, Math.round(keep))) : 20 }; })(\(jsonString(for: settings)));"
+        "window.__codexLightSessionConfig__ = (function(value) { const keep = Number(value && value.keep); return { enabled: Boolean(value && value.enabled), keep: Number.isFinite(keep) ? Math.min(100, Math.max(1, Math.round(keep))) : 20, ultraLean: Boolean(value && value.ultraLean) }; })(\(jsonString(for: settings))); if (window.__codexApplyUltraLean__) { window.__codexApplyUltraLean__(window.__codexLightSessionConfig__.ultraLean); }"
     }
 
     private func jsonString(for settings: LightSessionSettings) -> String {
@@ -351,7 +427,7 @@ final class LightSessionSettingsStore {
             let data = try? JSONEncoder().encode(sanitized),
             let string = String(data: data, encoding: .utf8)
         else {
-            return #"{"enabled":true,"keep":20}"#
+            return #"{"enabled":true,"keep":20,"ultraLean":false}"#
         }
 
         return string

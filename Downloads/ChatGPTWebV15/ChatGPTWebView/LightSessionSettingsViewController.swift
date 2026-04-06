@@ -10,6 +10,9 @@ final class LightSessionSettingsViewController: UIViewController {
     private let keepTitleLabel = UILabel()
     private let keepField = UITextField()
     private let keepHintLabel = UILabel()
+    private let ultraLeanSwitch = UISwitch()
+    private let ultraLeanLabel = UILabel()
+    private let ultraLeanHintLabel = UILabel()
     private let noteLabel = UILabel()
     private let saveButton = UIButton(type: .system)
     private let cancelButton = UIButton(type: .system)
@@ -54,7 +57,15 @@ final class LightSessionSettingsViewController: UIViewController {
         keepHintLabel.font = .systemFont(ofSize: 13, weight: .medium)
         keepHintLabel.textColor = .secondaryLabel
 
-        noteLabel.text = "Saving updates the limit, but the current chat only re-trims when you manually refresh or reload."
+        ultraLeanLabel.text = "Ultra Lean"
+        ultraLeanLabel.font = .systemFont(ofSize: 17, weight: .semibold)
+
+        ultraLeanHintLabel.text = "Subtle performance mode. Reduces blur, shadows, and motion without flattening the whole UI."
+        ultraLeanHintLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        ultraLeanHintLabel.textColor = .secondaryLabel
+        ultraLeanHintLabel.numberOfLines = 0
+
+        noteLabel.text = "Saving reloads the current page so the new trim limit applies immediately."
         noteLabel.font = .systemFont(ofSize: 13, weight: .medium)
         noteLabel.textColor = .secondaryLabel
         noteLabel.numberOfLines = 0
@@ -69,6 +80,9 @@ final class LightSessionSettingsViewController: UIViewController {
         keepField.textAlignment = .right
         keepField.text = "\(settings.keep)"
         keepField.placeholder = "\(LightSessionSettings.defaultKeep)"
+
+        ultraLeanSwitch.isOn = settings.ultraLean
+        ultraLeanSwitch.addTarget(self, action: #selector(handleUltraLeanChanged), for: .valueChanged)
 
         saveButton.configuration = .filled()
         saveButton.configuration?.title = "Save"
@@ -89,6 +103,10 @@ final class LightSessionSettingsViewController: UIViewController {
         keepHeaderRow.alignment = .center
         keepHeaderRow.spacing = 12
 
+        let ultraLeanRow = UIStackView(arrangedSubviews: [ultraLeanLabel, UIView(), ultraLeanSwitch])
+        ultraLeanRow.axis = .horizontal
+        ultraLeanRow.alignment = .center
+
         keepField.translatesAutoresizingMaskIntoConstraints = false
         keepField.widthAnchor.constraint(equalToConstant: 92).isActive = true
 
@@ -103,6 +121,8 @@ final class LightSessionSettingsViewController: UIViewController {
             enabledRow,
             keepHeaderRow,
             keepField,
+            ultraLeanRow,
+            ultraLeanHintLabel,
             noteLabel,
             buttonRow
         ])
@@ -125,10 +145,16 @@ final class LightSessionSettingsViewController: UIViewController {
         keepTitleLabel.textColor = sanitized.enabled ? .label : .secondaryLabel
         keepField.alpha = sanitized.enabled ? 1.0 : 0.55
         keepHintLabel.alpha = sanitized.enabled ? 1.0 : 0.55
+        ultraLeanSwitch.isOn = sanitized.ultraLean
     }
 
     @objc private func handleEnabledChanged() {
         settings.enabled = enabledSwitch.isOn
+        applyState()
+    }
+
+    @objc private func handleUltraLeanChanged() {
+        settings.ultraLean = ultraLeanSwitch.isOn
         applyState()
     }
 
