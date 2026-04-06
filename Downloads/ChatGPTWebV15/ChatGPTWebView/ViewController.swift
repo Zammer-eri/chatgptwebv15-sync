@@ -67,27 +67,37 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
               }
               meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
 
-              var headerStyle = document.getElementById('codex-header-safe-area-style');
-              if (!headerStyle) {
-                headerStyle = document.createElement('style');
-                headerStyle.id = 'codex-header-safe-area-style';
-                headerStyle.textContent = `
-                  @supports (padding: max(0px)) {
-                    button[aria-label*="sidebar" i],
-                    button[aria-label*="history" i],
-                    button[aria-label*="close sidebar" i],
-                    button[aria-label="Close sidebar"],
-                    button[aria-label="Open sidebar"],
-                    button[data-testid*="sidebar"],
-                    [data-testid*="sidebar"] button,
-                    header button:first-child,
-                    nav button:first-child {
-                      margin-top: max(env(safe-area-inset-top, 0px), 8px) !important;
+              var applySafeAreaOffset = function() {
+                var selectors = [
+                  'button[aria-label="Open sidebar"]',
+                  'button[aria-label="Close sidebar"]',
+                  'button[aria-label*="sidebar" i]',
+                  'button[aria-label*="history" i]',
+                  'header button',
+                  'nav button'
+                ];
+
+                var seen = new Set();
+                selectors.forEach(function(selector) {
+                  document.querySelectorAll(selector).forEach(function(button) {
+                    if (seen.has(button)) {
+                      return;
                     }
-                  }
-                `;
-                document.head.appendChild(headerStyle);
-              }
+                    seen.add(button);
+
+                    var rect = button.getBoundingClientRect();
+                    if (rect.top <= 88) {
+                      button.style.marginTop = 'max(env(safe-area-inset-top, 0px), 8px)';
+                    } else if (button.style.marginTop === 'max(env(safe-area-inset-top, 0px), 8px)') {
+                      button.style.removeProperty('margin-top');
+                    }
+                  });
+                });
+              };
+
+              applySafeAreaOffset();
+              setTimeout(applySafeAreaOffset, 300);
+              setTimeout(applySafeAreaOffset, 1200);
             })();
             """,
             injectionTime: .atDocumentEnd,
