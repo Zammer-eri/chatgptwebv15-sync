@@ -22,7 +22,7 @@ Or use `desktop-helper\launch-hidden.vbs` to start the tray app without a consol
 
 - Open status page
 - Open pairing page
-- Show pairing QR
+- Show pairing QR in a temporary window
 - Refresh ChatGPT in Chrome
 - Quit
 
