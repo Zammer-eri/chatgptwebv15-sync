@@ -13,6 +13,10 @@ final class LightSessionSettingsViewController: UIViewController, UITextFieldDel
     private let ultraLeanSwitch = UISwitch()
     private let ultraLeanLabel = UILabel()
     private let ultraLeanHintLabel = UILabel()
+    private let blurSwitch = UISwitch()
+    private let shadowsSwitch = UISwitch()
+    private let motionSwitch = UISwitch()
+    private let containRowsSwitch = UISwitch()
     private let noteLabel = UILabel()
     private let saveButton = UIButton(type: .system)
     private let cancelButton = UIButton(type: .system)
@@ -86,6 +90,18 @@ final class LightSessionSettingsViewController: UIViewController, UITextFieldDel
         ultraLeanSwitch.isOn = settings.ultraLean
         ultraLeanSwitch.addTarget(self, action: #selector(handleUltraLeanChanged), for: .valueChanged)
 
+        blurSwitch.isOn = settings.reduceBlur
+        blurSwitch.addTarget(self, action: #selector(handleReduceBlurChanged), for: .valueChanged)
+
+        shadowsSwitch.isOn = settings.reduceShadows
+        shadowsSwitch.addTarget(self, action: #selector(handleReduceShadowsChanged), for: .valueChanged)
+
+        motionSwitch.isOn = settings.reduceMotion
+        motionSwitch.addTarget(self, action: #selector(handleReduceMotionChanged), for: .valueChanged)
+
+        containRowsSwitch.isOn = settings.containChatRows
+        containRowsSwitch.addTarget(self, action: #selector(handleContainRowsChanged), for: .valueChanged)
+
         saveButton.configuration = .filled()
         saveButton.configuration?.title = "Save"
         saveButton.addTarget(self, action: #selector(saveTapped), for: .touchUpInside)
@@ -123,6 +139,11 @@ final class LightSessionSettingsViewController: UIViewController, UITextFieldDel
         ultraLeanRow.axis = .horizontal
         ultraLeanRow.alignment = .center
 
+        let blurRow = makeToggleRow(title: "Reduce blur", toggle: blurSwitch)
+        let shadowsRow = makeToggleRow(title: "Remove shadows", toggle: shadowsSwitch)
+        let motionRow = makeToggleRow(title: "Reduce motion", toggle: motionSwitch)
+        let containRowsRow = makeToggleRow(title: "Contain chat rows", toggle: containRowsSwitch)
+
         keepField.translatesAutoresizingMaskIntoConstraints = false
         keepField.widthAnchor.constraint(equalToConstant: 92).isActive = true
 
@@ -139,6 +160,10 @@ final class LightSessionSettingsViewController: UIViewController, UITextFieldDel
             keepField,
             ultraLeanRow,
             ultraLeanHintLabel,
+            blurRow,
+            shadowsRow,
+            motionRow,
+            containRowsRow,
             noteLabel,
             buttonRow
         ])
@@ -154,6 +179,19 @@ final class LightSessionSettingsViewController: UIViewController, UITextFieldDel
         ])
     }
 
+    private func makeToggleRow(title: String, toggle: UISwitch) -> UIStackView {
+        let label = UILabel()
+        label.text = title
+        label.font = .systemFont(ofSize: 15, weight: .regular)
+        label.numberOfLines = 1
+
+        let row = UIStackView(arrangedSubviews: [label, UIView(), toggle])
+        row.axis = .horizontal
+        row.alignment = .center
+        row.spacing = 12
+        return row
+    }
+
     private func applyState() {
         let sanitized = settings.sanitized
         keepField.text = "\(sanitized.keep)"
@@ -162,6 +200,15 @@ final class LightSessionSettingsViewController: UIViewController, UITextFieldDel
         keepField.alpha = sanitized.enabled ? 1.0 : 0.55
         keepHintLabel.alpha = sanitized.enabled ? 1.0 : 0.55
         ultraLeanSwitch.isOn = sanitized.ultraLean
+        blurSwitch.isOn = sanitized.reduceBlur
+        shadowsSwitch.isOn = sanitized.reduceShadows
+        motionSwitch.isOn = sanitized.reduceMotion
+        containRowsSwitch.isOn = sanitized.containChatRows
+        let ultraLeanControlsEnabled = sanitized.ultraLean
+        blurSwitch.isEnabled = ultraLeanControlsEnabled
+        shadowsSwitch.isEnabled = ultraLeanControlsEnabled
+        motionSwitch.isEnabled = ultraLeanControlsEnabled
+        containRowsSwitch.isEnabled = ultraLeanControlsEnabled
     }
 
     @objc private func handleEnabledChanged() {
@@ -171,6 +218,26 @@ final class LightSessionSettingsViewController: UIViewController, UITextFieldDel
 
     @objc private func handleUltraLeanChanged() {
         settings.ultraLean = ultraLeanSwitch.isOn
+        applyState()
+    }
+
+    @objc private func handleReduceBlurChanged() {
+        settings.reduceBlur = blurSwitch.isOn
+        applyState()
+    }
+
+    @objc private func handleReduceShadowsChanged() {
+        settings.reduceShadows = shadowsSwitch.isOn
+        applyState()
+    }
+
+    @objc private func handleReduceMotionChanged() {
+        settings.reduceMotion = motionSwitch.isOn
+        applyState()
+    }
+
+    @objc private func handleContainRowsChanged() {
+        settings.containChatRows = containRowsSwitch.isOn
         applyState()
     }
 

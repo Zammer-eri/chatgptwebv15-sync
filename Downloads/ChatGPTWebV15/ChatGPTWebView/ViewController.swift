@@ -147,7 +147,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         refreshButton.setImage(UIImage(systemName: "arrow.clockwise", withConfiguration: symbolConfig), for: .normal)
         refreshButton.tintColor = .white
         refreshButton.backgroundColor = UIColor(red: 0.14, green: 0.14, blue: 0.14, alpha: 0.92)
-        refreshButton.layer.cornerRadius = 18
+        refreshButton.layer.cornerRadius = 16
         refreshButton.layer.borderWidth = 1
         refreshButton.layer.borderColor = UIColor.white.withAlphaComponent(0.14).cgColor
         refreshButton.addTarget(self, action: #selector(handleRefreshButtonTap), for: .touchUpInside)
@@ -167,11 +167,12 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             width: view.bounds.width,
             height: view.bounds.height - adjustedTopInset
         )
+        let refreshSize: CGFloat = 32
         refreshButton.frame = CGRect(
-            x: view.bounds.width - 52,
-            y: view.bounds.height - view.safeAreaInsets.bottom - 116,
-            width: 36,
-            height: 36
+            x: view.bounds.width - refreshSize - 12,
+            y: adjustedTopInset + 6,
+            width: refreshSize,
+            height: refreshSize
         )
         activityIndicator.center = CGPoint(x: view.bounds.midX, y: view.bounds.midY)
     }

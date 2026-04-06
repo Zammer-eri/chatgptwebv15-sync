@@ -4,22 +4,50 @@ struct LightSessionSettings: Codable {
     static let defaultKeep = 20
     static let minimumKeep = 1
     static let maximumKeep = 100
-    static let defaults = LightSessionSettings(enabled: true, keep: defaultKeep, ultraLean: false)
+    static let defaults = LightSessionSettings(
+        enabled: true,
+        keep: defaultKeep,
+        ultraLean: false,
+        reduceBlur: true,
+        reduceShadows: true,
+        reduceMotion: true,
+        containChatRows: true
+    )
 
     var enabled: Bool
     var keep: Int
     var ultraLean: Bool
+    var reduceBlur: Bool
+    var reduceShadows: Bool
+    var reduceMotion: Bool
+    var containChatRows: Bool
 
     enum CodingKeys: String, CodingKey {
         case enabled
         case keep
         case ultraLean
+        case reduceBlur
+        case reduceShadows
+        case reduceMotion
+        case containChatRows
     }
 
-    init(enabled: Bool, keep: Int, ultraLean: Bool) {
+    init(
+        enabled: Bool,
+        keep: Int,
+        ultraLean: Bool,
+        reduceBlur: Bool,
+        reduceShadows: Bool,
+        reduceMotion: Bool,
+        containChatRows: Bool
+    ) {
         self.enabled = enabled
         self.keep = keep
         self.ultraLean = ultraLean
+        self.reduceBlur = reduceBlur
+        self.reduceShadows = reduceShadows
+        self.reduceMotion = reduceMotion
+        self.containChatRows = containChatRows
     }
 
     init(from decoder: Decoder) throws {
@@ -27,13 +55,21 @@ struct LightSessionSettings: Codable {
         enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
         keep = try container.decodeIfPresent(Int.self, forKey: .keep) ?? Self.defaultKeep
         ultraLean = try container.decodeIfPresent(Bool.self, forKey: .ultraLean) ?? false
+        reduceBlur = try container.decodeIfPresent(Bool.self, forKey: .reduceBlur) ?? true
+        reduceShadows = try container.decodeIfPresent(Bool.self, forKey: .reduceShadows) ?? true
+        reduceMotion = try container.decodeIfPresent(Bool.self, forKey: .reduceMotion) ?? true
+        containChatRows = try container.decodeIfPresent(Bool.self, forKey: .containChatRows) ?? true
     }
 
     var sanitized: LightSessionSettings {
         LightSessionSettings(
             enabled: enabled,
             keep: min(Self.maximumKeep, max(Self.minimumKeep, keep)),
-            ultraLean: ultraLean
+            ultraLean: ultraLean,
+            reduceBlur: reduceBlur,
+            reduceShadows: reduceShadows,
+            reduceMotion: reduceMotion,
+            containChatRows: containChatRows
         )
     }
 
@@ -85,7 +121,15 @@ final class LightSessionSettingsStore {
 
         return """
         (function() {
-          const DEFAULT_CONFIG = { enabled: true, keep: 20, ultraLean: false };
+          const DEFAULT_CONFIG = {
+            enabled: true,
+            keep: 20,
+            ultraLean: false,
+            reduceBlur: true,
+            reduceShadows: true,
+            reduceMotion: true,
+            containChatRows: true
+          };
 
           function sanitizeConfig(value) {
             const keepValue = Number(value && value.keep);
@@ -96,7 +140,11 @@ final class LightSessionSettingsStore {
             return {
               enabled: value && typeof value.enabled === 'boolean' ? value.enabled : DEFAULT_CONFIG.enabled,
               keep: boundedKeep,
-              ultraLean: Boolean(value && value.ultraLean)
+              ultraLean: Boolean(value && value.ultraLean),
+              reduceBlur: value && typeof value.reduceBlur === 'boolean' ? value.reduceBlur : DEFAULT_CONFIG.reduceBlur,
+              reduceShadows: value && typeof value.reduceShadows === 'boolean' ? value.reduceShadows : DEFAULT_CONFIG.reduceShadows,
+              reduceMotion: value && typeof value.reduceMotion === 'boolean' ? value.reduceMotion : DEFAULT_CONFIG.reduceMotion,
+              containChatRows: value && typeof value.containChatRows === 'boolean' ? value.containChatRows : DEFAULT_CONFIG.containChatRows
             };
           }
 
@@ -109,9 +157,9 @@ final class LightSessionSettingsStore {
             style = document.createElement('style');
             style.id = 'codex-ultra-lean-style';
             style.textContent = `
-              html.codex-ultra-lean *,
-              html.codex-ultra-lean *::before,
-              html.codex-ultra-lean *::after {
+              html.codex-lean-motion *,
+              html.codex-lean-motion *::before,
+              html.codex-lean-motion *::after {
                 animation-duration: 0.01ms !important;
                 animation-delay: 0ms !important;
                 animation-iteration-count: 1 !important;
@@ -120,35 +168,52 @@ final class LightSessionSettingsStore {
                 scroll-behavior: auto !important;
               }
 
-              html.codex-ultra-lean [class*="backdrop-blur"],
-              html.codex-ultra-lean [class*="backdrop-blur-"],
-              html.codex-ultra-lean [style*="backdrop-filter"],
-              html.codex-ultra-lean header,
-              html.codex-ultra-lean nav,
-              html.codex-ultra-lean aside,
-              html.codex-ultra-lean [role="dialog"] {
+              html.codex-lean-blur [class*="backdrop-blur"],
+              html.codex-lean-blur [class*="backdrop-blur-"],
+              html.codex-lean-blur [style*="backdrop-filter"],
+              html.codex-lean-blur header,
+              html.codex-lean-blur nav,
+              html.codex-lean-blur aside,
+              html.codex-lean-blur [role="dialog"] {
                 -webkit-backdrop-filter: none !important;
                 backdrop-filter: none !important;
               }
 
-              html.codex-ultra-lean [class*="shadow"],
-              html.codex-ultra-lean [class*="drop-shadow"],
-              html.codex-ultra-lean [style*="box-shadow"] {
+              html.codex-lean-shadows [class*="shadow"],
+              html.codex-lean-shadows [class*="drop-shadow"],
+              html.codex-lean-shadows [style*="box-shadow"] {
                 box-shadow: none !important;
+              }
+
+              html.codex-lean-shadows [style*="text-shadow"] {
+                text-shadow: none !important;
+              }
+
+              html.codex-lean-contain [data-testid="conversation-turn"],
+              html.codex-lean-contain [data-testid="conversation-turns"] > div,
+              html.codex-lean-contain article {
+                contain: layout paint style !important;
+                content-visibility: auto !important;
+                contain-intrinsic-size: 0 720px !important;
               }
             `;
 
             (document.head || document.documentElement).appendChild(style);
           }
 
-          function applyUltraLean(enabled) {
+          function applyUltraLean(config) {
             ensureUltraLeanStyle();
-            document.documentElement.classList.toggle('codex-ultra-lean', Boolean(enabled));
+            const enabled = Boolean(config && config.ultraLean);
+            document.documentElement.classList.toggle('codex-ultra-lean', enabled);
+            document.documentElement.classList.toggle('codex-lean-blur', enabled && Boolean(config && config.reduceBlur));
+            document.documentElement.classList.toggle('codex-lean-shadows', enabled && Boolean(config && config.reduceShadows));
+            document.documentElement.classList.toggle('codex-lean-motion', enabled && Boolean(config && config.reduceMotion));
+            document.documentElement.classList.toggle('codex-lean-contain', enabled && Boolean(config && config.containChatRows));
           }
 
           window.__codexApplyUltraLean__ = applyUltraLean;
           window.__codexLightSessionConfig__ = sanitizeConfig(\(configJSON));
-          applyUltraLean(window.__codexLightSessionConfig__.ultraLean);
+          applyUltraLean(window.__codexLightSessionConfig__);
 
           if (window.__codexLightSessionPatched__) {
             return;
@@ -365,7 +430,7 @@ final class LightSessionSettingsStore {
             }
 
             const config = sanitizeConfig(window.__codexLightSessionConfig__ || DEFAULT_CONFIG);
-            applyUltraLean(config.ultraLean);
+            applyUltraLean(config);
             if (!config.enabled) {
               return nativeFetch(...args);
             }
@@ -418,7 +483,7 @@ final class LightSessionSettingsStore {
     }
 
     func makeRuntimeUpdateScript() -> String {
-        "window.__codexLightSessionConfig__ = (function(value) { const keep = Number(value && value.keep); return { enabled: Boolean(value && value.enabled), keep: Number.isFinite(keep) ? Math.min(100, Math.max(1, Math.round(keep))) : 20, ultraLean: Boolean(value && value.ultraLean) }; })(\(jsonString(for: settings))); if (window.__codexApplyUltraLean__) { window.__codexApplyUltraLean__(window.__codexLightSessionConfig__.ultraLean); }"
+        "window.__codexLightSessionConfig__ = (function(value) { const keep = Number(value && value.keep); return { enabled: Boolean(value && value.enabled), keep: Number.isFinite(keep) ? Math.min(100, Math.max(1, Math.round(keep))) : 20, ultraLean: Boolean(value && value.ultraLean), reduceBlur: !(value && value.reduceBlur === false), reduceShadows: !(value && value.reduceShadows === false), reduceMotion: !(value && value.reduceMotion === false), containChatRows: !(value && value.containChatRows === false) }; })(\(jsonString(for: settings))); if (window.__codexApplyUltraLean__) { window.__codexApplyUltraLean__(window.__codexLightSessionConfig__); }"
     }
 
     private func jsonString(for settings: LightSessionSettings) -> String {
@@ -427,7 +492,7 @@ final class LightSessionSettingsStore {
             let data = try? JSONEncoder().encode(sanitized),
             let string = String(data: data, encoding: .utf8)
         else {
-            return #"{"enabled":true,"keep":20,"ultraLean":false}"#
+            return #"{"enabled":true,"keep":20,"ultraLean":false,"reduceBlur":true,"reduceShadows":true,"reduceMotion":true,"containChatRows":true}"#
         }
 
         return string
