@@ -8,6 +8,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     private var isInitialLoadComplete = false
     private var syncInFlight = false
     private var lastRecoveryAttempt = Date.distantPast
+    private var diagnosticsGesture: UILongPressGestureRecognizer?
 
     private let managedDomains = [
         "chatgpt.com",
@@ -67,6 +68,32 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
                 document.head.appendChild(meta);
               }
               meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
+
+              var safeAreaStyle = document.getElementById('codex-safe-area-style');
+              if (!safeAreaStyle) {
+                safeAreaStyle = document.createElement('style');
+                safeAreaStyle.id = 'codex-safe-area-style';
+                safeAreaStyle.textContent = `
+                  :root {
+                    --codex-safe-area-top: calc(env(safe-area-inset-top, 0px) + 8px);
+                  }
+
+                  body {
+                    padding-top: max(var(--codex-safe-area-top), 8px) !important;
+                    box-sizing: border-box !important;
+                  }
+
+                  @supports selector(header) {
+                    header,
+                    nav,
+                    [data-testid="page-header"],
+                    [data-testid="page-layout-header"] {
+                      padding-top: max(env(safe-area-inset-top, 0px), 0px) !important;
+                    }
+                  }
+                `;
+                document.head.appendChild(safeAreaStyle);
+              }
             })();
             """,
             injectionTime: .atDocumentEnd,
@@ -94,12 +121,13 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     }
 
     private func configureHiddenDiagnosticsGesture() {
-        let gesture = UITapGestureRecognizer(target: self, action: #selector(showDiagnostics))
+        let gesture = UILongPressGestureRecognizer(target: self, action: #selector(handleDiagnosticsLongPress(_:)))
         gesture.numberOfTouchesRequired = 2
-        gesture.numberOfTapsRequired = 3
+        gesture.minimumPressDuration = 1.0
         gesture.cancelsTouchesInView = false
         gesture.delegate = self
         view.addGestureRecognizer(gesture)
+        diagnosticsGesture = gesture
     }
 
     private func observeForegroundEvents() {
@@ -310,6 +338,14 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         }
 
         present(alert, animated: true)
+    }
+
+    @objc private func handleDiagnosticsLongPress(_ gesture: UILongPressGestureRecognizer) {
+        guard gesture.state == .began else {
+            return
+        }
+
+        showDiagnostics()
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
