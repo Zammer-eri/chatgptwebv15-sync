@@ -1,15 +1,13 @@
 import UIKit
 import WebKit
 
-final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, UIGestureRecognizerDelegate {
+final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
     private var webView: WKWebView!
     private let activityIndicator = UIActivityIndicatorView(style: .large)
     private let sessionSyncService = SessionSyncService.shared
     private var isInitialLoadComplete = false
     private var syncInFlight = false
     private var lastRecoveryAttempt = Date.distantPast
-    private var diagnosticsGesture: UILongPressGestureRecognizer?
-
     private let managedDomains = [
         "chatgpt.com",
         "auth.openai.com",
@@ -67,33 +65,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
                 meta.name = 'viewport';
                 document.head.appendChild(meta);
               }
-              meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
-
-              var safeAreaStyle = document.getElementById('codex-safe-area-style');
-              if (!safeAreaStyle) {
-                safeAreaStyle = document.createElement('style');
-                safeAreaStyle.id = 'codex-safe-area-style';
-                safeAreaStyle.textContent = `
-                  :root {
-                    --codex-safe-area-top: calc(env(safe-area-inset-top, 0px) + 8px);
-                  }
-
-                  body {
-                    padding-top: max(var(--codex-safe-area-top), 8px) !important;
-                    box-sizing: border-box !important;
-                  }
-
-                  @supports selector(header) {
-                    header,
-                    nav,
-                    [data-testid="page-header"],
-                    [data-testid="page-layout-header"] {
-                      padding-top: max(env(safe-area-inset-top, 0px), 0px) !important;
-                    }
-                  }
-                `;
-                document.head.appendChild(safeAreaStyle);
-              }
+              meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
             })();
             """,
             injectionTime: .atDocumentEnd,
@@ -109,6 +81,9 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
+        webView.scrollView.contentInsetAdjustmentBehavior = .never
+        webView.scrollView.contentInset = .zero
+        webView.scrollView.scrollIndicatorInsets = .zero
         webView.backgroundColor = .systemBackground
         webView.isOpaque = false
         view.addSubview(webView)
@@ -125,9 +100,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         gesture.numberOfTouchesRequired = 2
         gesture.minimumPressDuration = 1.0
         gesture.cancelsTouchesInView = false
-        gesture.delegate = self
         view.addGestureRecognizer(gesture)
-        diagnosticsGesture = gesture
     }
 
     private func observeForegroundEvents() {
@@ -346,11 +319,6 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         }
 
         showDiagnostics()
-    }
-
-    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        let location = touch.location(in: view)
-        return location.y <= max(view.safeAreaInsets.top + 72, 120)
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
