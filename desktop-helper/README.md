@@ -2,6 +2,8 @@
 
 Runs a local HTTP bridge plus a Windows tray app for session syncing.
 
+The helper binds Chrome-extension traffic to `127.0.0.1` and phone pairing traffic to the Windows hotspot address `192.168.137.1` by default. This avoids exposing the pairing page on unrelated network interfaces.
+
 ## Run
 
 Visible console mode:
@@ -32,6 +34,8 @@ Or use `desktop-helper\launch-hidden.vbs` to start the tray app without a consol
 2. Use the tray menu `Show Pair QR` and scan it with the iPhone camera.
 3. The QR opens the helper pairing page in Safari.
 4. Tap `Connect ChatGPTWebV15`.
+
+If you update from an older helper build, the pairing secret is rotated automatically. Re-pair the phone after restarting the helper.
 
 ## Extension endpoint
 

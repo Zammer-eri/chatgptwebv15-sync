@@ -20,6 +20,8 @@ from urllib.parse import urlparse
 APP_NAME = "ChatGPTWebV15 Helper"
 SCHEMA_VERSION = 1
 DEFAULT_PORT = 48713
+CONFIG_VERSION = 2
+DEFAULT_REMOTE_HOST = "192.168.137.1"
 SESSION_FILE = "session.dat"
 CONFIG_FILE = "config.json"
 REFRESH_WAIT_SECONDS = 12
@@ -144,6 +146,7 @@ def runtime_dir() -> Path:
 class HelperConfig:
     secret: str
     port: int
+    version: int
 
 
 class HelperState:
@@ -152,7 +155,9 @@ class HelperState:
         self.condition = threading.Condition(self.lock)
         self.runtime = runtime_dir()
         self.config = self._load_or_create_config()
-        self.lan_ip = discover_lan_ip()
+        self.remote_host = os.environ.get("CHATGPTWEBV15_HELPER_HOST", DEFAULT_REMOTE_HOST)
+        self.remote_enabled = False
+        self.remote_bind_error: str | None = None
         self.session_bundle: dict[str, Any] | None = None
         self.session_hash: str | None = None
         self.last_update: str | None = None
@@ -161,11 +166,11 @@ class HelperState:
 
     @property
     def pair_url(self) -> str:
-        return f"http://{self.lan_ip}:{self.config.port}/pair"
+        return f"http://{self.remote_host}:{self.config.port}/pair"
 
     @property
     def pair_deep_link(self) -> str:
-        return f"chatgptwebv15://pair?host={self.lan_ip}&port={self.config.port}&secret={self.config.secret}"
+        return f"chatgptwebv15://pair?host={self.remote_host}&port={self.config.port}&secret={self.config.secret}"
 
     def _load_or_create_config(self) -> HelperConfig:
         config_path = self.runtime / CONFIG_FILE
@@ -174,15 +179,21 @@ class HelperState:
             port = int(data.get("port", DEFAULT_PORT))
             if port == 45832:
                 port = DEFAULT_PORT
-                config_path.write_text(
-                    json.dumps({"secret": data["secret"], "port": port}, indent=2),
-                    encoding="utf-8",
-                )
-            return HelperConfig(secret=data["secret"], port=port)
+            version = int(data.get("version", 1))
+            secret = data.get("secret", secrets.token_urlsafe(32))
+            if version < CONFIG_VERSION:
+                secret = secrets.token_urlsafe(32)
+                version = CONFIG_VERSION
+            config = HelperConfig(secret=secret, port=port, version=version)
+            config_path.write_text(
+                json.dumps({"secret": config.secret, "port": config.port, "version": config.version}, indent=2),
+                encoding="utf-8",
+            )
+            return config
 
-        config = HelperConfig(secret=secrets.token_urlsafe(32), port=DEFAULT_PORT)
+        config = HelperConfig(secret=secrets.token_urlsafe(32), port=DEFAULT_PORT, version=CONFIG_VERSION)
         config_path.write_text(
-            json.dumps({"secret": config.secret, "port": config.port}, indent=2),
+            json.dumps({"secret": config.secret, "port": config.port, "version": config.version}, indent=2),
             encoding="utf-8",
         )
         return config
@@ -234,10 +245,12 @@ class HelperState:
             return {
                 "app": APP_NAME,
                 "schema": SCHEMA_VERSION,
-                "lan_ip": self.lan_ip,
+                "lan_ip": self.remote_host,
                 "port": self.config.port,
                 "pair_url": self.pair_url,
                 "pair_deep_link": self.pair_deep_link,
+                "remote_enabled": self.remote_enabled,
+                "remote_bind_error": self.remote_bind_error,
                 "has_session": self.session_bundle is not None,
                 "cookie_count": cookie_count,
                 "bundle_hash": self.session_hash,
@@ -466,14 +479,33 @@ class HelperServerThread(threading.Thread):
         self.state = state
         global CURRENT_STATE
         CURRENT_STATE = state
-        self.server = ThreadingHTTPServer(("0.0.0.0", state.config.port), HelperRequestHandler)
+        self.local_server = ThreadingHTTPServer(("127.0.0.1", state.config.port), HelperRequestHandler)
+        self.remote_server: ThreadingHTTPServer | None = None
+        self.remote_thread: threading.Thread | None = None
+
+        try:
+            self.remote_server = ThreadingHTTPServer((state.remote_host, state.config.port), HelperRequestHandler)
+            self.state.remote_enabled = True
+            self.state.remote_bind_error = None
+        except OSError as error:
+            self.remote_server = None
+            self.state.remote_enabled = False
+            self.state.remote_bind_error = str(error)
 
     def run(self) -> None:
-        self.server.serve_forever()
+        if self.remote_server is not None:
+            self.remote_thread = threading.Thread(target=self.remote_server.serve_forever, daemon=True)
+            self.remote_thread.start()
+
+        self.local_server.serve_forever()
 
     def stop(self) -> None:
-        self.server.shutdown()
-        self.server.server_close()
+        self.local_server.shutdown()
+        self.local_server.server_close()
+
+        if self.remote_server is not None:
+            self.remote_server.shutdown()
+            self.remote_server.server_close()
 
 
 def main() -> None:
