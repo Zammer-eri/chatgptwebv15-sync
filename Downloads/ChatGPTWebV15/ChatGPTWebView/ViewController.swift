@@ -102,6 +102,8 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
                     scroll-behavior: auto !important;
                     overscroll-behavior-y: auto !important;
                     overflow-anchor: none !important;
+                    -webkit-overflow-scrolling: touch !important;
+                    touch-action: pan-y !important;
                   }
 
                   * {
@@ -121,7 +123,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         config.userContentController = userContentController
 
         webView = WKWebView(frame: view.bounds, configuration: config)
-        webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 13_6_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
+        webView.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
