@@ -9,7 +9,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     private var isInitialLoadComplete = false
     private var syncInFlight = false
     private var lastRecoveryAttempt = Date.distantPast
-    private let topOffsetTuning: CGFloat = 4
+    private let topOffsetTuning: CGFloat = 6
     private let managedDomains = [
         "chatgpt.com",
         "auth.openai.com",
