@@ -3,9 +3,10 @@ import Photos
 import UIKit
 import WebKit
 
-final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
+final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate, UIGestureRecognizerDelegate {
     private var webView: WKWebView!
     private let topChromeView = UIView()
+    private let refreshButton = UIButton(type: .system)
     private let activityIndicator = UIActivityIndicatorView(style: .large)
     private let sessionSyncService = SessionSyncService.shared
     private let lightSessionSettingsStore = LightSessionSettingsStore.shared
@@ -27,6 +28,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         configureAudioSessionForVoiceFeatures()
         configureTopChrome()
         configureWebView()
+        configureRefreshButton()
         configureSpinner()
         configureQuickRefreshGesture()
         configureHiddenDiagnosticsGesture()
@@ -140,6 +142,20 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         view.addSubview(topChromeView)
     }
 
+    private func configureRefreshButton() {
+        let symbolConfig = UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
+        refreshButton.setImage(UIImage(systemName: "arrow.clockwise", withConfiguration: symbolConfig), for: .normal)
+        refreshButton.tintColor = .white
+        refreshButton.backgroundColor = UIColor(red: 0.14, green: 0.14, blue: 0.14, alpha: 0.92)
+        refreshButton.layer.cornerRadius = 18
+        refreshButton.layer.borderWidth = 1
+        refreshButton.layer.borderColor = UIColor.white.withAlphaComponent(0.14).cgColor
+        refreshButton.addTarget(self, action: #selector(handleRefreshButtonTap), for: .touchUpInside)
+        refreshButton.accessibilityLabel = "Refresh current page"
+        refreshButton.accessibilityHint = "Reloads the current ChatGPT page and reapplies the current Light Session settings."
+        view.addSubview(refreshButton)
+    }
+
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let topInset = view.safeAreaInsets.top
@@ -150,6 +166,12 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             y: adjustedTopInset,
             width: view.bounds.width,
             height: view.bounds.height - adjustedTopInset
+        )
+        refreshButton.frame = CGRect(
+            x: view.bounds.width - 52,
+            y: view.bounds.height - view.safeAreaInsets.bottom - 116,
+            width: 36,
+            height: 36
         )
         activityIndicator.center = CGPoint(x: view.bounds.midX, y: view.bounds.midY)
     }
@@ -222,6 +244,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         gesture.numberOfTouchesRequired = 2
         gesture.minimumPressDuration = 1.0
         gesture.cancelsTouchesInView = false
+        gesture.delegate = self
         view.addGestureRecognizer(gesture)
     }
 
@@ -230,7 +253,12 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         gesture.numberOfTouchesRequired = 2
         gesture.numberOfTapsRequired = 2
         gesture.cancelsTouchesInView = false
+        gesture.delegate = self
         view.addGestureRecognizer(gesture)
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        true
     }
 
     private func observeForegroundEvents() {
@@ -542,6 +570,10 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             return
         }
 
+        refreshCurrentPage()
+    }
+
+    @objc private func handleRefreshButtonTap() {
         refreshCurrentPage()
     }
 

@@ -1,6 +1,6 @@
 import UIKit
 
-final class LightSessionSettingsViewController: UIViewController {
+final class LightSessionSettingsViewController: UIViewController, UITextFieldDelegate {
     var onSave: ((LightSessionSettings) -> Void)?
 
     private let titleLabel = UILabel()
@@ -33,6 +33,7 @@ final class LightSessionSettingsViewController: UIViewController {
         view.backgroundColor = .systemBackground
         configureLabels()
         configureControls()
+        configureKeyboardHandling()
         layoutInterface()
         applyState()
     }
@@ -80,6 +81,7 @@ final class LightSessionSettingsViewController: UIViewController {
         keepField.textAlignment = .right
         keepField.text = "\(settings.keep)"
         keepField.placeholder = "\(LightSessionSettings.defaultKeep)"
+        keepField.delegate = self
 
         ultraLeanSwitch.isOn = settings.ultraLean
         ultraLeanSwitch.addTarget(self, action: #selector(handleUltraLeanChanged), for: .valueChanged)
@@ -91,6 +93,20 @@ final class LightSessionSettingsViewController: UIViewController {
         cancelButton.configuration = .plain()
         cancelButton.configuration?.title = "Cancel"
         cancelButton.addTarget(self, action: #selector(cancelTapped), for: .touchUpInside)
+    }
+
+    private func configureKeyboardHandling() {
+        let toolbar = UIToolbar()
+        toolbar.sizeToFit()
+        toolbar.items = [
+            UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil),
+            UIBarButtonItem(title: "Done", style: .done, target: self, action: #selector(handleKeyboardDone))
+        ]
+        keepField.inputAccessoryView = toolbar
+
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleBackgroundTap))
+        tapGesture.cancelsTouchesInView = false
+        view.addGestureRecognizer(tapGesture)
     }
 
     private func layoutInterface() {
@@ -190,6 +206,19 @@ final class LightSessionSettingsViewController: UIViewController {
 
     @objc private func cancelTapped() {
         dismiss(animated: true)
+    }
+
+    @objc private func handleKeyboardDone() {
+        view.endEditing(true)
+    }
+
+    @objc private func handleBackgroundTap() {
+        view.endEditing(true)
+    }
+
+    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+        view.endEditing(true)
+        return true
     }
 
     private func presentAlert(title: String, message: String) {
