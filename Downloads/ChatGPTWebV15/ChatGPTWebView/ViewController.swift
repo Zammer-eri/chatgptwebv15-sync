@@ -1,3 +1,5 @@
+import AVFoundation
+import Photos
 import UIKit
 import WebKit
 
@@ -10,6 +12,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     private var syncInFlight = false
     private var lastRecoveryAttempt = Date.distantPast
     private let topOffsetTuning: CGFloat = 14.3
+    private let initialPermissionPromptKey = "didRequestInitialSystemPermissions"
     private let managedDomains = [
         "chatgpt.com",
         "auth.openai.com",
@@ -25,6 +28,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         configureSpinner()
         configureHiddenDiagnosticsGesture()
         observeForegroundEvents()
+        requestInitialPermissionsIfNeeded()
         bootstrapSession()
     }
 
@@ -140,6 +144,64 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     private func configureSpinner() {
         activityIndicator.hidesWhenStopped = true
         view.addSubview(activityIndicator)
+    }
+
+    private func requestInitialPermissionsIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard defaults.bool(forKey: initialPermissionPromptKey) == false else {
+            return
+        }
+
+        defaults.set(true, forKey: initialPermissionPromptKey)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
+            self.requestSystemPermissionsSequence()
+        }
+    }
+
+    private func requestSystemPermissionsSequence() {
+        requestMicrophonePermission { [weak self] in
+            self?.requestCameraPermission {
+                self?.requestPhotoLibraryPermission()
+            }
+        }
+    }
+
+    private func requestMicrophonePermission(completion: @escaping () -> Void) {
+        let permission = AVAudioSession.sharedInstance().recordPermission
+        guard permission == .undetermined else {
+            completion()
+            return
+        }
+
+        AVAudioSession.sharedInstance().requestRecordPermission { _ in
+            DispatchQueue.main.async {
+                completion()
+            }
+        }
+    }
+
+    private func requestCameraPermission(completion: @escaping () -> Void) {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        guard status == .notDetermined else {
+            completion()
+            return
+        }
+
+        AVCaptureDevice.requestAccess(for: .video) { _ in
+            DispatchQueue.main.async {
+                completion()
+            }
+        }
+    }
+
+    private func requestPhotoLibraryPermission() {
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        guard status == .notDetermined else {
+            return
+        }
+
+        PHPhotoLibrary.requestAuthorization(for: .readWrite) { _ in }
     }
 
     private func configureHiddenDiagnosticsGesture() {
@@ -401,6 +463,68 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         activityIndicator.stopAnimating()
         print("Provisional navigation failed: \(error.localizedDescription)")
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        requestMediaCapturePermissionFor origin: WKSecurityOrigin,
+        initiatedByFrame frame: WKFrameInfo,
+        type: WKMediaCaptureType,
+        decisionHandler: @escaping (WKPermissionDecision) -> Void
+    ) {
+        switch type {
+        case .camera:
+            handleCameraDecision(decisionHandler)
+        case .microphone:
+            handleMicrophoneDecision(decisionHandler)
+        case .cameraAndMicrophone:
+            handleCombinedMediaDecision(decisionHandler)
+        @unknown default:
+            decisionHandler(.prompt)
+        }
+    }
+
+    private func handleCameraDecision(_ decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            decisionHandler(.grant)
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async {
+                    decisionHandler(granted ? .grant : .deny)
+                }
+            }
+        default:
+            decisionHandler(.deny)
+        }
+    }
+
+    private func handleMicrophoneDecision(_ decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+        switch AVAudioSession.sharedInstance().recordPermission {
+        case .granted:
+            decisionHandler(.grant)
+        case .undetermined:
+            AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                DispatchQueue.main.async {
+                    decisionHandler(granted ? .grant : .deny)
+                }
+            }
+        default:
+            decisionHandler(.deny)
+        }
+    }
+
+    private func handleCombinedMediaDecision(_ decisionHandler: @escaping (WKPermissionDecision) -> Void) {
+        handleCameraDecision { [weak self] cameraDecision in
+            guard cameraDecision == .grant else {
+                decisionHandler(.deny)
+                return
+            }
+
+            self?.handleMicrophoneDecision { microphoneDecision in
+                decisionHandler(microphoneDecision == .grant ? .grant : .deny)
+            }
+        }
     }
 
     func webView(
