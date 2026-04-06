@@ -114,16 +114,16 @@ final class LightSessionSettingsStore {
               }
 
               #${STATUS_ID} .pill {
-                max-width: 100%;
+                max-width: min(100%, 720px);
                 padding: 9px 14px;
                 border-radius: 12px;
                 background: rgba(24, 135, 84, 0.96);
                 color: #ffffff;
-                font: 600 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                font: 600 12px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
                 box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
-                white-space: nowrap;
-                overflow: hidden;
-                text-overflow: ellipsis;
+                white-space: normal;
+                text-align: center;
+                overflow-wrap: anywhere;
               }
             `;
             (document.head || document.documentElement).appendChild(style);
