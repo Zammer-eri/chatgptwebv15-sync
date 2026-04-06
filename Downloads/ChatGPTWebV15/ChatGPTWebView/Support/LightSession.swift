@@ -4,88 +4,38 @@ struct LightSessionSettings: Codable {
     static let defaultKeep = 20
     static let minimumKeep = 1
     static let maximumKeep = 100
-    static let defaults = LightSessionSettings(
-        enabled: true,
-        keep: defaultKeep,
-        ultraLean: false,
-        reduceBlur: true,
-        reduceShadows: true,
-        reduceMotion: true,
-        containChatRows: true
-    )
+    static let defaults = LightSessionSettings(enabled: true, keep: defaultKeep)
 
     var enabled: Bool
     var keep: Int
-    var ultraLean: Bool
-    var reduceBlur: Bool
-    var reduceShadows: Bool
-    var reduceMotion: Bool
-    var containChatRows: Bool
 
     enum CodingKeys: String, CodingKey {
         case enabled
         case keep
-        case ultraLean
-        case reduceBlur
-        case reduceShadows
-        case reduceMotion
-        case containChatRows
     }
 
-    init(
-        enabled: Bool,
-        keep: Int,
-        ultraLean: Bool,
-        reduceBlur: Bool,
-        reduceShadows: Bool,
-        reduceMotion: Bool,
-        containChatRows: Bool
-    ) {
+    init(enabled: Bool, keep: Int) {
         self.enabled = enabled
         self.keep = keep
-        self.ultraLean = ultraLean
-        self.reduceBlur = reduceBlur
-        self.reduceShadows = reduceShadows
-        self.reduceMotion = reduceMotion
-        self.containChatRows = containChatRows
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
         keep = try container.decodeIfPresent(Int.self, forKey: .keep) ?? Self.defaultKeep
-        ultraLean = try container.decodeIfPresent(Bool.self, forKey: .ultraLean) ?? false
-        reduceBlur = try container.decodeIfPresent(Bool.self, forKey: .reduceBlur) ?? true
-        reduceShadows = try container.decodeIfPresent(Bool.self, forKey: .reduceShadows) ?? true
-        reduceMotion = try container.decodeIfPresent(Bool.self, forKey: .reduceMotion) ?? true
-        containChatRows = try container.decodeIfPresent(Bool.self, forKey: .containChatRows) ?? true
     }
 
     var sanitized: LightSessionSettings {
         LightSessionSettings(
             enabled: enabled,
-            keep: min(Self.maximumKeep, max(Self.minimumKeep, keep)),
-            ultraLean: ultraLean,
-            reduceBlur: reduceBlur,
-            reduceShadows: reduceShadows,
-            reduceMotion: reduceMotion,
-            containChatRows: containChatRows
+            keep: min(Self.maximumKeep, max(Self.minimumKeep, keep))
         )
     }
 
     var summaryText: String {
         let sanitized = sanitized
-        if !sanitized.enabled {
-            return sanitized.ultraLean ? "Off - ultra lean" : "Off"
-        }
-
-        let leanSuffix = sanitized.ultraLean ? " - ultra lean" : ""
-        return "On - last \(sanitized.keep) turns\(leanSuffix)"
+        return sanitized.enabled ? "On - last \(sanitized.keep) turns" : "Off"
     }
-}
-
-extension Notification.Name {
-    static let lightSessionSettingsDidChange = Notification.Name("LightSessionSettingsDidChange")
 }
 
 final class LightSessionSettingsStore {
@@ -112,24 +62,14 @@ final class LightSessionSettingsStore {
         }
 
         defaults.set(data, forKey: storageKey)
-        NotificationCenter.default.post(name: .lightSessionSettingsDidChange, object: nil)
     }
 
     func makeBootstrapScript() -> String {
-        let config = settings
-        let configJSON = jsonString(for: config)
+        let configJSON = jsonString(for: settings)
 
         return """
         (function() {
-          const DEFAULT_CONFIG = {
-            enabled: true,
-            keep: 20,
-            ultraLean: false,
-            reduceBlur: true,
-            reduceShadows: true,
-            reduceMotion: true,
-            containChatRows: true
-          };
+          const DEFAULT_CONFIG = { enabled: true, keep: 20 };
 
           function sanitizeConfig(value) {
             const keepValue = Number(value && value.keep);
@@ -139,81 +79,11 @@ final class LightSessionSettingsStore {
 
             return {
               enabled: value && typeof value.enabled === 'boolean' ? value.enabled : DEFAULT_CONFIG.enabled,
-              keep: boundedKeep,
-              ultraLean: Boolean(value && value.ultraLean),
-              reduceBlur: value && typeof value.reduceBlur === 'boolean' ? value.reduceBlur : DEFAULT_CONFIG.reduceBlur,
-              reduceShadows: value && typeof value.reduceShadows === 'boolean' ? value.reduceShadows : DEFAULT_CONFIG.reduceShadows,
-              reduceMotion: value && typeof value.reduceMotion === 'boolean' ? value.reduceMotion : DEFAULT_CONFIG.reduceMotion,
-              containChatRows: value && typeof value.containChatRows === 'boolean' ? value.containChatRows : DEFAULT_CONFIG.containChatRows
+              keep: boundedKeep
             };
           }
 
-          function ensureUltraLeanStyle() {
-            var style = document.getElementById('codex-ultra-lean-style');
-            if (style) {
-              return;
-            }
-
-            style = document.createElement('style');
-            style.id = 'codex-ultra-lean-style';
-            style.textContent = `
-              html.codex-lean-motion *,
-              html.codex-lean-motion *::before,
-              html.codex-lean-motion *::after {
-                animation-duration: 0.01ms !important;
-                animation-delay: 0ms !important;
-                animation-iteration-count: 1 !important;
-                transition-duration: 0.01ms !important;
-                transition-delay: 0ms !important;
-                scroll-behavior: auto !important;
-              }
-
-              html.codex-lean-blur [class*="backdrop-blur"],
-              html.codex-lean-blur [class*="backdrop-blur-"],
-              html.codex-lean-blur [style*="backdrop-filter"],
-              html.codex-lean-blur header,
-              html.codex-lean-blur nav,
-              html.codex-lean-blur aside,
-              html.codex-lean-blur [role="dialog"] {
-                -webkit-backdrop-filter: none !important;
-                backdrop-filter: none !important;
-              }
-
-              html.codex-lean-shadows [class*="shadow"],
-              html.codex-lean-shadows [class*="drop-shadow"],
-              html.codex-lean-shadows [style*="box-shadow"] {
-                box-shadow: none !important;
-              }
-
-              html.codex-lean-shadows [style*="text-shadow"] {
-                text-shadow: none !important;
-              }
-
-              html.codex-lean-contain [data-testid="conversation-turn"],
-              html.codex-lean-contain [data-testid="conversation-turns"] > div,
-              html.codex-lean-contain article {
-                contain: layout paint style !important;
-                content-visibility: auto !important;
-                contain-intrinsic-size: 0 720px !important;
-              }
-            `;
-
-            (document.head || document.documentElement).appendChild(style);
-          }
-
-          function applyUltraLean(config) {
-            ensureUltraLeanStyle();
-            const enabled = Boolean(config && config.ultraLean);
-            document.documentElement.classList.toggle('codex-ultra-lean', enabled);
-            document.documentElement.classList.toggle('codex-lean-blur', enabled && Boolean(config && config.reduceBlur));
-            document.documentElement.classList.toggle('codex-lean-shadows', enabled && Boolean(config && config.reduceShadows));
-            document.documentElement.classList.toggle('codex-lean-motion', enabled && Boolean(config && config.reduceMotion));
-            document.documentElement.classList.toggle('codex-lean-contain', enabled && Boolean(config && config.containChatRows));
-          }
-
-          window.__codexApplyUltraLean__ = applyUltraLean;
           window.__codexLightSessionConfig__ = sanitizeConfig(\(configJSON));
-          applyUltraLean(window.__codexLightSessionConfig__);
 
           if (window.__codexLightSessionPatched__) {
             return;
@@ -398,14 +268,6 @@ final class LightSessionSettingsStore {
             return response;
           }
 
-          function dispatchStatus(detail) {
-            try {
-              window.dispatchEvent(new CustomEvent('codex-lightsession-status', { detail }));
-            } catch (error) {
-              void error;
-            }
-          }
-
           const nativeFetch = window.fetch.bind(window);
 
           window.fetch = async function(...args) {
@@ -430,7 +292,6 @@ final class LightSessionSettingsStore {
             }
 
             const config = sanitizeConfig(window.__codexLightSessionConfig__ || DEFAULT_CONFIG);
-            applyUltraLean(config);
             if (!config.enabled) {
               return nativeFetch(...args);
             }
@@ -448,26 +309,9 @@ final class LightSessionSettingsStore {
               }
 
               const trimmed = trimMapping(json, config.keep);
-              if (!trimmed) {
+              if (!trimmed || trimmed.visibleKept === trimmed.visibleTotal) {
                 return response;
               }
-
-              if (trimmed.visibleKept === trimmed.visibleTotal) {
-                dispatchStatus({
-                  totalBefore: trimmed.visibleTotal,
-                  keptAfter: trimmed.visibleKept,
-                  removed: 0,
-                  limit: config.keep
-                });
-                return response;
-              }
-
-              dispatchStatus({
-                totalBefore: trimmed.visibleTotal,
-                keptAfter: trimmed.visibleKept,
-                removed: Math.max(0, trimmed.visibleTotal - trimmed.visibleKept),
-                limit: config.keep
-              });
 
               return createModifiedResponse(response, Object.assign({}, json, {
                 mapping: trimmed.mapping,
@@ -483,7 +327,7 @@ final class LightSessionSettingsStore {
     }
 
     func makeRuntimeUpdateScript() -> String {
-        "window.__codexLightSessionConfig__ = (function(value) { const keep = Number(value && value.keep); return { enabled: Boolean(value && value.enabled), keep: Number.isFinite(keep) ? Math.min(100, Math.max(1, Math.round(keep))) : 20, ultraLean: Boolean(value && value.ultraLean), reduceBlur: !(value && value.reduceBlur === false), reduceShadows: !(value && value.reduceShadows === false), reduceMotion: !(value && value.reduceMotion === false), containChatRows: !(value && value.containChatRows === false) }; })(\(jsonString(for: settings))); if (window.__codexApplyUltraLean__) { window.__codexApplyUltraLean__(window.__codexLightSessionConfig__); }"
+        "window.__codexLightSessionConfig__ = (function(value) { const keep = Number(value && value.keep); return { enabled: Boolean(value && value.enabled), keep: Number.isFinite(keep) ? Math.min(100, Math.max(1, Math.round(keep))) : 20 }; })(\(jsonString(for: settings)));"
     }
 
     private func jsonString(for settings: LightSessionSettings) -> String {
@@ -492,7 +336,7 @@ final class LightSessionSettingsStore {
             let data = try? JSONEncoder().encode(sanitized),
             let string = String(data: data, encoding: .utf8)
         else {
-            return #"{"enabled":true,"keep":20,"ultraLean":false,"reduceBlur":true,"reduceShadows":true,"reduceMotion":true,"containChatRows":true}"#
+            return #"{"enabled":true,"keep":20}"#
         }
 
         return string

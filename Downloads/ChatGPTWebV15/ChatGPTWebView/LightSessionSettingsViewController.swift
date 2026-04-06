@@ -10,13 +10,6 @@ final class LightSessionSettingsViewController: UIViewController, UITextFieldDel
     private let keepTitleLabel = UILabel()
     private let keepField = UITextField()
     private let keepHintLabel = UILabel()
-    private let ultraLeanSwitch = UISwitch()
-    private let ultraLeanLabel = UILabel()
-    private let ultraLeanHintLabel = UILabel()
-    private let blurSwitch = UISwitch()
-    private let shadowsSwitch = UISwitch()
-    private let motionSwitch = UISwitch()
-    private let containRowsSwitch = UISwitch()
     private let noteLabel = UILabel()
     private let saveButton = UIButton(type: .system)
     private let cancelButton = UIButton(type: .system)
@@ -43,11 +36,11 @@ final class LightSessionSettingsViewController: UIViewController, UITextFieldDel
     }
 
     private func configureLabels() {
-        titleLabel.text = "Performance"
+        titleLabel.text = "Light Session"
         titleLabel.font = .systemFont(ofSize: 30, weight: .bold)
         titleLabel.numberOfLines = 0
 
-        bodyLabel.text = "Light Session trims long ChatGPT conversations before the web app renders them. It keeps only the most recent visible turns in the UI to reduce lag."
+        bodyLabel.text = "Keep long ChatGPT threads lighter by trimming the visible conversation before the page renders it."
         bodyLabel.font = .systemFont(ofSize: 16, weight: .regular)
         bodyLabel.textColor = .secondaryLabel
         bodyLabel.numberOfLines = 0
@@ -61,14 +54,6 @@ final class LightSessionSettingsViewController: UIViewController, UITextFieldDel
         keepHintLabel.text = "Range: \(LightSessionSettings.minimumKeep)-\(LightSessionSettings.maximumKeep)"
         keepHintLabel.font = .systemFont(ofSize: 13, weight: .medium)
         keepHintLabel.textColor = .secondaryLabel
-
-        ultraLeanLabel.text = "Ultra Lean"
-        ultraLeanLabel.font = .systemFont(ofSize: 17, weight: .semibold)
-
-        ultraLeanHintLabel.text = "Subtle performance mode. Reduces blur, shadows, and motion without flattening the whole UI."
-        ultraLeanHintLabel.font = .systemFont(ofSize: 13, weight: .medium)
-        ultraLeanHintLabel.textColor = .secondaryLabel
-        ultraLeanHintLabel.numberOfLines = 0
 
         noteLabel.text = "Saving reloads the current page so the new trim limit applies immediately."
         noteLabel.font = .systemFont(ofSize: 13, weight: .medium)
@@ -86,21 +71,6 @@ final class LightSessionSettingsViewController: UIViewController, UITextFieldDel
         keepField.text = "\(settings.keep)"
         keepField.placeholder = "\(LightSessionSettings.defaultKeep)"
         keepField.delegate = self
-
-        ultraLeanSwitch.isOn = settings.ultraLean
-        ultraLeanSwitch.addTarget(self, action: #selector(handleUltraLeanChanged), for: .valueChanged)
-
-        blurSwitch.isOn = settings.reduceBlur
-        blurSwitch.addTarget(self, action: #selector(handleReduceBlurChanged), for: .valueChanged)
-
-        shadowsSwitch.isOn = settings.reduceShadows
-        shadowsSwitch.addTarget(self, action: #selector(handleReduceShadowsChanged), for: .valueChanged)
-
-        motionSwitch.isOn = settings.reduceMotion
-        motionSwitch.addTarget(self, action: #selector(handleReduceMotionChanged), for: .valueChanged)
-
-        containRowsSwitch.isOn = settings.containChatRows
-        containRowsSwitch.addTarget(self, action: #selector(handleContainRowsChanged), for: .valueChanged)
 
         saveButton.configuration = .filled()
         saveButton.configuration?.title = "Save"
@@ -135,15 +105,6 @@ final class LightSessionSettingsViewController: UIViewController, UITextFieldDel
         keepHeaderRow.alignment = .center
         keepHeaderRow.spacing = 12
 
-        let ultraLeanRow = UIStackView(arrangedSubviews: [ultraLeanLabel, UIView(), ultraLeanSwitch])
-        ultraLeanRow.axis = .horizontal
-        ultraLeanRow.alignment = .center
-
-        let blurRow = makeToggleRow(title: "Reduce blur", toggle: blurSwitch)
-        let shadowsRow = makeToggleRow(title: "Remove shadows", toggle: shadowsSwitch)
-        let motionRow = makeToggleRow(title: "Reduce motion", toggle: motionSwitch)
-        let containRowsRow = makeToggleRow(title: "Contain chat rows", toggle: containRowsSwitch)
-
         keepField.translatesAutoresizingMaskIntoConstraints = false
         keepField.widthAnchor.constraint(equalToConstant: 92).isActive = true
 
@@ -158,12 +119,6 @@ final class LightSessionSettingsViewController: UIViewController, UITextFieldDel
             enabledRow,
             keepHeaderRow,
             keepField,
-            ultraLeanRow,
-            ultraLeanHintLabel,
-            blurRow,
-            shadowsRow,
-            motionRow,
-            containRowsRow,
             noteLabel,
             buttonRow
         ])
@@ -179,19 +134,6 @@ final class LightSessionSettingsViewController: UIViewController, UITextFieldDel
         ])
     }
 
-    private func makeToggleRow(title: String, toggle: UISwitch) -> UIStackView {
-        let label = UILabel()
-        label.text = title
-        label.font = .systemFont(ofSize: 15, weight: .regular)
-        label.numberOfLines = 1
-
-        let row = UIStackView(arrangedSubviews: [label, UIView(), toggle])
-        row.axis = .horizontal
-        row.alignment = .center
-        row.spacing = 12
-        return row
-    }
-
     private func applyState() {
         let sanitized = settings.sanitized
         keepField.text = "\(sanitized.keep)"
@@ -199,45 +141,10 @@ final class LightSessionSettingsViewController: UIViewController, UITextFieldDel
         keepTitleLabel.textColor = sanitized.enabled ? .label : .secondaryLabel
         keepField.alpha = sanitized.enabled ? 1.0 : 0.55
         keepHintLabel.alpha = sanitized.enabled ? 1.0 : 0.55
-        ultraLeanSwitch.isOn = sanitized.ultraLean
-        blurSwitch.isOn = sanitized.reduceBlur
-        shadowsSwitch.isOn = sanitized.reduceShadows
-        motionSwitch.isOn = sanitized.reduceMotion
-        containRowsSwitch.isOn = sanitized.containChatRows
-        let ultraLeanControlsEnabled = sanitized.ultraLean
-        blurSwitch.isEnabled = ultraLeanControlsEnabled
-        shadowsSwitch.isEnabled = ultraLeanControlsEnabled
-        motionSwitch.isEnabled = ultraLeanControlsEnabled
-        containRowsSwitch.isEnabled = ultraLeanControlsEnabled
     }
 
     @objc private func handleEnabledChanged() {
         settings.enabled = enabledSwitch.isOn
-        applyState()
-    }
-
-    @objc private func handleUltraLeanChanged() {
-        settings.ultraLean = ultraLeanSwitch.isOn
-        applyState()
-    }
-
-    @objc private func handleReduceBlurChanged() {
-        settings.reduceBlur = blurSwitch.isOn
-        applyState()
-    }
-
-    @objc private func handleReduceShadowsChanged() {
-        settings.reduceShadows = shadowsSwitch.isOn
-        applyState()
-    }
-
-    @objc private func handleReduceMotionChanged() {
-        settings.reduceMotion = motionSwitch.isOn
-        applyState()
-    }
-
-    @objc private func handleContainRowsChanged() {
-        settings.containChatRows = containRowsSwitch.isOn
         applyState()
     }
 
