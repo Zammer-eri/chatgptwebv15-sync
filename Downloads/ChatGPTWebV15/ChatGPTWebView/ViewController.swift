@@ -4,7 +4,6 @@ import WebKit
 final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
     private var webView: WKWebView!
     private let topChromeView = UIView()
-    private let topTapZoneView = UIView()
     private let activityIndicator = UIActivityIndicatorView(style: .large)
     private let refreshControl = UIRefreshControl()
     private let sessionSyncService = SessionSyncService.shared
@@ -147,13 +146,8 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     private func configureTopChrome() {
         topChromeView.backgroundColor = UIColor(red: 0.13, green: 0.13, blue: 0.13, alpha: 1.0)
         topChromeView.isUserInteractionEnabled = false
+        topChromeView.layer.zPosition = 2
         view.addSubview(topChromeView)
-
-        topTapZoneView.backgroundColor = .clear
-        topTapZoneView.isUserInteractionEnabled = true
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTopChromeTap))
-        topTapZoneView.addGestureRecognizer(tapGesture)
-        view.addSubview(topTapZoneView)
     }
 
     override func viewDidLayoutSubviews() {
@@ -161,24 +155,21 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         let topInset = view.safeAreaInsets.top
         let adjustedTopInset = max(0, topInset - topOffsetTuning)
         let topMaskHeight: CGFloat
-        let topTapHeight: CGFloat
 
         if view.bounds.width > view.bounds.height {
-            topMaskHeight = max(adjustedTopInset, 16)
-            topTapHeight = 30
+            topMaskHeight = max(adjustedTopInset, 22)
         } else {
             topMaskHeight = adjustedTopInset
-            topTapHeight = max(adjustedTopInset + 10, 24)
         }
 
         topChromeView.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: topMaskHeight)
-        topTapZoneView.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: topTapHeight)
         webView.frame = CGRect(
             x: 0,
             y: adjustedTopInset,
             width: view.bounds.width,
             height: view.bounds.height - adjustedTopInset
         )
+        view.bringSubviewToFront(topChromeView)
         activityIndicator.center = CGPoint(x: view.bounds.midX, y: view.bounds.midY)
     }
 
@@ -188,12 +179,19 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     }
 
     private func configureHiddenDiagnosticsGesture() {
-        let gesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleDiagnosticsEdgeSwipe(_:)))
-        gesture.edges = .right
-        gesture.cancelsTouchesInView = false
-        gesture.minimumNumberOfTouches = 1
-        gesture.maximumNumberOfTouches = 1
-        view.addGestureRecognizer(gesture)
+        let diagnosticsGesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleDiagnosticsEdgeSwipe(_:)))
+        diagnosticsGesture.edges = .right
+        diagnosticsGesture.cancelsTouchesInView = false
+        diagnosticsGesture.minimumNumberOfTouches = 1
+        diagnosticsGesture.maximumNumberOfTouches = 1
+        view.addGestureRecognizer(diagnosticsGesture)
+
+        let refreshGesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleRefreshEdgeSwipe(_:)))
+        refreshGesture.edges = .left
+        refreshGesture.cancelsTouchesInView = false
+        refreshGesture.minimumNumberOfTouches = 1
+        refreshGesture.maximumNumberOfTouches = 1
+        view.addGestureRecognizer(refreshGesture)
     }
 
     private func observeForegroundEvents() {
@@ -449,54 +447,8 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         }
     }
 
-    private func scrollCurrentPageToTop() {
-        let scrollScript = """
-        (function() {
-          const candidates = [
-            document.querySelector('[data-radix-scroll-area-viewport]'),
-            document.querySelector('[data-testid="conversation-turns"]'),
-            document.querySelector('[role="main"]'),
-            document.scrollingElement,
-            document.documentElement,
-            document.body
-          ].filter(Boolean);
-
-          for (const candidate of candidates) {
-            try {
-              if (candidate && typeof candidate.scrollTo === 'function') {
-                candidate.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
-              } else if (candidate) {
-                candidate.scrollTop = 0;
-              }
-            } catch (error) {}
-          }
-
-          try {
-            window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
-          } catch (error) {
-            window.scrollTo(0, 0);
-          }
-        })();
-        """
-
-        webView.evaluateJavaScript(scrollScript, completionHandler: nil)
-        webView.scrollView.setContentOffset(CGPoint(x: 0, y: -webView.scrollView.adjustedContentInset.top), animated: true)
-    }
-
-    private func isNearTop() -> Bool {
-        webView.scrollView.contentOffset.y <= (-webView.scrollView.adjustedContentInset.top + 24)
-    }
-
     @objc private func handlePullToRefresh() {
         refreshCurrentPage()
-    }
-
-    @objc private func handleTopChromeTap() {
-        if isNearTop() {
-            refreshCurrentPage()
-        } else {
-            scrollCurrentPageToTop()
-        }
     }
 
     @objc private func handleDiagnosticsEdgeSwipe(_ gesture: UIScreenEdgePanGestureRecognizer) {
@@ -510,6 +462,19 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         }
 
         showDiagnostics()
+    }
+
+    @objc private func handleRefreshEdgeSwipe(_ gesture: UIScreenEdgePanGestureRecognizer) {
+        guard gesture.state == .ended || gesture.state == .recognized else {
+            return
+        }
+
+        let translation = gesture.translation(in: view)
+        guard translation.x > 24 else {
+            return
+        }
+
+        refreshCurrentPage()
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
