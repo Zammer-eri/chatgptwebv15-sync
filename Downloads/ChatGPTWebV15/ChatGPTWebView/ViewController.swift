@@ -3,13 +3,11 @@ import WebKit
 
 final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
     private var webView: WKWebView!
-    private let topInsetBackgroundView = UIView()
     private let activityIndicator = UIActivityIndicatorView(style: .large)
     private let sessionSyncService = SessionSyncService.shared
     private var isInitialLoadComplete = false
     private var syncInFlight = false
     private var lastRecoveryAttempt = Date.distantPast
-    private var lastAppliedTopInset: CGFloat = -1
     private let managedDomains = [
         "chatgpt.com",
         "auth.openai.com",
@@ -20,7 +18,6 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground
-        configureTopInsetBackground()
         configureWebView()
         configureSpinner()
         configureHiddenDiagnosticsGesture()
@@ -68,7 +65,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
                 meta.name = 'viewport';
                 document.head.appendChild(meta);
               }
-              meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+              meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
 
               var scrollStyle = document.getElementById('codex-scroll-fix-style');
               if (!scrollStyle) {
@@ -97,6 +94,120 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
                 `;
                 document.head.appendChild(scrollStyle);
               }
+
+              if (!window.__codexHeaderSafeAreaInstalled) {
+                window.__codexHeaderSafeAreaInstalled = true;
+                var appliedContainers = [];
+
+                var clearAppliedContainers = function() {
+                  appliedContainers.forEach(function(container) {
+                    if (!container.isConnected) {
+                      return;
+                    }
+                    container.style.removeProperty('padding-top');
+                    container.style.removeProperty('box-sizing');
+                    container.removeAttribute('data-codex-header-safe-area');
+                  });
+                  appliedContainers = [];
+                };
+
+                var findHeaderContainer = function(element) {
+                  var current = element.parentElement;
+                  var best = null;
+
+                  while (current && current !== document.body) {
+                    var rect = current.getBoundingClientRect();
+                    if (
+                      rect.top <= 24 &&
+                      rect.height >= 40 &&
+                      rect.height <= 160 &&
+                      rect.width >= (window.innerWidth * 0.72)
+                    ) {
+                      best = current;
+                    }
+                    current = current.parentElement;
+                  }
+
+                  return best;
+                };
+
+                var collectTopControls = function() {
+                  var controls = [];
+                  document.querySelectorAll('button, [role="button"], a[role="button"]').forEach(function(element) {
+                    var rect = element.getBoundingClientRect();
+                    var label = (
+                      element.getAttribute('aria-label') ||
+                      element.getAttribute('data-testid') ||
+                      element.textContent ||
+                      ''
+                    ).toLowerCase();
+
+                    var isTopControl =
+                      rect.top <= 88 &&
+                      rect.height <= 64 &&
+                      (
+                        rect.left <= 180 ||
+                        rect.right >= (window.innerWidth - 180)
+                      ) &&
+                      (
+                        rect.width <= 180 ||
+                        label.includes('sidebar') ||
+                        label.includes('history') ||
+                        label.includes('close') ||
+                        label.includes('temporary chat') ||
+                        label.includes('gpt') ||
+                        label.includes('project')
+                      );
+
+                    if (isTopControl) {
+                      controls.push(element);
+                    }
+                  });
+                  return controls;
+                };
+
+                var applyHeaderSafeArea = function() {
+                  clearAppliedContainers();
+
+                  var seen = new Set();
+                  collectTopControls().forEach(function(control) {
+                    var container = findHeaderContainer(control);
+                    if (!container || seen.has(container)) {
+                      return;
+                    }
+                    seen.add(container);
+                    container.style.paddingTop = 'env(safe-area-inset-top, 0px)';
+                    container.style.boxSizing = 'border-box';
+                    container.setAttribute('data-codex-header-safe-area', '1');
+                    appliedContainers.push(container);
+                  });
+                };
+
+                var scheduled = false;
+                var scheduleApply = function() {
+                  if (scheduled) {
+                    return;
+                  }
+                  scheduled = true;
+                  requestAnimationFrame(function() {
+                    scheduled = false;
+                    applyHeaderSafeArea();
+                  });
+                };
+
+                var observer = new MutationObserver(scheduleApply);
+                observer.observe(document.documentElement, {
+                  childList: true,
+                  subtree: true
+                });
+
+                window.addEventListener('resize', scheduleApply);
+                window.addEventListener('orientationchange', scheduleApply);
+
+                scheduleApply();
+                setTimeout(scheduleApply, 300);
+                setTimeout(scheduleApply, 1200);
+              }
             })();
             """,
             injectionTime: .atDocumentEnd,
@@ -118,45 +229,10 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         view.addSubview(webView)
     }
 
-    private func configureTopInsetBackground() {
-        topInsetBackgroundView.backgroundColor = UIColor(red: 0.13, green: 0.13, blue: 0.13, alpha: 1.0)
-        topInsetBackgroundView.isUserInteractionEnabled = false
-        view.addSubview(topInsetBackgroundView)
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-        applyNativeTopInsetIfNeeded()
-        updateTopInsetBackgroundFrame()
-    }
-
     private func configureSpinner() {
         activityIndicator.center = view.center
         activityIndicator.hidesWhenStopped = true
         view.addSubview(activityIndicator)
-    }
-
-    private func applyNativeTopInsetIfNeeded() {
-        let topInset = view.safeAreaInsets.top + 8
-        guard abs(topInset - lastAppliedTopInset) > 0.5 else {
-            return
-        }
-
-        let currentOffset = webView.scrollView.contentOffset
-        let shouldResetToTop = currentOffset.y <= (-lastAppliedTopInset + 2) || lastAppliedTopInset < 0
-        lastAppliedTopInset = topInset
-
-        webView.scrollView.contentInset.top = topInset
-        webView.scrollView.scrollIndicatorInsets.top = topInset
-
-        if shouldResetToTop {
-            webView.scrollView.setContentOffset(CGPoint(x: currentOffset.x, y: -topInset), animated: false)
-        }
-    }
-
-    private func updateTopInsetBackgroundFrame() {
-        let topInset = webView.scrollView.contentInset.top
-        topInsetBackgroundView.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: topInset)
     }
 
     private func configureHiddenDiagnosticsGesture() {
