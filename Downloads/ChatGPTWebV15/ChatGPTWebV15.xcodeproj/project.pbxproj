@@ -406,7 +406,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "$(SRCROOT)/ChatGPTWebView/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = ChatGPTWebV15;
+				INFOPLIST_KEY_CFBundleDisplayName = ChatGPT;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -422,9 +422,9 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 15.3;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.safenet.chatgptwebview;
-				"PRODUCT_BUNDLE_IDENTIFIER[sdk=iphoneos*]" = com.akuma.chatgptv15;
-				"PRODUCT_BUNDLE_IDENTIFIER[sdk=xros*]" = com.akuma.chatgptv15;
+				PRODUCT_BUNDLE_IDENTIFIER = com.codex.chatgpt;
+				"PRODUCT_BUNDLE_IDENTIFIER[sdk=iphoneos*]" = com.codex.chatgpt;
+				"PRODUCT_BUNDLE_IDENTIFIER[sdk=xros*]" = com.codex.chatgpt;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
@@ -453,7 +453,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = "$(SRCROOT)/ChatGPTWebView/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = ChatGPTWebV15;
+				INFOPLIST_KEY_CFBundleDisplayName = ChatGPT;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -469,9 +469,9 @@
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 15.3;
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.safenet.chatgptwebview;
-				"PRODUCT_BUNDLE_IDENTIFIER[sdk=iphoneos*]" = com.akuma.chatgptv15;
-				"PRODUCT_BUNDLE_IDENTIFIER[sdk=xros*]" = com.akuma.chatgptv15;
+				PRODUCT_BUNDLE_IDENTIFIER = com.codex.chatgpt;
+				"PRODUCT_BUNDLE_IDENTIFIER[sdk=iphoneos*]" = com.codex.chatgpt;
+				"PRODUCT_BUNDLE_IDENTIFIER[sdk=xros*]" = com.codex.chatgpt;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				SDKROOT = auto;
