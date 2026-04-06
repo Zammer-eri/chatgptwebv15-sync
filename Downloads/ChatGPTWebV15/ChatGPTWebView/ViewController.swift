@@ -66,6 +66,28 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
                 document.head.appendChild(meta);
               }
               meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+
+              var headerStyle = document.getElementById('codex-header-safe-area-style');
+              if (!headerStyle) {
+                headerStyle = document.createElement('style');
+                headerStyle.id = 'codex-header-safe-area-style';
+                headerStyle.textContent = `
+                  @supports (padding: max(0px)) {
+                    button[aria-label*="sidebar" i],
+                    button[aria-label*="history" i],
+                    button[aria-label*="close sidebar" i],
+                    button[aria-label="Close sidebar"],
+                    button[aria-label="Open sidebar"],
+                    button[data-testid*="sidebar"],
+                    [data-testid*="sidebar"] button,
+                    header button:first-child,
+                    nav button:first-child {
+                      margin-top: max(env(safe-area-inset-top, 0px), 8px) !important;
+                    }
+                  }
+                `;
+                document.head.appendChild(headerStyle);
+              }
             })();
             """,
             injectionTime: .atDocumentEnd,
