@@ -157,7 +157,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         let additionalLandscapeInset: CGFloat
 
         if view.bounds.width > view.bounds.height {
-            additionalLandscapeInset = 22
+            additionalLandscapeInset = 24
         } else {
             additionalLandscapeInset = 0
         }
