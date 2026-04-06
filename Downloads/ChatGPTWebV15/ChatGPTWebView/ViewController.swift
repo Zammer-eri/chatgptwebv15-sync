@@ -154,20 +154,21 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         super.viewDidLayoutSubviews()
         let topInset = view.safeAreaInsets.top
         let adjustedTopInset = max(0, topInset - topOffsetTuning)
-        let topMaskHeight: CGFloat
+        let additionalLandscapeInset: CGFloat
 
         if view.bounds.width > view.bounds.height {
-            topMaskHeight = max(adjustedTopInset, 22)
+            additionalLandscapeInset = 22
         } else {
-            topMaskHeight = adjustedTopInset
+            additionalLandscapeInset = 0
         }
 
-        topChromeView.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: topMaskHeight)
+        let effectiveTopInset = adjustedTopInset + additionalLandscapeInset
+        topChromeView.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: effectiveTopInset)
         webView.frame = CGRect(
             x: 0,
-            y: adjustedTopInset,
+            y: effectiveTopInset,
             width: view.bounds.width,
-            height: view.bounds.height - adjustedTopInset
+            height: view.bounds.height - effectiveTopInset
         )
         view.bringSubviewToFront(topChromeView)
         activityIndicator.center = CGPoint(x: view.bounds.midX, y: view.bounds.midY)
