@@ -145,7 +145,9 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
 
     private func configureTopChrome() {
         topChromeView.backgroundColor = UIColor(red: 0.13, green: 0.13, blue: 0.13, alpha: 1.0)
-        topChromeView.isUserInteractionEnabled = false
+        topChromeView.isUserInteractionEnabled = true
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTopChromeTap))
+        topChromeView.addGestureRecognizer(tapGesture)
         view.addSubview(topChromeView)
     }
 
@@ -430,8 +432,46 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         }
     }
 
+    private func scrollCurrentPageToTop() {
+        let scrollScript = """
+        (function() {
+          const candidates = [
+            document.querySelector('[data-radix-scroll-area-viewport]'),
+            document.querySelector('[data-testid="conversation-turns"]'),
+            document.querySelector('[role="main"]'),
+            document.scrollingElement,
+            document.documentElement,
+            document.body
+          ].filter(Boolean);
+
+          for (const candidate of candidates) {
+            try {
+              if (candidate && typeof candidate.scrollTo === 'function') {
+                candidate.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+              } else if (candidate) {
+                candidate.scrollTop = 0;
+              }
+            } catch (error) {}
+          }
+
+          try {
+            window.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+          } catch (error) {
+            window.scrollTo(0, 0);
+          }
+        })();
+        """
+
+        webView.evaluateJavaScript(scrollScript, completionHandler: nil)
+        webView.scrollView.setContentOffset(CGPoint(x: 0, y: -webView.scrollView.adjustedContentInset.top), animated: true)
+    }
+
     @objc private func handlePullToRefresh() {
         refreshCurrentPage()
+    }
+
+    @objc private func handleTopChromeTap() {
+        scrollCurrentPageToTop()
     }
 
     @objc private func handleDiagnosticsEdgeSwipe(_ gesture: UIScreenEdgePanGestureRecognizer) {
