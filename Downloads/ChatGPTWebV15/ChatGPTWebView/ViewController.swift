@@ -29,6 +29,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         configureSpinner()
         configureHiddenDiagnosticsGesture()
         observeForegroundEvents()
+        observeAudioSessionNotifications()
         requestInitialPermissionsIfNeeded()
         bootstrapSession()
     }
@@ -239,13 +240,48 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         do {
             try session.setCategory(
                 .playAndRecord,
-                mode: .default,
-                options: [.defaultToSpeaker, .allowBluetooth, .allowBluetoothA2DP]
+                mode: .voiceChat,
+                options: [.defaultToSpeaker, .allowBluetooth]
             )
+            try session.overrideOutputAudioPort(.speaker)
             try session.setActive(true, options: [])
         } catch {
             print("Audio session configuration failed: \(error.localizedDescription)")
         }
+    }
+
+    private func observeAudioSessionNotifications() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAudioSessionInterruption),
+            name: AVAudioSession.interruptionNotification,
+            object: nil
+        )
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAudioRouteChange),
+            name: AVAudioSession.routeChangeNotification,
+            object: nil
+        )
+    }
+
+    @objc private func handleAudioSessionInterruption(_ notification: Notification) {
+        guard
+            let info = notification.userInfo,
+            let typeRaw = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+            let type = AVAudioSession.InterruptionType(rawValue: typeRaw)
+        else {
+            return
+        }
+
+        if type == .ended {
+            configureAudioSessionForVoiceFeatures()
+        }
+    }
+
+    @objc private func handleAudioRouteChange(_ notification: Notification) {
+        configureAudioSessionForVoiceFeatures()
     }
 
     private func syncAndApply(
