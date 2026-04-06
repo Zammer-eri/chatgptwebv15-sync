@@ -9,6 +9,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     private var isInitialLoadComplete = false
     private var syncInFlight = false
     private var lastRecoveryAttempt = Date.distantPast
+    private let topOffsetTuning: CGFloat = 4
     private let managedDomains = [
         "chatgpt.com",
         "auth.openai.com",
@@ -125,12 +126,13 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let topInset = view.safeAreaInsets.top
-        topChromeView.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: topInset)
+        let adjustedTopInset = max(0, topInset - topOffsetTuning)
+        topChromeView.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: adjustedTopInset)
         webView.frame = CGRect(
             x: 0,
-            y: topInset,
+            y: adjustedTopInset,
             width: view.bounds.width,
-            height: view.bounds.height - topInset
+            height: view.bounds.height - adjustedTopInset
         )
         activityIndicator.center = CGPoint(x: view.bounds.midX, y: view.bounds.midY)
     }
