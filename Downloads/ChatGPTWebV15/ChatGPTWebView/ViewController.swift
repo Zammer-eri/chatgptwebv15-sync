@@ -70,8 +70,51 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
               if (!window.__codexSafeAreaObserverInstalled) {
                 window.__codexSafeAreaObserverInstalled = true;
 
+                var scrollStyle = document.getElementById('codex-scroll-fix-style');
+                if (!scrollStyle) {
+                  scrollStyle = document.createElement('style');
+                  scrollStyle.id = 'codex-scroll-fix-style';
+                  scrollStyle.textContent = `
+                    html,
+                    body,
+                    main,
+                    nav,
+                    aside,
+                    section,
+                    article,
+                    [role="main"],
+                    [data-radix-scroll-area-viewport] {
+                      scroll-snap-type: none !important;
+                      scroll-behavior: auto !important;
+                      overscroll-behavior-y: auto !important;
+                    }
+
+                    * {
+                      scroll-snap-align: none !important;
+                      scroll-snap-stop: normal !important;
+                    }
+                  `;
+                  document.head.appendChild(scrollStyle);
+                }
+
                 var safeAreaValue = 'max(env(safe-area-inset-top, 0px), 8px)';
                 var controlSelector = 'button, [role="button"], a[role="button"]';
+                var findHeaderContainer = function(element) {
+                  var current = element.parentElement;
+                  while (current && current !== document.body) {
+                    var rect = current.getBoundingClientRect();
+                    if (
+                      rect.top <= 24 &&
+                      rect.height >= 40 &&
+                      rect.height <= 140 &&
+                      rect.width >= (window.innerWidth * 0.45)
+                    ) {
+                      return current;
+                    }
+                    current = current.parentElement;
+                  }
+                  return null;
+                };
 
                 var applySafeAreaOffset = function() {
                   document.querySelectorAll('[data-codex-safe-area="1"]').forEach(function(element) {
@@ -80,6 +123,15 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
                     }
                     element.style.removeProperty('margin-top');
                     element.removeAttribute('data-codex-safe-area');
+                  });
+
+                  document.querySelectorAll('[data-codex-safe-area-container="1"]').forEach(function(element) {
+                    if (!element.isConnected) {
+                      return;
+                    }
+                    element.style.removeProperty('padding-top');
+                    element.style.removeProperty('min-height');
+                    element.removeAttribute('data-codex-safe-area-container');
                   });
 
                   document.querySelectorAll(controlSelector).forEach(function(element) {
@@ -109,8 +161,16 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
                     if (
                       isTopEdgeControl
                     ) {
-                      element.style.marginTop = safeAreaValue;
-                      element.setAttribute('data-codex-safe-area', '1');
+                      var container = findHeaderContainer(element);
+                      if (container) {
+                        var containerRect = container.getBoundingClientRect();
+                        container.style.paddingTop = safeAreaValue;
+                        container.style.minHeight = 'calc(' + Math.round(containerRect.height) + 'px + ' + safeAreaValue + ')';
+                        container.setAttribute('data-codex-safe-area-container', '1');
+                      } else {
+                        element.style.marginTop = safeAreaValue;
+                        element.setAttribute('data-codex-safe-area', '1');
+                      }
                     }
                   });
                 };
