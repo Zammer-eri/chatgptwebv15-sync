@@ -84,11 +84,30 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
 
                   document.querySelectorAll(controlSelector).forEach(function(element) {
                     var rect = element.getBoundingClientRect();
-                    if (
+                    var label = (
+                      element.getAttribute('aria-label') ||
+                      element.getAttribute('data-testid') ||
+                      element.textContent ||
+                      ''
+                    ).toLowerCase();
+                    var isTopEdgeControl =
                       rect.top <= 88 &&
-                      rect.left <= 180 &&
-                      rect.width <= 120 &&
-                      rect.height <= 64
+                      rect.height <= 64 &&
+                      (
+                        rect.left <= 180 ||
+                        rect.right >= (window.innerWidth - 180)
+                      ) &&
+                      (
+                        rect.width <= 180 ||
+                        label.includes('sidebar') ||
+                        label.includes('history') ||
+                        label.includes('close') ||
+                        label.includes('temporary chat') ||
+                        label.includes('gpt') ||
+                        label.includes('project')
+                      );
+                    if (
+                      isTopEdgeControl
                     ) {
                       element.style.marginTop = safeAreaValue;
                       element.setAttribute('data-codex-safe-area', '1');
