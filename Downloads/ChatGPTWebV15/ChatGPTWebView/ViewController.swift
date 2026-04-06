@@ -4,6 +4,7 @@ import WebKit
 final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate {
     private var webView: WKWebView!
     private let topChromeView = UIView()
+    private let topTapZoneView = UIView()
     private let activityIndicator = UIActivityIndicatorView(style: .large)
     private let refreshControl = UIRefreshControl()
     private let sessionSyncService = SessionSyncService.shared
@@ -145,17 +146,33 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
 
     private func configureTopChrome() {
         topChromeView.backgroundColor = UIColor(red: 0.13, green: 0.13, blue: 0.13, alpha: 1.0)
-        topChromeView.isUserInteractionEnabled = true
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTopChromeTap))
-        topChromeView.addGestureRecognizer(tapGesture)
+        topChromeView.isUserInteractionEnabled = false
         view.addSubview(topChromeView)
+
+        topTapZoneView.backgroundColor = .clear
+        topTapZoneView.isUserInteractionEnabled = true
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(handleTopChromeTap))
+        topTapZoneView.addGestureRecognizer(tapGesture)
+        view.addSubview(topTapZoneView)
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let topInset = view.safeAreaInsets.top
         let adjustedTopInset = max(0, topInset - topOffsetTuning)
-        topChromeView.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: adjustedTopInset)
+        let topMaskHeight: CGFloat
+        let topTapHeight: CGFloat
+
+        if view.bounds.width > view.bounds.height {
+            topMaskHeight = max(adjustedTopInset, 16)
+            topTapHeight = 30
+        } else {
+            topMaskHeight = adjustedTopInset
+            topTapHeight = max(adjustedTopInset + 10, 24)
+        }
+
+        topChromeView.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: topMaskHeight)
+        topTapZoneView.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: topTapHeight)
         webView.frame = CGRect(
             x: 0,
             y: adjustedTopInset,
@@ -466,12 +483,20 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         webView.scrollView.setContentOffset(CGPoint(x: 0, y: -webView.scrollView.adjustedContentInset.top), animated: true)
     }
 
+    private func isNearTop() -> Bool {
+        webView.scrollView.contentOffset.y <= (-webView.scrollView.adjustedContentInset.top + 24)
+    }
+
     @objc private func handlePullToRefresh() {
         refreshCurrentPage()
     }
 
     @objc private func handleTopChromeTap() {
-        scrollCurrentPageToTop()
+        if isNearTop() {
+            refreshCurrentPage()
+        } else {
+            scrollCurrentPageToTop()
+        }
     }
 
     @objc private func handleDiagnosticsEdgeSwipe(_ gesture: UIScreenEdgePanGestureRecognizer) {
