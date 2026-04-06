@@ -8,6 +8,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     private let topChromeView = UIView()
     private let activityIndicator = UIActivityIndicatorView(style: .large)
     private let sessionSyncService = SessionSyncService.shared
+    private let lightSessionSettingsStore = LightSessionSettingsStore.shared
     private var isInitialLoadComplete = false
     private var syncInFlight = false
     private var lastRecoveryAttempt = Date.distantPast
@@ -64,6 +65,13 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             forMainFrameOnly: true
         )
         userContentController.addUserScript(sidebarFix)
+
+        let lightSessionBootstrap = WKUserScript(
+            source: lightSessionSettingsStore.makeBootstrapScript(),
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: true
+        )
+        userContentController.addUserScript(lightSessionBootstrap)
 
         let viewportFix = WKUserScript(
             source: """
@@ -441,8 +449,10 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     @objc private func showDiagnostics() {
         let helperStatus = HelperConfigurationStore.shared.configuration.map { "\($0.host):\($0.port)" } ?? "Not paired"
         let lastURL = webView.url?.absoluteString ?? "No page loaded"
+        let lightSessionSummary = lightSessionSettingsStore.settings.summaryText
         let message = """
         Desktop helper: \(helperStatus)
+        Light Session: \(lightSessionSummary)
         Last synced bundle: \(sessionSyncService.lastKnownHash ?? "None")
         Current URL: \(lastURL)
         """
@@ -455,6 +465,9 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             let pairing = PairingViewController()
             pairing.modalPresentationStyle = .formSheet
             self?.present(pairing, animated: true)
+        })
+        alert.addAction(UIAlertAction(title: "Performance Settings", style: .default) { [weak self] _ in
+            self?.presentLightSessionSettings()
         })
         alert.addAction(UIAlertAction(title: "Clear Local Session", style: .destructive) { [weak self] _ in
             guard let self else { return }
@@ -472,6 +485,30 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         }
 
         present(alert, animated: true)
+    }
+
+    private func presentLightSessionSettings() {
+        let settingsViewController = LightSessionSettingsViewController(settings: lightSessionSettingsStore.settings)
+        settingsViewController.modalPresentationStyle = .formSheet
+        settingsViewController.onSave = { [weak self] settings in
+            self?.applyLightSessionSettings(settings, reloadCurrentPage: true)
+        }
+        present(settingsViewController, animated: true)
+    }
+
+    private func applyLightSessionSettings(_ settings: LightSessionSettings, reloadCurrentPage: Bool) {
+        lightSessionSettingsStore.save(settings)
+        webView.evaluateJavaScript(lightSessionSettingsStore.makeRuntimeUpdateScript(), completionHandler: nil)
+
+        guard reloadCurrentPage else {
+            return
+        }
+
+        if webView.url != nil {
+            webView.reloadFromOrigin()
+        } else {
+            loadChatGPT(forceReload: true)
+        }
     }
 
     @objc private func handleDiagnosticsLongPress(_ gesture: UILongPressGestureRecognizer) {
