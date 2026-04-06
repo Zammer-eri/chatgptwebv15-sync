@@ -67,37 +67,62 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
               }
               meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
 
-              var applySafeAreaOffset = function() {
-                var selectors = [
-                  'button[aria-label="Open sidebar"]',
-                  'button[aria-label="Close sidebar"]',
-                  'button[aria-label*="sidebar" i]',
-                  'button[aria-label*="history" i]',
-                  'header button',
-                  'nav button'
-                ];
+              if (!window.__codexSafeAreaObserverInstalled) {
+                window.__codexSafeAreaObserverInstalled = true;
 
-                var seen = new Set();
-                selectors.forEach(function(selector) {
-                  document.querySelectorAll(selector).forEach(function(button) {
-                    if (seen.has(button)) {
+                var safeAreaValue = 'max(env(safe-area-inset-top, 0px), 8px)';
+                var controlSelector = 'button, [role="button"], a[role="button"]';
+
+                var applySafeAreaOffset = function() {
+                  document.querySelectorAll('[data-codex-safe-area="1"]').forEach(function(element) {
+                    if (!element.isConnected) {
                       return;
                     }
-                    seen.add(button);
+                    element.style.removeProperty('margin-top');
+                    element.removeAttribute('data-codex-safe-area');
+                  });
 
-                    var rect = button.getBoundingClientRect();
-                    if (rect.top <= 88) {
-                      button.style.marginTop = 'max(env(safe-area-inset-top, 0px), 8px)';
-                    } else if (button.style.marginTop === 'max(env(safe-area-inset-top, 0px), 8px)') {
-                      button.style.removeProperty('margin-top');
+                  document.querySelectorAll(controlSelector).forEach(function(element) {
+                    var rect = element.getBoundingClientRect();
+                    if (
+                      rect.top <= 88 &&
+                      rect.left <= 180 &&
+                      rect.width <= 120 &&
+                      rect.height <= 64
+                    ) {
+                      element.style.marginTop = safeAreaValue;
+                      element.setAttribute('data-codex-safe-area', '1');
                     }
                   });
-                });
-              };
+                };
 
-              applySafeAreaOffset();
-              setTimeout(applySafeAreaOffset, 300);
-              setTimeout(applySafeAreaOffset, 1200);
+                var scheduled = false;
+                var scheduleApply = function() {
+                  if (scheduled) {
+                    return;
+                  }
+                  scheduled = true;
+                  requestAnimationFrame(function() {
+                    scheduled = false;
+                    applySafeAreaOffset();
+                  });
+                };
+
+                var observer = new MutationObserver(scheduleApply);
+                observer.observe(document.documentElement, {
+                  childList: true,
+                  subtree: true,
+                  attributes: true,
+                  attributeFilter: ['class', 'style', 'aria-label', 'data-testid']
+                });
+
+                window.addEventListener('resize', scheduleApply);
+                window.addEventListener('orientationchange', scheduleApply);
+
+                scheduleApply();
+                setTimeout(scheduleApply, 300);
+                setTimeout(scheduleApply, 1200);
+              }
             })();
             """,
             injectionTime: .atDocumentEnd,
