@@ -421,7 +421,7 @@ class HelperRequestHandler(BaseHTTPRequestHandler):
 </html>"""
 
     def render_pair_page(self) -> str:
-        host = self.state.lan_ip
+        host = self.state.remote_host
         port = self.state.config.port
         secret = self.state.config.secret
         deep_link = self.state.pair_deep_link
