@@ -70,6 +70,9 @@ final class LightSessionSettingsStore {
         return """
         (function() {
           const DEFAULT_CONFIG = { enabled: true, keep: 20 };
+          const STATUS_ID = 'codex-lightsession-status';
+          const STATUS_STYLE_ID = 'codex-lightsession-status-style';
+          let statusHideTimer = null;
 
           function sanitizeConfig(value) {
             const keepValue = Number(value && value.keep);
@@ -83,7 +86,93 @@ final class LightSessionSettingsStore {
             };
           }
 
+          function ensureStatusStyle() {
+            if (document.getElementById(STATUS_STYLE_ID)) {
+              return;
+            }
+
+            const style = document.createElement('style');
+            style.id = STATUS_STYLE_ID;
+            style.textContent = `
+              #${STATUS_ID} {
+                position: fixed;
+                top: calc(env(safe-area-inset-top, 0px) + 12px);
+                left: 16px;
+                right: 16px;
+                z-index: 2147483646;
+                display: flex;
+                justify-content: center;
+                pointer-events: none;
+                opacity: 0;
+                transform: translateY(-6px);
+                transition: opacity 160ms ease, transform 160ms ease;
+              }
+
+              #${STATUS_ID}.visible {
+                opacity: 1;
+                transform: translateY(0);
+              }
+
+              #${STATUS_ID} .pill {
+                max-width: 100%;
+                padding: 9px 14px;
+                border-radius: 12px;
+                background: rgba(24, 135, 84, 0.96);
+                color: #ffffff;
+                font: 600 13px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+              }
+            `;
+            (document.head || document.documentElement).appendChild(style);
+          }
+
+          function ensureStatusElement() {
+            ensureStatusStyle();
+
+            let container = document.getElementById(STATUS_ID);
+            if (container) {
+              return container;
+            }
+
+            container = document.createElement('div');
+            container.id = STATUS_ID;
+            const pill = document.createElement('div');
+            pill.className = 'pill';
+            container.appendChild(pill);
+            (document.body || document.documentElement).appendChild(container);
+            return container;
+          }
+
+          function showStatus(text, timeoutMs) {
+            const container = ensureStatusElement();
+            const pill = container.firstElementChild;
+            if (!pill) {
+              return;
+            }
+
+            pill.textContent = text;
+            container.classList.add('visible');
+
+            if (statusHideTimer) {
+              clearTimeout(statusHideTimer);
+              statusHideTimer = null;
+            }
+
+            if (timeoutMs && timeoutMs > 0) {
+              statusHideTimer = setTimeout(() => {
+                container.classList.remove('visible');
+                statusHideTimer = null;
+              }, timeoutMs);
+            }
+          }
+
           window.__codexLightSessionConfig__ = sanitizeConfig(\(configJSON));
+          if (window.__codexLightSessionConfig__.enabled) {
+            showStatus('LightSession enabled - limit ' + window.__codexLightSessionConfig__.keep, 2200);
+          }
 
           if (window.__codexLightSessionPatched__) {
             return;
@@ -309,9 +398,30 @@ final class LightSessionSettingsStore {
               }
 
               const trimmed = trimMapping(json, config.keep);
-              if (!trimmed || trimmed.visibleKept === trimmed.visibleTotal) {
+              if (!trimmed) {
                 return response;
               }
+
+              const removed = Math.max(0, trimmed.visibleTotal - trimmed.visibleKept);
+              if (trimmed.visibleKept === trimmed.visibleTotal) {
+                showStatus(
+                  'LightSession: kept ' + trimmed.visibleKept + '/' + trimmed.visibleTotal +
+                  ' turn(s) (limit ' + config.keep + ')',
+                  2600
+                );
+                return response;
+              }
+
+              const removedPercent = trimmed.visibleTotal > 0
+                ? Math.round((removed / trimmed.visibleTotal) * 100)
+                : 0;
+
+              showStatus(
+                'LightSession: kept ' + trimmed.visibleKept + '/' + trimmed.visibleTotal +
+                ' turn(s) (limit ' + config.keep + ') - removed ' + removed +
+                ' (~' + removedPercent + '%)',
+                3400
+              );
 
               return createModifiedResponse(response, Object.assign({}, json, {
                 mapping: trimmed.mapping,
