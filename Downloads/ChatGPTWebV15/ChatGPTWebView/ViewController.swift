@@ -5,6 +5,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     private var webView: WKWebView!
     private let topChromeView = UIView()
     private let activityIndicator = UIActivityIndicatorView(style: .large)
+    private let refreshControl = UIRefreshControl()
     private let sessionSyncService = SessionSyncService.shared
     private let lightSessionSettingsStore = LightSessionSettingsStore.shared
     private var syncInFlight = false
@@ -135,6 +136,8 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.delaysContentTouches = false
         webView.scrollView.canCancelContentTouches = true
+        refreshControl.addTarget(self, action: #selector(handlePullToRefresh), for: .valueChanged)
+        webView.scrollView.refreshControl = refreshControl
         webView.backgroundColor = .systemBackground
         webView.isOpaque = false
         view.addSubview(webView)
@@ -166,10 +169,11 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     }
 
     private func configureHiddenDiagnosticsGesture() {
-        let gesture = UILongPressGestureRecognizer(target: self, action: #selector(handleDiagnosticsLongPress(_:)))
-        gesture.numberOfTouchesRequired = 2
-        gesture.minimumPressDuration = 1.0
+        let gesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleDiagnosticsEdgeSwipe(_:)))
+        gesture.edges = .right
         gesture.cancelsTouchesInView = false
+        gesture.minimumNumberOfTouches = 1
+        gesture.maximumNumberOfTouches = 1
         view.addGestureRecognizer(gesture)
     }
 
@@ -426,8 +430,17 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         }
     }
 
-    @objc private func handleDiagnosticsLongPress(_ gesture: UILongPressGestureRecognizer) {
-        guard gesture.state == .began else {
+    @objc private func handlePullToRefresh() {
+        refreshCurrentPage()
+    }
+
+    @objc private func handleDiagnosticsEdgeSwipe(_ gesture: UIScreenEdgePanGestureRecognizer) {
+        guard gesture.state == .ended || gesture.state == .recognized else {
+            return
+        }
+
+        let translation = gesture.translation(in: view)
+        guard translation.x < -24 else {
             return
         }
 
@@ -440,16 +453,19 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         activityIndicator.stopAnimating()
+        refreshControl.endRefreshing()
         attemptRecoveryIfNeeded(for: webView.url)
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         activityIndicator.stopAnimating()
+        refreshControl.endRefreshing()
         print("Navigation failed: \(error.localizedDescription)")
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         activityIndicator.stopAnimating()
+        refreshControl.endRefreshing()
         print("Provisional navigation failed: \(error.localizedDescription)")
     }
 

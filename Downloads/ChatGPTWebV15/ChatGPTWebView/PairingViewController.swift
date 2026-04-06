@@ -30,7 +30,7 @@ final class PairingViewController: UIViewController {
         bodyLabel.textColor = .secondaryLabel
         bodyLabel.numberOfLines = 0
 
-        infoLabel.text = "Hidden diagnostics later: two-finger long press anywhere."
+        infoLabel.text = "Hidden diagnostics later: swipe left from the right screen edge."
         infoLabel.font = .systemFont(ofSize: 13, weight: .medium)
         infoLabel.textColor = .secondaryLabel
         infoLabel.numberOfLines = 0
