@@ -399,7 +399,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = ChatGPTWebView/ChatGPTWebView.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 24;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = TT6Y3643ZT;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -421,7 +421,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 15.3;
-				MARKETING_VERSION = 1.23;
+				MARKETING_VERSION = 1.24;
 				PRODUCT_BUNDLE_IDENTIFIER = com.codex.chatgpt;
 				"PRODUCT_BUNDLE_IDENTIFIER[sdk=iphoneos*]" = com.codex.chatgpt;
 				"PRODUCT_BUNDLE_IDENTIFIER[sdk=xros*]" = com.codex.chatgpt;
@@ -446,7 +446,7 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = ChatGPTWebView/ChatGPTWebView.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 23;
+				CURRENT_PROJECT_VERSION = 24;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = TT6Y3643ZT;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -468,7 +468,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 15.3;
-				MARKETING_VERSION = 1.23;
+				MARKETING_VERSION = 1.24;
 				PRODUCT_BUNDLE_IDENTIFIER = com.codex.chatgpt;
 				"PRODUCT_BUNDLE_IDENTIFIER[sdk=iphoneos*]" = com.codex.chatgpt;
 				"PRODUCT_BUNDLE_IDENTIFIER[sdk=xros*]" = com.codex.chatgpt;

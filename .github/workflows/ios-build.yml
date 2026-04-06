@@ -50,7 +50,7 @@ jobs:
           mkdir -p ipa/Payload
           cp -R "$APP_PATH" ipa/Payload/
           cd ipa
-          /usr/bin/zip -qry ../ChatGPTWebV15-unsigned.ipa Payload
+          /usr/bin/zip -qry ../ChatGPT-unsigned.ipa Payload
 
       - name: Publish IPA to rolling prerelease
         uses: softprops/action-gh-release@v2
@@ -59,7 +59,7 @@ jobs:
           name: CI Unsigned IPA
           prerelease: true
           make_latest: false
-          files: ChatGPTWebV15-unsigned.ipa
+          files: ChatGPT-unsigned.ipa
           overwrite_files: true
           body: |
             Latest unsigned TrollStore-oriented IPA built from `${{ github.sha }}`.
