@@ -102,6 +102,19 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
                     scroll-snap-align: none !important;
                     scroll-snap-stop: normal !important;
                   }
+
+                  a,
+                  button,
+                  input,
+                  label,
+                  select,
+                  summary,
+                  textarea,
+                  [role="button"],
+                  [tabindex] {
+                    touch-action: manipulation !important;
+                    -webkit-tap-highlight-color: rgba(0, 0, 0, 0) !important;
+                  }
                 `;
                 document.head.appendChild(scrollStyle);
               }
@@ -120,6 +133,8 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
         webView.scrollView.contentInsetAdjustmentBehavior = .never
+        webView.scrollView.delaysContentTouches = false
+        webView.scrollView.canCancelContentTouches = true
         webView.backgroundColor = .systemBackground
         webView.isOpaque = false
         view.addSubview(webView)
