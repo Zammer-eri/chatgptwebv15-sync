@@ -13,6 +13,7 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     private var isInitialLoadComplete = false
     private var syncInFlight = false
     private var lastRecoveryAttempt = Date.distantPast
+    private var launchFallbackWorkItem: DispatchWorkItem?
     private let topOffsetTuning: CGFloat = 14.3
     private let initialPermissionPromptKey = "didRequestInitialSystemPermissions"
     private let managedDomains = [
@@ -100,18 +101,16 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
                   section,
                   article,
                   [role="main"],
-                  [data-radix-scroll-area-viewport] {
+                  [data-radix-scroll-area-viewport],
+                  [data-testid="conversation-turns"],
+                  [data-testid="conversation-turn"],
+                  [data-message-author-role] {
                     scroll-snap-type: none !important;
                     scroll-behavior: auto !important;
                     overscroll-behavior-y: auto !important;
                     overflow-anchor: none !important;
                     -webkit-overflow-scrolling: touch !important;
                     touch-action: pan-y !important;
-                  }
-
-                  * {
-                    scroll-snap-align: none !important;
-                    scroll-snap-stop: normal !important;
                   }
                 `;
                 document.head.appendChild(scrollStyle);
@@ -131,8 +130,8 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         webView.uiDelegate = self
         webView.allowsBackForwardNavigationGestures = true
         webView.scrollView.contentInsetAdjustmentBehavior = .never
-        webView.backgroundColor = .systemBackground
-        webView.isOpaque = false
+        webView.backgroundColor = UIColor(red: 0.13, green: 0.13, blue: 0.13, alpha: 1.0)
+        webView.isOpaque = true
         view.addSubview(webView)
     }
 
@@ -169,8 +168,8 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         )
         let refreshSize: CGFloat = 32
         refreshButton.frame = CGRect(
-            x: view.bounds.width - refreshSize - 12,
-            y: adjustedTopInset + 6,
+            x: view.bounds.width - 126,
+            y: adjustedTopInset + 52,
             width: refreshSize,
             height: refreshSize
         )
@@ -273,8 +272,18 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
 
     private func bootstrapSession() {
         activityIndicator.startAnimating()
-        syncAndApply(reason: .launch, forceRefresh: false, reloadAfterSync: false) { [weak self] in
+        let fallback = DispatchWorkItem { [weak self] in
             self?.loadChatGPT(forceReload: true)
+        }
+        launchFallbackWorkItem = fallback
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: fallback)
+
+        syncAndApply(reason: .launch, forceRefresh: false, reloadAfterSync: false) { [weak self] in
+            self?.launchFallbackWorkItem?.cancel()
+            self?.launchFallbackWorkItem = nil
+            if self?.webView.url == nil {
+                self?.loadChatGPT(forceReload: true)
+            }
         }
     }
 

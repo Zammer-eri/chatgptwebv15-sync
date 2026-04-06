@@ -216,7 +216,12 @@ final class SessionSyncService {
 
         var request = URLRequest(url: url)
         request.setValue("Bearer \(configuration.secret)", forHTTPHeaderField: "Authorization")
-        request.timeoutInterval = 12
+        switch reason {
+        case .launch, .foreground:
+            request.timeoutInterval = 1.5
+        case .loggedOut, .manual:
+            request.timeoutInterval = 12
+        }
 
         if endpoint == "/v1/ensure-fresh" {
             request.httpMethod = "POST"
