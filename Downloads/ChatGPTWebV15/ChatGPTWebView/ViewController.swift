@@ -31,7 +31,6 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         configureWebView()
         configureRefreshButton()
         configureSpinner()
-        configureQuickRefreshGesture()
         configureHiddenDiagnosticsGesture()
         observeForegroundEvents()
         observeAudioSessionNotifications()
@@ -93,24 +92,12 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
                 scrollStyle = document.createElement('style');
                 scrollStyle.id = 'codex-scroll-fix-style';
                 scrollStyle.textContent = `
-                  html,
-                  body,
-                  main,
-                  nav,
-                  aside,
-                  section,
-                  article,
-                  [role="main"],
                   [data-radix-scroll-area-viewport],
                   [data-testid="conversation-turns"],
-                  [data-testid="conversation-turn"],
-                  [data-message-author-role] {
-                    scroll-snap-type: none !important;
-                    scroll-behavior: auto !important;
+                  [data-testid="conversation-turns"] > div {
+                    -webkit-overflow-scrolling: touch !important;
                     overscroll-behavior-y: auto !important;
                     overflow-anchor: none !important;
-                    -webkit-overflow-scrolling: touch !important;
-                    touch-action: pan-y !important;
                   }
                 `;
                 document.head.appendChild(scrollStyle);
@@ -142,13 +129,10 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
     }
 
     private func configureRefreshButton() {
-        let symbolConfig = UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
+        let symbolConfig = UIImage.SymbolConfiguration(pointSize: 14, weight: .semibold)
         refreshButton.setImage(UIImage(systemName: "arrow.clockwise", withConfiguration: symbolConfig), for: .normal)
         refreshButton.tintColor = .white
-        refreshButton.backgroundColor = UIColor(red: 0.14, green: 0.14, blue: 0.14, alpha: 0.92)
-        refreshButton.layer.cornerRadius = 16
-        refreshButton.layer.borderWidth = 1
-        refreshButton.layer.borderColor = UIColor.white.withAlphaComponent(0.14).cgColor
+        refreshButton.backgroundColor = .clear
         refreshButton.addTarget(self, action: #selector(handleRefreshButtonTap), for: .touchUpInside)
         refreshButton.accessibilityLabel = "Refresh current page"
         refreshButton.accessibilityHint = "Reloads the current ChatGPT page and reapplies the current Light Session settings."
@@ -166,10 +150,10 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
             width: view.bounds.width,
             height: view.bounds.height - adjustedTopInset
         )
-        let refreshSize: CGFloat = 32
+        let refreshSize: CGFloat = 28
         refreshButton.frame = CGRect(
-            x: view.bounds.width - 126,
-            y: adjustedTopInset + 52,
+            x: view.bounds.width - 86,
+            y: adjustedTopInset + 18,
             width: refreshSize,
             height: refreshSize
         )
@@ -243,15 +227,6 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         let gesture = UILongPressGestureRecognizer(target: self, action: #selector(handleDiagnosticsLongPress(_:)))
         gesture.numberOfTouchesRequired = 2
         gesture.minimumPressDuration = 1.0
-        gesture.cancelsTouchesInView = false
-        gesture.delegate = self
-        view.addGestureRecognizer(gesture)
-    }
-
-    private func configureQuickRefreshGesture() {
-        let gesture = UITapGestureRecognizer(target: self, action: #selector(handleQuickRefreshGesture(_:)))
-        gesture.numberOfTouchesRequired = 2
-        gesture.numberOfTapsRequired = 2
         gesture.cancelsTouchesInView = false
         gesture.delegate = self
         view.addGestureRecognizer(gesture)
@@ -573,14 +548,6 @@ final class ViewController: UIViewController, WKNavigationDelegate, WKUIDelegate
         }
 
         showDiagnostics()
-    }
-
-    @objc private func handleQuickRefreshGesture(_ gesture: UITapGestureRecognizer) {
-        guard gesture.state == .ended else {
-            return
-        }
-
-        refreshCurrentPage()
     }
 
     @objc private func handleRefreshButtonTap() {
