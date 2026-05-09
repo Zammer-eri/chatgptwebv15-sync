@@ -38,7 +38,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ReynardChatGPT/engine/prebuilt-gecko
-          key: reynard-prebuilt-gecko-0.2.0-Reynard-ipa
+          key: reynard-prebuilt-gecko-0.2.0-Reynard-ipa-shim-v2
 
       - name: Prepare prebuilt Gecko engine
         working-directory: ReynardChatGPT

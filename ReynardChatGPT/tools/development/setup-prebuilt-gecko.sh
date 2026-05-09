@@ -12,8 +12,9 @@ DIST_DIR="$ROOT_DIR/engine/prebuilt-gecko/obj-aarch64-apple-ios/dist"
 BIN_DIR="$DIST_DIR/bin"
 INCLUDE_DIR="$DIST_DIR/include/GeckoView"
 MARKER="$ROOT_DIR/engine/prebuilt-gecko/.release"
+SHIM_VERSION="2"
 
-if [ -f "$BIN_DIR/XUL" ] && [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "${TAG}/${ASSET}" ]; then
+if [ -f "$BIN_DIR/XUL" ] && [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "${TAG}/${ASSET}/shim-${SHIM_VERSION}" ]; then
 	echo "Using cached prebuilt Gecko dist at $DIST_DIR"
 	exit 0
 fi
@@ -43,6 +44,11 @@ cp -R "$GECKOVIEW_FW/Frameworks/." "$BIN_DIR/"
 
 cat > "$INCLUDE_DIR/GeckoViewSwiftSupport.h" <<'EOF'
 #import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
+
+#ifndef MOZ_EXPORT
+#define MOZ_EXPORT __attribute__((visibility("default")))
+#endif
 
 @protocol EventCallback <NSObject>
 - (void)sendSuccess:(id _Nullable)response;
@@ -50,9 +56,7 @@ cat > "$INCLUDE_DIR/GeckoViewSwiftSupport.h" <<'EOF'
 @end
 
 @protocol GeckoEventDispatcher <NSObject>
-- (void)dispatchToSwift:(NSString *_Nonnull)type message:(id _Nullable)message callback:(id<EventCallback> _Nullable)callback NS_SWIFT_NAME(dispatch(toSwift:message:callback:));
-- (void)attach:(id<GeckoEventDispatcher> _Nullable)dispatcher;
-- (void)activate;
+- (void)dispatchToGecko:(NSString *_Nonnull)type message:(id _Nullable)message callback:(id<EventCallback> _Nullable)callback NS_SWIFT_NAME(dispatch(toGecko:message:callback:));
 - (BOOL)hasListener:(NSString *_Nonnull)type;
 @end
 
@@ -74,6 +78,21 @@ cat > "$INCLUDE_DIR/GeckoViewSwiftSupport.h" <<'EOF'
 @protocol GeckoProcessExtension <NSObject>
 - (void)lockdownSandbox:(NSString *_Nonnull)revision;
 @end
+
+@protocol GeckoViewWindow <NSObject>
+- (UIView *_Nullable)view;
+- (void)close;
+@end
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+MOZ_EXPORT id<GeckoViewWindow> _Nullable GeckoViewOpenWindow(NSString *_Nonnull aId, id<SwiftEventDispatcher> _Nonnull aDispatcher, NSDictionary *_Nonnull aInitData, bool aPrivateMode);
+
+#ifdef __cplusplus
+}
+#endif
 EOF
 
 cat > "$INCLUDE_DIR/IOSBootstrap.h" <<'EOF'
@@ -101,5 +120,5 @@ MOZ_EXPORT void ReportJITStatusForChild(int32_t pid, bool enabled, bool hasTXM26
 #endif
 EOF
 
-echo "${TAG}/${ASSET}" > "$MARKER"
+echo "${TAG}/${ASSET}/shim-${SHIM_VERSION}" > "$MARKER"
 echo "Prepared prebuilt Gecko dist at $DIST_DIR"
