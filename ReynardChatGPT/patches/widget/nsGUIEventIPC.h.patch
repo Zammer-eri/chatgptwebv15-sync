@@ -1,0 +1,20 @@
+diff --git a/widget/nsGUIEventIPC.h b/widget/nsGUIEventIPC.h
+index 908a3d8a4a2f..367c1dadbd3a 100644
+--- a/widget/nsGUIEventIPC.h
++++ b/widget/nsGUIEventIPC.h
+@@ -1042,6 +1042,7 @@ struct ParamTraits<mozilla::ContentCache> {
+     WriteParam(aWriter, aParam.mCaret);
+     WriteParam(aWriter, aParam.mTextRectArray);
+     WriteParam(aWriter, aParam.mLastCommitStringTextRectArray);
++    WriteParam(aWriter, aParam.mEditorRectIsEditable);
+     WriteParam(aWriter, aParam.mEditorRect);
+   }
+ 
+@@ -1053,6 +1054,7 @@ struct ParamTraits<mozilla::ContentCache> {
+            ReadParam(aReader, &aResult->mCaret) &&
+            ReadParam(aReader, &aResult->mTextRectArray) &&
+            ReadParam(aReader, &aResult->mLastCommitStringTextRectArray) &&
++           ReadParam(aReader, &aResult->mEditorRectIsEditable) &&
+            ReadParam(aReader, &aResult->mEditorRect);
+   }
+ };

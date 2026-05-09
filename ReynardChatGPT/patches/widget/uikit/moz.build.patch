@@ -1,0 +1,53 @@
+diff --git a/widget/uikit/moz.build b/widget/uikit/moz.build
+index f5d8821773c0..f6602ee79cd2 100644
+--- a/widget/uikit/moz.build
++++ b/widget/uikit/moz.build
+@@ -8,15 +8,22 @@ with Files("**"):
+ with Files("*TextInput*"):
+     BUG_COMPONENT = ("Core", "DOM: UI Events & Focus Handling")
+ 
++with Files("GeckoEditableSupport.*"):
++    BUG_COMPONENT = ("Core", "DOM: UI Events & Focus Handling")
++
+ EXPORTS += [
+     "IOSBridge.h",
+ ]
+ 
+ EXPORTS.mozilla.widget += [
++    "CompositorWidgetChild.h",
++    "CompositorWidgetParent.h",
+     "EventDispatcher.h",
++    "GeckoViewRuntimeSupport.h",
+     "GeckoViewSupport.h",
+     "IOSView.h",
+     "nsWindow.h",
++    "UIKitCompositorWidget.h",
+ ]
+ 
+ EXPORTS.GeckoView += [
+@@ -24,12 +31,17 @@ EXPORTS.GeckoView += [
+ ]
+ 
+ SOURCES += [
++    "CompositorWidgetChild.cpp",
++    "CompositorWidgetParent.cpp",
+     "EventDispatcher.mm",
++    "ExternalResponseService.mm",
++    "GeckoEditableSupport.mm",
+     "GfxInfo.cpp",
+     "IOSBridge.mm",
+     "MediaKeysEventSourceFactory.cpp",
+     "nsAppShell.mm",
+     "nsBidiKeyboard.mm",
++    "nsClipboard.mm",
+     "nsLookAndFeel.mm",
+     "nsNativeThemeUIKit.mm",
+     "nsUserIdleServiceUIKit.cpp",
+@@ -37,6 +49,7 @@ SOURCES += [
+     "nsWindow.mm",
+     "ScreenHelperUIKit.mm",
+     "TextInputHandler.mm",
++    "UIKitCompositorWidget.cpp",
+     "UIKitUtils.mm",
+ ]
+ 

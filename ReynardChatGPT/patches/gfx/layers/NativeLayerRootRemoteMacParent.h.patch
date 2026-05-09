@@ -1,0 +1,13 @@
+diff --git a/gfx/layers/NativeLayerRootRemoteMacParent.h b/gfx/layers/NativeLayerRootRemoteMacParent.h
+index 08fd472917ed..18400ca7e221 100644
+--- a/gfx/layers/NativeLayerRootRemoteMacParent.h
++++ b/gfx/layers/NativeLayerRootRemoteMacParent.h
+@@ -23,6 +23,8 @@ class NativeLayerRootRemoteMacParent final : public NativeLayerRemoteParent {
+   explicit NativeLayerRootRemoteMacParent(
+       RefPtr<NativeLayerRootCA> aRealNativeLayerRoot);
+ 
++  void Shutdown();
++
+   mozilla::ipc::IPCResult RecvCommitNativeLayerCommands(
+       nsTArray<NativeLayerCommand>&& aCommands) override;
+ 

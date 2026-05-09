@@ -1,0 +1,78 @@
+name: ChatGPT Gecko Build
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "ReynardChatGPT/**"
+      - ".github/workflows/reynard-ios-build.yml"
+  pull_request:
+    paths:
+      - "ReynardChatGPT/**"
+      - ".github/workflows/reynard-ios-build.yml"
+
+jobs:
+  build-chatgpt-gecko:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show tool versions
+        run: |
+          xcodebuild -version
+          python3 --version
+          rustc --version
+          cargo --version
+
+      - name: Install packaging tools
+        run: |
+          brew update
+          brew install ldid
+
+      - name: Make Reynard scripts executable
+        run: chmod +x ReynardChatGPT/tools/development/*.sh ReynardChatGPT/tools/release/*.sh
+
+      - name: Prepare Gecko source
+        working-directory: ReynardChatGPT
+        run: |
+          ./tools/development/update-gecko.sh
+          ./tools/development/apply-patches.sh
+
+      - name: Build idevice bridge
+        working-directory: ReynardChatGPT
+        run: ./tools/development/build-idevice.sh
+
+      - name: Build Gecko engine
+        working-directory: ReynardChatGPT
+        run: ./tools/development/build-gecko.sh
+
+      - name: Build iOS archive
+        working-directory: ReynardChatGPT
+        run: ./tools/release/build-app.sh
+
+      - name: Package IPA
+        working-directory: ReynardChatGPT
+        run: |
+          ./tools/release/create-ipa.sh
+          cp dist/Reynard.ipa ../ChatGPT-Gecko.ipa
+          cp dist/Reynard-TrollStore.tipa ../ChatGPT-Gecko-TrollStore.tipa
+
+      - name: Publish IPA to rolling prerelease
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ci-gecko-latest
+          name: CI ChatGPT Gecko IPA
+          prerelease: true
+          make_latest: false
+          files: |
+            ChatGPT-Gecko.ipa
+            ChatGPT-Gecko-TrollStore.tipa
+          overwrite_files: true
+          body: |
+            Latest experimental ChatGPT Gecko/Reynard build from `${{ github.sha }}`.
+
+            This build is separate from the existing WKWebView fallback IPA.
