@@ -87,22 +87,23 @@ public class GeckoSession {
             fatalError("cannot open a GeckoSession twice")
         }
         
-        id = windowId ?? UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        let sessionID = windowId ?? UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        id = sessionID
         
-        let settings: [String: Any?] = [
-            "chromeUri": nil,
+        let settings: [String: Any] = [
+            "chromeUri": NSNull(),
             "screenId": 0,
             "useTrackingProtection": false,
             "userAgentMode": 0,
-            "userAgentOverride": userAgentOverride,
+            "userAgentOverride": userAgentOverride ?? NSNull(),
             "viewportMode": 0,
             "displayMode": 0,
             "suspendMediaWhenInactive": false,
             "allowJavascript": true,
             "fullAccessibilityTree": false,
             "isExtensionPopup": isAddonPopup,
-            "sessionContextId": nil,
-            "unsafeSessionContextId": nil,
+            "sessionContextId": NSNull(),
+            "unsafeSessionContextId": NSNull(),
         ]
         
         let modules = Dictionary(uniqueKeysWithValues: sessionHandlers.map {
@@ -110,7 +111,7 @@ public class GeckoSession {
         })
         
         window = GeckoViewOpenWindow(
-            id,
+            sessionID,
             dispatcher,
             [
                 "settings": settings,

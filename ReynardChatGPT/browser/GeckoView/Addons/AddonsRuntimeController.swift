@@ -391,13 +391,17 @@ public final class AddonsRuntimeController: NSObject, GeckoEventListenerInternal
     
     public func install(url: String, installMethod: AddonInstallMethod? = nil) async throws -> Addon {
         installCounter += 1
+        var message: [String: Any] = [
+            "locationUri": url,
+            "installId": "reynard-\(installCounter)",
+        ]
+        if let installMethod {
+            message["installMethod"] = installMethod.rawValue
+        }
+
         let response = try await GeckoEventDispatcherWrapper.runtimeInstance.query(
             type: "GeckoView:WebExtension:Install",
-            message: [
-                "locationUri": url,
-                "installId": "reynard-\(installCounter)",
-                "installMethod": installMethod?.rawValue as Any,
-            ]
+            message: message
         )
         guard let dictionary = response as? [String: Any?],
               let extensionDictionary = dictionary["extension"] as? [String: Any?] else {
@@ -455,7 +459,7 @@ public final class AddonsRuntimeController: NSObject, GeckoEventListenerInternal
         return response as? String
     }
     
-    private func mutateAddon(type: String, message: [String: Any?]) async throws -> Addon {
+    private func mutateAddon(type: String, message: [String: Any]) async throws -> Addon {
         let response = try await GeckoEventDispatcherWrapper.runtimeInstance.query(type: type, message: message)
         guard let dictionary = response as? [String: Any?],
               let extensionDictionary = dictionary["extension"] as? [String: Any?] else {

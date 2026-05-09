@@ -41,7 +41,7 @@ public class GeckoEventDispatcherWrapper: NSObject, SwiftEventDispatcher {
 
     struct QueuedMessage {
         let type: String
-        let message: [String: Any?]?
+        let message: [String: Any]?
         let callback: EventCallback?
     }
 
@@ -70,11 +70,11 @@ public class GeckoEventDispatcherWrapper: NSObject, SwiftEventDispatcher {
     }
 
     public func dispatch(
-        type: String, message: [String: Any?]? = nil, callback: EventCallback? = nil
+        type: String, message: [String: Any]? = nil, callback: EventCallback? = nil
     ) {
         if let eventListeners = listeners[type] {
             for listener in eventListeners {
-                listener.handleMessage(type: type, message: message, callback: callback)
+                listener.handleMessage(type: type, message: optionalMessage(message), callback: callback)
             }
         } else if queue != nil {
             queue!.append(QueuedMessage(type: type, message: message, callback: callback))
@@ -83,7 +83,7 @@ public class GeckoEventDispatcherWrapper: NSObject, SwiftEventDispatcher {
         }
     }
 
-    public func query(type: String, message: [String: Any?]? = nil) async throws -> Any? {
+    public func query(type: String, message: [String: Any]? = nil) async throws -> Any? {
         class AsyncCallback: NSObject, EventCallback {
             var continuation: CheckedContinuation<Any?, Error>?
             init(_ continuation: CheckedContinuation<Any?, Error>) {
@@ -113,7 +113,7 @@ public class GeckoEventDispatcherWrapper: NSObject, SwiftEventDispatcher {
     }
 
     public func dispatch(toSwift type: String!, message: Any!, callback: EventCallback?) {
-        let message = message as! [String: Any?]?
+        let message = optionalMessage(message as? [String: Any])
         if let eventListeners = listeners[type] {
             for listener in eventListeners {
                 listener.handleMessage(type: type, message: message, callback: callback)
@@ -132,5 +132,11 @@ public class GeckoEventDispatcherWrapper: NSObject, SwiftEventDispatcher {
 
     public func hasListener(_ type: String!) -> Bool {
         listeners.keys.contains(type)
+    }
+
+    private func optionalMessage(_ message: [String: Any]?) -> [String: Any?]? {
+        message?.mapValues { value in
+            value is NSNull ? nil : value
+        }
     }
 }
