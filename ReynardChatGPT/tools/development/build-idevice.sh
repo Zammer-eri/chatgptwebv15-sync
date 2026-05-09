@@ -13,6 +13,11 @@ OUTPUT_LIB="$REPO_ROOT/browser/Reynard/JIT/libidevice_ffi.a"
 TARGET_DIR="$SUBMODULE_PATH/target"
 DEPLOYMENT_TARGET="14.0"
 
+if [ -f "$OUTPUT_LIB" ]; then
+	echo "Using cached idevice bridge at $OUTPUT_LIB"
+	exit 0
+fi
+
 if [ ! -e "$SUBMODULE_PATH/.git" ]; then
   rm -rf "$SUBMODULE_PATH"
   git clone --depth 1 "$IDEVICE_URL" "$SUBMODULE_PATH"

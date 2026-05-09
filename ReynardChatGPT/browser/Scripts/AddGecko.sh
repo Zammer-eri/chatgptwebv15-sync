@@ -27,10 +27,12 @@ done
 # copy the rest of the files, excluding the ones we already copied and the test files
 rsync -pvtrlL --delete --exclude "XUL" --exclude "*.dylib" --exclude "Test*" --exclude "test_*" --exclude "*_unittest" "${GECKO_DIST_BIN}/" "${GECKOVIEW_FW_FRAMEWORKS}"
 
-# default theme missing error fix
-mkdir -p "${GECKOVIEW_FW_FRAMEWORKS}/default-theme"
-cp -RfL "${DEFAULT_THEME_SRC}/" "${GECKOVIEW_FW_FRAMEWORKS}/default-theme/"
-echo "resource default-theme file:default-theme/" >> "${GECKOVIEW_FW_FRAMEWORKS}/chrome.manifest"
+if [ -d "${DEFAULT_THEME_SRC}" ]; then
+	# default theme missing error fix for source-built Gecko
+	mkdir -p "${GECKOVIEW_FW_FRAMEWORKS}/default-theme"
+	cp -RfL "${DEFAULT_THEME_SRC}/" "${GECKOVIEW_FW_FRAMEWORKS}/default-theme/"
+	echo "resource default-theme file:default-theme/" >> "${GECKOVIEW_FW_FRAMEWORKS}/chrome.manifest"
+fi
 
 # sign the GeckoView.framework
 codesign --force --sign "${SIGN_IDENTITY}" "${GECKOVIEW_FW}"

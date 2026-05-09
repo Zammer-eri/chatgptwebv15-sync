@@ -14,11 +14,11 @@ This folder is a vendored private fork of Reynard Browser, adapted as the experi
 
 ## Build model
 
-Reynard's wrapper source is committed here, but the large upstream dependencies are fetched by scripts:
+Reynard's wrapper source is committed here, but the large upstream engine is not built in CI:
 
-- `engine/firefox` is cloned by `tools/development/update-gecko.sh`.
-- `support/idevice` is cloned by `tools/development/build-idevice.sh`.
-- Both folders are ignored by Git.
+- `tools/development/setup-prebuilt-gecko.sh` downloads Reynard's released IPA and extracts the prebuilt Gecko runtime into `engine/prebuilt-gecko`.
+- `support/idevice` is still cloned by `tools/development/build-idevice.sh` for the small JIT bridge library.
+- `engine/firefox`, `engine/prebuilt-gecko`, and `support/idevice` are ignored by Git.
 
 Manual build order on macOS:
 
@@ -32,7 +32,17 @@ cd ReynardChatGPT
 ./tools/release/create-ipa.sh
 ```
 
-The root workflow `.github/workflows/reynard-ios-build.yml` runs the same path manually and publishes `ChatGPT-Gecko.ipa` plus `ChatGPT-Gecko-TrollStore.tipa` to `ci-gecko-latest`.
+Fast build order on macOS, matching CI:
+
+```sh
+cd ReynardChatGPT
+./tools/development/setup-prebuilt-gecko.sh
+./tools/development/build-idevice.sh
+./tools/release/build-app.sh
+./tools/release/create-ipa.sh
+```
+
+The root workflow `.github/workflows/reynard-ios-build.yml` runs the fast path on push and publishes `ChatGPT-Gecko.ipa` plus `ChatGPT-Gecko-TrollStore.tipa` to `ci-gecko-latest`.
 
 ## Next work
 

@@ -18,4 +18,5 @@ browser/Reynard/JIT/libidevice_ffi.a
 
 # Large upstream dependencies fetched by setup/build scripts
 engine/firefox/
+engine/prebuilt-gecko/
 support/idevice/

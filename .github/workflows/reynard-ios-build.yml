@@ -29,26 +29,34 @@ jobs:
           cargo --version
 
       - name: Install packaging tools
-        run: |
-          brew update
-          brew install ldid
+        run: brew install ldid
 
       - name: Make Reynard scripts executable
         run: chmod +x ReynardChatGPT/tools/development/*.sh ReynardChatGPT/tools/release/*.sh
 
-      - name: Prepare Gecko source
+      - name: Cache prebuilt Gecko engine
+        uses: actions/cache@v4
+        with:
+          path: ReynardChatGPT/engine/prebuilt-gecko
+          key: reynard-prebuilt-gecko-0.2.0-Reynard-ipa
+
+      - name: Prepare prebuilt Gecko engine
         working-directory: ReynardChatGPT
-        run: |
-          ./tools/development/update-gecko.sh
-          ./tools/development/apply-patches.sh
+        run: ./tools/development/setup-prebuilt-gecko.sh
+
+      - name: Cache idevice build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/git
+            ~/.cargo/registry
+            ReynardChatGPT/support/idevice/target
+            ReynardChatGPT/browser/Reynard/JIT/libidevice_ffi.a
+          key: reynard-idevice-${{ runner.os }}-${{ hashFiles('ReynardChatGPT/tools/development/build-idevice.sh') }}
 
       - name: Build idevice bridge
         working-directory: ReynardChatGPT
         run: ./tools/development/build-idevice.sh
-
-      - name: Build Gecko engine
-        working-directory: ReynardChatGPT
-        run: ./tools/development/build-gecko.sh
 
       - name: Build iOS archive
         working-directory: ReynardChatGPT
