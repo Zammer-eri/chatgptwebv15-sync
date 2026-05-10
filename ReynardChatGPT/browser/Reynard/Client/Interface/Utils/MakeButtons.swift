@@ -6,20 +6,9 @@
 //
 
 import UIKit
-import Darwin
-import Symbols
 
 enum MakeButtons {
-    private typealias SolariumEnabledFunction = @convention(c) () -> Bool
-
-    static let hasLiquidGlass: Bool = {
-        guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "_UISolariumEnabled") else {
-            return false
-        }
-
-        let isEnabled = unsafeBitCast(symbol, to: SolariumEnabledFunction.self)
-        return isEnabled()
-    }()
+    static let hasLiquidGlass = false
     
     static func makeToolbarButton(target: AnyObject, imageName: String, action: Selector) -> UIButton {
         let button = UIButton(type: .system)
@@ -173,8 +162,16 @@ final class DownloadToolbarButton: UIButton {
     }
     
     private func playBounceAnimation() {
-        if #available(iOS 17.0, *) {
-            iconView.addSymbolEffect(.bounce)
-        }
+        iconView.transform = CGAffineTransform(scaleX: 0.86, y: 0.86)
+        UIView.animate(
+            withDuration: 0.34,
+            delay: 0,
+            usingSpringWithDamping: 0.45,
+            initialSpringVelocity: 0.7,
+            options: [.allowUserInteraction, .beginFromCurrentState],
+            animations: {
+                self.iconView.transform = .identity
+            }
+        )
     }
 }
