@@ -7,6 +7,10 @@
 
 #import "JITUtils.h"
 
+#import <Security/SecCertificate.h>
+#import <Security/SecIdentity.h>
+#import <Security/SecKey.h>
+
 #include <errno.h>
 #include <sys/socket.h>
 #include <sys/time.h>
