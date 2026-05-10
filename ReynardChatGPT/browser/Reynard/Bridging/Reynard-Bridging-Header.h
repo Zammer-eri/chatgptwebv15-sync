@@ -10,7 +10,6 @@
 
 #import "ExtensionBridge.h"
 #import "JITEnabler.h"
-#import "UIKit+Private.h"
 #import "TSUtils.h"
 #import <GeckoView/GeckoViewSwiftSupport.h>
 #import <GeckoView/IOSBootstrap.h>
