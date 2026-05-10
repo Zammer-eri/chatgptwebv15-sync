@@ -12,7 +12,7 @@ DIST_DIR="$ROOT_DIR/engine/prebuilt-gecko/obj-aarch64-apple-ios/dist"
 BIN_DIR="$DIST_DIR/bin"
 INCLUDE_DIR="$DIST_DIR/include/GeckoView"
 MARKER="$ROOT_DIR/engine/prebuilt-gecko/.release"
-SHIM_VERSION="2"
+SHIM_VERSION="3"
 
 if [ -f "$BIN_DIR/XUL" ] && [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "${TAG}/${ASSET}/shim-${SHIM_VERSION}" ]; then
 	echo "Using cached prebuilt Gecko dist at $DIST_DIR"
@@ -41,6 +41,7 @@ fi
 cp -f "$GECKOVIEW_FW/XUL" "$BIN_DIR/XUL"
 find "$APP_DIR/Frameworks" -maxdepth 1 -type f -name '*.dylib' -exec cp -f {} "$BIN_DIR/" \;
 cp -R "$GECKOVIEW_FW/Frameworks/." "$BIN_DIR/"
+find "$BIN_DIR" -maxdepth 1 -type f -name 'libswift*.dylib' -delete
 
 cat > "$INCLUDE_DIR/GeckoViewSwiftSupport.h" <<'EOF'
 #import <Foundation/Foundation.h>
