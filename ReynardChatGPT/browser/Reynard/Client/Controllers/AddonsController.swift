@@ -29,9 +29,9 @@ final class AddonsController: NSObject, AddonEmbedderDelegate {
     }
     
     func start() async {
-        AddonsRuntimeController.shared.delegate = self
-        _ = try? await AddonsRuntimeController.shared.list()
-        controller?.refreshAddressBar()
+        // ChatGPT shell does not need Reynard's browser extension manager.
+        // Starting it here sends an early WebExtension query into Gecko during launch,
+        // which can crash on iOS 15 before the first content session is stable.
     }
     
     func handleExternalResponse(_ response: ExternalResponseInfo) -> Bool {
