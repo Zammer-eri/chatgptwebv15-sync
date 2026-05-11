@@ -523,6 +523,12 @@ final class BrowserLayout {
     }
     
     private func requestFocusedInputMetricsIfNeeded(duration: TimeInterval, curve: UIView.AnimationOptions) {
+        if Self.chatGPTShellMode {
+            focusedInputBottomRatio = nil
+            applyFocusedInputRelocation(duration: duration, curve: curve)
+            return
+        }
+
         guard !controller.isSearchFocused,
               !controller.tabOverviewPresentation.isVisible,
               keyboardHeight > 0,
