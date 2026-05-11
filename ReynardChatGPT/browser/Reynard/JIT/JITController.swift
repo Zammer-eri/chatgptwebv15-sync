@@ -187,7 +187,7 @@ final class JITController {
         }
 
         DispatchQueue.main.async {
-            NotificationCenter.default.post(name: NSNotification.Name(rawValue: "me-minh-ton.reynard.jitless-mode-activated"), object: nil)
+            NotificationCenter.default.post(name: NSNotification.Name(rawValue: "me.minh-ton.reynard.jitless-mode-activated"), object: nil)
         }
     }
 
