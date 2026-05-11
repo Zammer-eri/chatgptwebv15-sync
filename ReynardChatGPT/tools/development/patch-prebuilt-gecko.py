@@ -11,16 +11,16 @@ DIAGNOSTICS_MARKER = "installChatGPTShellDiagnostics"
 EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
     const win = this.contentWindow;
     const doc = win?.document;
-    if (!win || !doc || win.__reynardChatGPTEmojiRendererInstalled) {
+    if (!win || !doc || doc.__reynardChatGPTEmojiRendererInstalled) {
       return;
     }
 
     try {
-      Object.defineProperty(win, "__reynardChatGPTEmojiRendererInstalled", {
+      Object.defineProperty(doc, "__reynardChatGPTEmojiRendererInstalled", {
         value: true,
       });
     } catch (_) {
-      win.__reynardChatGPTEmojiRendererInstalled = true;
+      doc.__reynardChatGPTEmojiRendererInstalled = true;
     }
 
     const isChatGPT = () => {
@@ -152,16 +152,16 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
 DIAGNOSTICS_METHOD = r'''  installChatGPTShellDiagnostics() {
     const win = this.contentWindow;
     const doc = win?.document;
-    if (!win || !doc || win.__reynardChatGPTDiagnosticsInstalled) {
+    if (!win || !doc || doc.__reynardChatGPTDiagnosticsInstalled) {
       return;
     }
 
     try {
-      Object.defineProperty(win, "__reynardChatGPTDiagnosticsInstalled", {
+      Object.defineProperty(doc, "__reynardChatGPTDiagnosticsInstalled", {
         value: true,
       });
     } catch (_) {
-      win.__reynardChatGPTDiagnosticsInstalled = true;
+      doc.__reynardChatGPTDiagnosticsInstalled = true;
     }
 
     const isChatGPT = () => {
@@ -228,6 +228,31 @@ DIAGNOSTICS_METHOD = r'''  installChatGPTShellDiagnostics() {
       return value.replace(/\u200b/g, "").trim().length > 0;
     };
 
+    const findComposer = () => {
+      const selectors = [
+        "#prompt-textarea",
+        '[data-testid="composer"] [contenteditable="true"]',
+        '[data-testid="composer"] textarea',
+        '[contenteditable="true"][role="textbox"]',
+        "textarea",
+      ];
+      for (const selector of selectors) {
+        const element = doc.querySelector(selector);
+        if (element) {
+          return element;
+        }
+      }
+      return null;
+    };
+
+    const containsElement = (parent, child) => {
+      try {
+        return parent === child || parent?.contains?.(child) === true;
+      } catch (_) {
+        return false;
+      }
+    };
+
     const streamingActive = () => {
       const candidates = doc.querySelectorAll("button,[role='button'],[data-testid]");
       for (const element of candidates) {
@@ -245,11 +270,18 @@ DIAGNOSTICS_METHOD = r'''  installChatGPTShellDiagnostics() {
 
     const activeState = () => {
       const active = doc.activeElement;
+      const composer = findComposer();
       return {
+        diagnosticsVersion: "7",
+        hasEventDispatcher: !!this.eventDispatcher,
         activeElement: elementSummary(active),
         activeEditable: isEditable(active),
         activeTextLength: editableTextLength(active),
         hasDraft: editableHasDraft(active),
+        composerElement: elementSummary(composer),
+        composerFocused: containsElement(composer, active),
+        composerTextLength: editableTextLength(composer),
+        composerHasDraft: editableHasDraft(composer),
         streaming: streamingActive(),
         visibilityState: doc.visibilityState,
         innerHeight: win.innerHeight,
@@ -330,6 +362,19 @@ DIAGNOSTICS_METHOD = r'''  installChatGPTShellDiagnostics() {
       );
     }
 
+    for (const eventName of ["focus", "blur", "pagehide", "pageshow"]) {
+      win.addEventListener(
+        eventName,
+        event => {
+          dispatchDiagnostic(`window.${eventName}`, {
+            target: "window",
+            persisted: event.persisted === true,
+          });
+        },
+        eventOptions
+      );
+    }
+
     for (const eventName of ["keydown", "keyup"]) {
       doc.addEventListener(
         eventName,
@@ -379,7 +424,10 @@ DIAGNOSTICS_METHOD = r'''  installChatGPTShellDiagnostics() {
       });
     }
 
-    dispatchDiagnostic("diagnostics.installed");
+    dispatchDiagnostic("diagnostics.installed", {
+      installScope: "document",
+      readyState: doc.readyState,
+    });
   }
 
 '''
