@@ -4,6 +4,8 @@ set -eu
 
 CLANG_PATH="$(xcrun --sdk iphoneos --find clang)"
 SDK_PATH="$(xcrun --sdk iphoneos --show-sdk-path)"
+TOOLCHAIN_DIR="$(CDPATH= cd -- "$(dirname -- "$CLANG_PATH")/../.." && pwd)"
+SWIFT_LIB_DIR="$TOOLCHAIN_DIR/usr/lib/swift/iphoneos"
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 ROOT_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)"
 ARCHIVE_DIR="$ROOT_DIR/dist/Reynard.xcarchive"
@@ -36,6 +38,17 @@ plutil -replace CFBundleDisplayName -string "Open in ChatGPT Gecko" "$APP_PATH/P
 rm -rf "$WORK_DIR" "$ROOT_DIR/dist/Reynard.ipa" "$ROOT_DIR/dist/Reynard-TrollStore.ipa"
 mkdir -p "$WORK_DIR/Payload"
 cp -R "$APP_PATH" "$WORK_DIR/Payload/"
+
+PAYLOAD_APP_PATH="$WORK_DIR/Payload/$(basename "$APP_PATH")"
+PAYLOAD_FRAMEWORKS_PATH="$PAYLOAD_APP_PATH/Frameworks"
+mkdir -p "$PAYLOAD_FRAMEWORKS_PATH"
+
+if [ -f "$SWIFT_LIB_DIR/libswift_Concurrency.dylib" ]; then
+	cp -f "$SWIFT_LIB_DIR/libswift_Concurrency.dylib" "$PAYLOAD_FRAMEWORKS_PATH/"
+else
+	echo "Missing Swift concurrency runtime at $SWIFT_LIB_DIR/libswift_Concurrency.dylib"
+	exit 1
+fi
 
 cd "$WORK_DIR"
 zip -r ../Reynard.ipa Payload -x "._*" -x ".DS_Store" -x "__MACOSX" # normal ipa
