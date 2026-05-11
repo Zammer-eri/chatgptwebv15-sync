@@ -18,6 +18,17 @@ sed -i '' "s/CURRENT_BUILD = .*/CURRENT_BUILD = $BUILD_SHA/" "$DIST_DIR/Reynard.
 
 BUILD_LOG="$DIST_DIR/xcodebuild-archive.log"
 
+print_log_context() {
+	local title="$1"
+	local pattern="$2"
+	local context="${3:-20}"
+
+	echo ""
+	echo "::group::$title"
+	grep -n -E -C "$context" "$pattern" "$BUILD_LOG" || echo "No matches for: $pattern"
+	echo "::endgroup::"
+}
+
 set +e
 xcodebuild archive \
 	-scheme "Reynard" \
@@ -36,13 +47,16 @@ set -e
 
 if [ "$status" -ne 0 ]; then
 	echo ""
-	echo "xcodebuild archive failed with exit code $status"
-	echo "Full archive log: $BUILD_LOG"
+	echo "::error::xcodebuild archive failed with exit code $status"
+	echo "Local archive log captured at: $BUILD_LOG"
+	print_log_context "Swift compiler errors" '(^|[^A-Za-z])(error|fatal error):' 25
+	print_log_context "ChatGPTShellDiagnostics.swift context" 'ChatGPTShellDiagnostics\.swift' 35
+	print_log_context "Swift compile commands" 'SwiftCompile|CompileSwift' 18
+	print_log_context "Failed frontend command context" 'Failed frontend command' 35
+	print_log_context "Relevant project file diagnostics" 'ContentDelegate\.swift|BrowserLayout\.swift|BrowserViewController\.swift|BrowserActions\.swift|TabManagerImpl\.swift' 18
 	echo ""
-	echo "Swift/error diagnostics:"
-	grep -n -E '(^|[^A-Za-z])(error|fatal error):|SwiftCompile|CompileSwift|ChatGPTShellDiagnostics\.swift|ContentDelegate\.swift|BrowserLayout\.swift|TabManagerImpl\.swift' "$BUILD_LOG" || true
-	echo ""
-	echo "ChatGPTShellDiagnostics.swift context:"
-	grep -n -A 8 -B 8 'ChatGPTShellDiagnostics\.swift' "$BUILD_LOG" || true
+	echo "::group::Last 300 lines of xcodebuild archive log"
+	tail -n 300 "$BUILD_LOG" || true
+	echo "::endgroup::"
 	exit "$status"
 fi

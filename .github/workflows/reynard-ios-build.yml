@@ -46,14 +46,6 @@ jobs:
         working-directory: ReynardChatGPT
         run: ./tools/release/build-app.sh
 
-      - name: Upload Xcode archive log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: xcodebuild-archive-log
-          path: ReynardChatGPT/dist/xcodebuild-archive.log
-          if-no-files-found: ignore
-
       - name: Package IPA
         working-directory: ReynardChatGPT
         run: |
