@@ -53,7 +53,7 @@ public enum ChatGPTShellDiagnostics {
             parts.append("window=\(view.window != nil)")
             parts.append("frame=\(formatRect(view.frame))")
             parts.append("hidden=\(view.isHidden)")
-            parts.append("alpha=\(String(format: "%.2f", view.alpha))")
+            parts.append("alpha=\(String(format: "%.2f", Double(view.alpha)))")
         }
 
         if responder is UITextInput {
@@ -85,7 +85,8 @@ public enum ChatGPTShellDiagnostics {
         let url = logFileURL
         try? fileManager.createDirectory(
             at: url.deletingLastPathComponent(),
-            withIntermediateDirectories: true
+            withIntermediateDirectories: true,
+            attributes: nil
         )
 
         if let attributes = try? fileManager.attributesOfItem(atPath: url.path),
@@ -95,11 +96,11 @@ public enum ChatGPTShellDiagnostics {
         }
 
         if !fileManager.fileExists(atPath: url.path) {
-            fileManager.createFile(atPath: url.path, contents: nil)
+            _ = fileManager.createFile(atPath: url.path, contents: nil)
         }
 
         guard let data = line.data(using: .utf8),
-              let handle = try? FileHandle(forWritingTo: url) else {
+              let handle = FileHandle(forWritingAtPath: url.path) else {
             return
         }
 
@@ -110,7 +111,14 @@ public enum ChatGPTShellDiagnostics {
 
     private static func formatFields(_ fields: [String: Any?]) -> String {
         fields.keys.sorted().map { key in
-            "\(key)=\(formatValue(fields[key] ?? nil))"
+            let value: Any?
+            switch fields[key] {
+            case .some(let wrapped):
+                value = wrapped
+            case .none:
+                value = nil
+            }
+            return "\(key)=\(formatValue(value))"
         }.joined(separator: " ")
     }
 
@@ -155,10 +163,10 @@ public enum ChatGPTShellDiagnostics {
     private static func formatRect(_ rect: CGRect) -> String {
         String(
             format: "%.1f,%.1f,%.1f,%.1f",
-            rect.origin.x,
-            rect.origin.y,
-            rect.size.width,
-            rect.size.height
+            Double(rect.origin.x),
+            Double(rect.origin.y),
+            Double(rect.size.width),
+            Double(rect.size.height)
         )
     }
 }
@@ -167,7 +175,7 @@ private final class ChatGPTShellFirstResponderCapture {
     static var responder: UIResponder?
 }
 
-private extension UIResponder {
+extension UIResponder {
     @objc func chatGPTShellCaptureFirstResponder(_ sender: Any?) {
         ChatGPTShellFirstResponderCapture.responder = self
     }
