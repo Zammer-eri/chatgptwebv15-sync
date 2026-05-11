@@ -15,14 +15,12 @@ final class BrowserLayout {
     private var keyboardFrame: CGRect = .zero
     private var focusedInputBottomRatio: CGFloat?
     private var geckoPhoneVerticalOffset: CGFloat = 0
-    private var focusedInputMetricsTask: Task<Void, Never>?
     
     init(controller: BrowserViewController) {
         self.controller = controller
     }
     
     deinit {
-        focusedInputMetricsTask?.cancel()
         NotificationCenter.default.removeObserver(self)
     }
     
@@ -525,29 +523,38 @@ final class BrowserLayout {
     private func requestFocusedInputMetricsIfNeeded(duration: TimeInterval, curve: UIView.AnimationOptions) {
         guard !controller.isSearchFocused,
               !controller.tabOverviewPresentation.isVisible,
-              keyboardHeight > 0,
-              let session = controller.tabManager.selectedTab?.session else {
+              keyboardHeight > 0 else {
             focusedInputBottomRatio = nil
             applyFocusedInputRelocation(duration: duration, curve: curve)
             return
         }
-        
-        focusedInputMetricsTask?.cancel()
-        focusedInputMetricsTask = Task { @MainActor [weak self] in
-            guard let self else {
-                return
-            }
-            
-            let bottomRatio = await session.focusedInputBottomRatio()
-            guard !Task.isCancelled else {
-                return
-            }
-            
-            if let bottomRatio {
-                self.focusedInputBottomRatio = bottomRatio
-            }
-            self.applyFocusedInputRelocation(duration: duration, curve: curve)
+
+        focusedInputBottomRatio = focusedTextInputBottomRatio()
+        applyFocusedInputRelocation(duration: duration, curve: curve)
+    }
+
+    private func focusedTextInputBottomRatio() -> CGFloat? {
+        let geckoView = controller.browserUI.geckoView
+        guard geckoView.bounds.height > 1,
+              let focusedView = geckoView.firstResponderDescendant(),
+              let textInput = focusedView as? (UIView & UITextInput),
+              let selectedRange = textInput.selectedTextRange else {
+            return nil
         }
+
+        let inputRect = selectedRange.isEmpty ? textInput.caretRect(for: selectedRange.end) : textInput.firstRect(for: selectedRange)
+        guard inputRect.isFinite,
+              !inputRect.isNull,
+              inputRect.height > 0 else {
+            return nil
+        }
+
+        let rectInGecko = textInput.convert(inputRect, to: geckoView)
+        guard rectInGecko.isFinite else {
+            return nil
+        }
+
+        return max(0, min(2, rectInGecko.maxY / geckoView.bounds.height))
     }
     
     private func applyFocusedInputRelocation(duration: TimeInterval, curve: UIView.AnimationOptions) {
@@ -567,8 +574,6 @@ final class BrowserLayout {
     }
     
     private func resetFocusedInputRelocation() {
-        focusedInputMetricsTask?.cancel()
-        focusedInputMetricsTask = nil
         focusedInputBottomRatio = nil
         geckoPhoneVerticalOffset = 0
     }
@@ -607,5 +612,27 @@ final class BrowserLayout {
         let focusBottom = geckoFrame.height * bottomRatio
         let visibleBottom = max(0, geckoFrame.height - keyboardOverlap - 12)
         return min(keyboardOverlap, max(0, focusBottom - visibleBottom))
+    }
+}
+
+private extension CGRect {
+    var isFinite: Bool {
+        origin.x.isFinite && origin.y.isFinite && size.width.isFinite && size.height.isFinite
+    }
+}
+
+private extension UIView {
+    func firstResponderDescendant() -> UIView? {
+        if isFirstResponder {
+            return self
+        }
+
+        for subview in subviews {
+            if let firstResponder = subview.firstResponderDescendant() {
+                return firstResponder
+            }
+        }
+
+        return nil
     }
 }
