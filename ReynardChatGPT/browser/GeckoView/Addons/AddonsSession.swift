@@ -9,6 +9,7 @@ import Foundation
 
 public extension GeckoSession {
     func setAddonTabActive(_ active: Bool) {
-        dispatcher.dispatch(type: "GeckoView:WebExtension:SetTabActive", message: ["active": active])
+        // Disabled for the ChatGPT shell. The shell does not expose Reynard's
+        // extension UI, and early WebExtension messages crash Gecko on iOS 15.6.
     }
 }

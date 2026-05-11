@@ -79,7 +79,8 @@ public class GeckoSession {
             }
         }
         
-        AddonsRuntimeController.shared.register(sessionListener: addonSessionListener)
+        // The ChatGPT shell does not use Reynard browser extensions. Avoid
+        // registering WebExtension handlers during launch on iOS 15.6.
     }
     
     public func open(windowId: String? = nil) {

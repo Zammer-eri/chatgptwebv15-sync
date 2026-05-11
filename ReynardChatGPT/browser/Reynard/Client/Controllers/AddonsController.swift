@@ -35,53 +35,14 @@ final class AddonsController: NSObject, AddonEmbedderDelegate {
     }
     
     func handleExternalResponse(_ response: ExternalResponseInfo) -> Bool {
-        guard shouldInterceptAMOInstall(response) else {
-            return false
-        }
-        
-        Task { @MainActor [weak self] in
-            do {
-                _ = try await AddonsRuntimeController.shared.install(url: response.url, installMethod: .manager)
-            } catch {
-                self?.presentAlert(title: "Extension Error", message: "\(error)")
-            }
-        }
-        return true
+        false
     }
     
     func handleTabSelectionChange(selectedIndex: Int, previousIndex: Int?) {
-        guard let controller else {
-            return
-        }
-        
-        if let previousIndex,
-           controller.tabManager.tabs.indices.contains(previousIndex) {
-            controller.tabManager.tabs[previousIndex].session.setAddonTabActive(false)
-        }
-        
-        if controller.tabManager.tabs.indices.contains(selectedIndex) {
-            controller.tabManager.tabs[selectedIndex].session.setAddonTabActive(true)
-        }
     }
     
     func visibleMenuItemsForCurrentSite() -> [AddonMenuItem] {
-        guard let session = currentSession() else {
-            return []
-        }
-        
-        return AddonsRuntimeController.shared.installedAddons
-            .filter { addon in
-                visibleActions(for: addon, session: session).isEmpty == false
-            }
-            .flatMap { addon in
-                visibleActions(for: addon, session: session).map { action in
-                    AddonMenuItem(
-                        addon: addon,
-                        action: action,
-                        title: action.title ?? addon.metaData.name ?? addon.id
-                    )
-                }
-            }
+        []
     }
     
     func visibleActions(for addon: Addon, session: GeckoSession) -> [AddonAction] {
@@ -442,15 +403,6 @@ final class AddonsController: NSObject, AddonEmbedderDelegate {
     }
     
     func prepareVisibleAddonIcons() {
-        guard let session = currentSession() else {
-            return
-        }
-        
-        AddonsRuntimeController.shared.installedAddons
-            .filter { addon in
-                visibleActions(for: addon, session: session).isEmpty == false
-            }
-            .forEach { prefetchIconIfNeeded(for: $0) }
     }
 }
 
