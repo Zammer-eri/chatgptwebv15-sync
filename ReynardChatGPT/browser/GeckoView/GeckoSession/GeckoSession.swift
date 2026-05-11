@@ -17,6 +17,7 @@ public class GeckoSession {
     let dispatcher: GeckoEventDispatcherWrapper = GeckoEventDispatcherWrapper()
     var window: GeckoViewWindow?
     var id: String?
+    public var diagnosticID: String? { id }
     public var isAddonPopup = false
     lazy var addonSessionListener = AddonSessionListener(session: self)
     public var userAgentOverride: String?

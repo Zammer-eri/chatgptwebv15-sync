@@ -283,7 +283,7 @@ func newContentHandler(_ session: GeckoSession) -> GeckoSessionHandler {
             for (key, value) in message ?? [:] {
                 fields[key] = value ?? "nil"
             }
-            fields["sessionID"] = session.id ?? "nil"
+            fields["sessionID"] = session.diagnosticID ?? "nil"
             ChatGPTShellDiagnostics.log(
                 "page.\((message?["diagnosticEvent"] as? String) ?? "event")",
                 fields: fields
