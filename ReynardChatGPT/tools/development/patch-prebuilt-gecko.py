@@ -305,11 +305,15 @@ DIAGNOSTICS_METHOD = r'''  installChatGPTShellDiagnostics() {
       };
 
       try {
-        this.eventDispatcher?.sendRequest(payload);
+        this.sendAsyncMessage("GeckoView:ChatGPTShellDiagnostic", payload);
       } catch (error) {
         try {
-          console.warn("ChatGPT shell diagnostic dispatch failed", error);
-        } catch (_) {}
+          this.eventDispatcher?.sendRequest(payload);
+        } catch (_) {
+          try {
+            console.warn("ChatGPT shell diagnostic dispatch failed", error);
+          } catch (_) {}
+        }
       }
     };
 
