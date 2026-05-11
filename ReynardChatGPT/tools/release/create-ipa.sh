@@ -52,13 +52,6 @@ PTRACE_JIT_OUT="Payload/Reynard.app/ptrace_jit"
 	-o "$PTRACE_JIT_OUT"
 
 chmod 0755 "$PTRACE_JIT_OUT"
-
-find Payload -type f -print | while IFS= read -r file; do
-	if file "$file" | grep -q "Mach-O"; then
-		ldid -S "$file"
-	fi
-done
-
 ldid -S"$ROOT_DIR/browser/Reynard/TrollStore/JIT/ptrace_jit.entitlements" "$PTRACE_JIT_OUT"
 ldid -S"$ROOT_DIR/browser/Reynard/Entitlements/Reynard.private.entitlements" "Payload/Reynard.app/Reynard"
 ldid -S"$ROOT_DIR/browser/Helper/Entitlements/Reynard-Helper.private.entitlements" "Payload/Reynard.app/PlugIns/Reynard Helper.appex/Reynard Helper"
