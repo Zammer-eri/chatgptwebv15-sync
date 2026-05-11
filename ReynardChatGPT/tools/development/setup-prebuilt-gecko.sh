@@ -4,7 +4,7 @@ set -eu
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 ROOT_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)"
-TAG="${REYNARD_RELEASE_TAG:-0.2.0}"
+TAG="${REYNARD_RELEASE_TAG:-0.3.0}"
 ASSET="${REYNARD_RELEASE_ASSET:-Reynard.ipa}"
 URL="https://github.com/minh-ton/reynard-browser/releases/download/${TAG}/${ASSET}"
 WORK_DIR="$ROOT_DIR/dist/prebuilt-gecko-work"

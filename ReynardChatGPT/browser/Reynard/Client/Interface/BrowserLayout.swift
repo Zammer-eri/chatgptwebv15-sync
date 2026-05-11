@@ -10,9 +10,6 @@ import UIKit
 
 final class BrowserLayout {
     private static let chatGPTShellMode = true
-    private static let shellFocusedInputBottomRatio: CGFloat = 0.88
-    private static let shellMaximumKeyboardLift: CGFloat = 150
-    private static let shellMaximumKeyboardLiftRatio: CGFloat = 0.45
     private unowned let controller: BrowserViewController
     private var keyboardHeight: CGFloat = 0
     private var keyboardFrame: CGRect = .zero
@@ -526,13 +523,6 @@ final class BrowserLayout {
     }
     
     private func requestFocusedInputMetricsIfNeeded(duration: TimeInterval, curve: UIView.AnimationOptions) {
-        if Self.chatGPTShellMode {
-            // Gecko's focused-input metrics query crashes on iOS 15.6; use a safe shell-mode estimate instead.
-            focusedInputBottomRatio = Self.shellFocusedInputBottomRatio
-            applyFocusedInputRelocation(duration: duration, curve: curve)
-            return
-        }
-
         guard !controller.isSearchFocused,
               !controller.tabOverviewPresentation.isVisible,
               keyboardHeight > 0,
@@ -616,12 +606,6 @@ final class BrowserLayout {
         
         let focusBottom = geckoFrame.height * bottomRatio
         let visibleBottom = max(0, geckoFrame.height - keyboardOverlap - 12)
-        let requestedLift = min(keyboardOverlap, max(0, focusBottom - visibleBottom))
-        guard Self.chatGPTShellMode else {
-            return requestedLift
-        }
-
-        let maximumShellLift = min(Self.shellMaximumKeyboardLift, keyboardOverlap * Self.shellMaximumKeyboardLiftRatio)
-        return min(requestedLift, maximumShellLift)
+        return min(keyboardOverlap, max(0, focusBottom - visibleBottom))
     }
 }
