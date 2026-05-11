@@ -15,7 +15,7 @@ final class BrowserActions {
         self.controller = controller
     }
     
-    func presentMenuSheet(initialSection: LibrarySection = .bookmarks) {
+    func presentMenuSheet(initialSection: LibrarySection = .settings) {
         let viewController = LibraryViewController(initialSection: initialSection) { [weak controller] in
             controller?.dismiss(animated: true)
         }
@@ -57,7 +57,6 @@ final class BrowserActions {
     }
     
     func dismissKeyboard() {
-        ChatGPTShellDiagnostics.log("native.endEditing")
         controller.view.endEditing(true)
     }
     

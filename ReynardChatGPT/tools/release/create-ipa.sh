@@ -24,14 +24,13 @@ if [ -z "$APP_PATH" ]; then
 	exit 1
 fi
 
-# I absolutely hate Apple for this
-# Why is my bundle identifier just become unavailable for no reason?
-plutil -replace CFBundleIdentifier -string "com.minh-ton.Reynard" "$APP_PATH/Info.plist"
-plutil -replace CFBundleDisplayName -string "ChatGPT Gecko" "$APP_PATH/Info.plist"
-plutil -replace CFBundleIdentifier -string "com.minh-ton.Reynard.Helper" "$APP_PATH/PlugIns/Reynard Helper.appex/Info.plist"
-plutil -replace CFBundleDisplayName -string "ChatGPT Gecko Helper" "$APP_PATH/PlugIns/Reynard Helper.appex/Info.plist"
-plutil -replace CFBundleIdentifier -string "com.minh-ton.Reynard.OpenIn" "$APP_PATH/PlugIns/OpenIn.appex/Info.plist"
-plutil -replace CFBundleDisplayName -string "Open in ChatGPT Gecko" "$APP_PATH/PlugIns/OpenIn.appex/Info.plist"
+# Normalize bundle metadata after unsigned archive export.
+plutil -replace CFBundleIdentifier -string "com.codex.chatgpt" "$APP_PATH/Info.plist"
+plutil -replace CFBundleDisplayName -string "ChatGPT" "$APP_PATH/Info.plist"
+plutil -replace CFBundleIdentifier -string "com.codex.chatgpt.Helper" "$APP_PATH/PlugIns/Reynard Helper.appex/Info.plist"
+plutil -replace CFBundleDisplayName -string "ChatGPT Helper" "$APP_PATH/PlugIns/Reynard Helper.appex/Info.plist"
+plutil -replace CFBundleIdentifier -string "com.codex.chatgpt.OpenIn" "$APP_PATH/PlugIns/OpenIn.appex/Info.plist"
+plutil -replace CFBundleDisplayName -string "Open in ChatGPT" "$APP_PATH/PlugIns/OpenIn.appex/Info.plist"
 
 rm -rf "$WORK_DIR" "$ROOT_DIR/dist/Reynard.ipa" "$ROOT_DIR/dist/Reynard-TrollStore.ipa"
 mkdir -p "$WORK_DIR/Payload"

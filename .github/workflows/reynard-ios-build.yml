@@ -1,4 +1,4 @@
-name: ChatGPT Gecko Build
+name: ChatGPT iOS 15 Build
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ on:
       - ".github/workflows/reynard-ios-build.yml"
 
 jobs:
-  build-chatgpt-gecko:
+  build-chatgpt-ios15:
     runs-on: macos-latest
     permissions:
       contents: write
@@ -36,7 +36,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ReynardChatGPT/engine/prebuilt-gecko
-          key: reynard-prebuilt-gecko-0.3.0-Reynard-ipa-shim-v8
+          key: reynard-prebuilt-gecko-0.3.0-Reynard-ipa-shim-v11
 
       - name: Prepare prebuilt Gecko engine
         working-directory: ReynardChatGPT
@@ -50,21 +50,19 @@ jobs:
         working-directory: ReynardChatGPT
         run: |
           ./tools/release/create-ipa.sh
-          cp dist/Reynard.ipa ../ChatGPT-Gecko.ipa
-          cp dist/Reynard-TrollStore.tipa ../ChatGPT-Gecko-TrollStore.tipa
+          cp dist/Reynard.ipa ../ChatGPT.ipa
+          cp dist/Reynard-TrollStore.tipa ../ChatGPT-TrollStore.tipa
 
       - name: Publish IPA to rolling prerelease
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ci-gecko-latest
-          name: CI ChatGPT Gecko IPA
+          name: CI ChatGPT iOS 15 IPA
           prerelease: true
           make_latest: false
           files: |
-            ChatGPT-Gecko.ipa
-            ChatGPT-Gecko-TrollStore.tipa
+            ChatGPT.ipa
+            ChatGPT-TrollStore.tipa
           overwrite_files: true
           body: |
-            Latest experimental ChatGPT Gecko/Reynard build from `${{ github.sha }}`.
-
-            This build is separate from the existing WKWebView fallback IPA.
+            Latest ChatGPT iOS 15 build from `${{ github.sha }}`.

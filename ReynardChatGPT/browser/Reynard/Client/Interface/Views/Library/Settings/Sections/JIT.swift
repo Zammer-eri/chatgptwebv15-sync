@@ -15,7 +15,7 @@ extension SettingsRootViewController {
     func presentPairingFilePicker() {
         presentAlert(
             title: "JIT Uses TrollStore",
-            message: "This ChatGPT Gecko build only supports TrollStore ptrace JIT. Pairing-file JIT is not included."
+            message: "This ChatGPT build only supports TrollStore ptrace JIT. Pairing-file JIT is not included."
         )
     }
 

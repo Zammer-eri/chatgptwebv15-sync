@@ -23,6 +23,7 @@ class SettingsTableViewController: UITableViewController {
 final class SettingsRootViewController: SettingsTableViewController {
     enum Section: Int, CaseIterable {
         case updates
+        case chatgpt
         case jit
         case general
         case search
@@ -38,11 +39,9 @@ final class SettingsRootViewController: SettingsTableViewController {
             hiddenSections.insert(.updates)
         }
         
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            hiddenSections.insert(.tab)
-        }
-        
         hiddenSections.insert(.jit)
+        hiddenSections.insert(.search)
+        hiddenSections.insert(.tab)
         
         return Section.allCases.filter { !hiddenSections.contains($0) }
     }
@@ -101,6 +100,7 @@ final class SettingsRootViewController: SettingsTableViewController {
         guard visibleSections.indices.contains(section) else { return 0 }
         switch visibleSections[section] {
         case .updates: return 2
+        case .chatgpt: return 1
         case .jit: return 2
         case .general: return 2
         case .search: return 1
@@ -117,6 +117,13 @@ final class SettingsRootViewController: SettingsTableViewController {
             return makeReleaseNotesCell()
         case .updates:
             return makeUpdateNowCell()
+        case .chatgpt:
+            let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
+            cell.textLabel?.text = "Light Session"
+            cell.detailTextLabel?.text = LightSessionSettingsStore.shared.settings.summaryText
+            cell.detailTextLabel?.textColor = .secondaryLabel
+            cell.accessoryType = .disclosureIndicator
+            return cell
         case .jit where indexPath.row == 0:
             let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
             cell.textLabel?.text = "Enable JIT"
@@ -196,6 +203,12 @@ final class SettingsRootViewController: SettingsTableViewController {
         switch visibleSections[indexPath.section] {
         case .updates:
             if indexPath.row == 1 { presentUpdateAlert() }
+        case .chatgpt:
+            let viewController = LightSessionSettingsViewController(settings: LightSessionSettingsStore.shared.settings)
+            viewController.onSave = { settings in
+                LightSessionSettingsStore.shared.save(settings)
+            }
+            navigationController?.pushViewController(viewController, animated: true)
         case .jit where indexPath.row == 1:
             presentPairingFilePicker()
         case .general:
@@ -230,6 +243,7 @@ final class SettingsRootViewController: SettingsTableViewController {
         guard visibleSections.indices.contains(section) else { return nil }
         switch visibleSections[section] {
         case .updates: return "Update Available"
+        case .chatgpt: return "ChatGPT"
         case .jit: return "JIT"
         case .general: return "General"
         case .search: return "Search"
@@ -243,6 +257,8 @@ final class SettingsRootViewController: SettingsTableViewController {
         guard visibleSections.indices.contains(section) else { return nil }
         switch visibleSections[section] {
         case .updates, .jit, .general, .search, .tab: return nil
+        case .chatgpt:
+            return "Light Session reduces long conversation payloads before ChatGPT renders them. Saving reloads the current page."
         case .compatibility:
             if preferences.useAndroidUserAgent {
                 return preferences.requestDesktopWebsite

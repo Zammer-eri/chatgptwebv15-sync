@@ -102,10 +102,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         super.viewDidLoad()
         
         view.backgroundColor = .systemBackground
-        ChatGPTShellDiagnostics.start(fields: [
-            "controller": "BrowserViewController",
-            "idiom": traitCollection.userInterfaceIdiom.rawValue,
-        ])
         
         if usesEmbeddedSplitRoot {
             configureEmbeddedSplitRoot()
@@ -137,6 +133,12 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
             self,
             selector: #selector(presentAddonSettingsRequested(_:)),
             name: AddressBarMenu.presentAddonSettingsNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(lightSessionSettingsDidChange),
+            name: LightSessionSettingsStore.didChangeNotification,
             object: nil
         )
         
@@ -180,9 +182,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         guard !usesEmbeddedSplitRoot else {
             return
         }
-        ChatGPTShellDiagnostics.log("native.viewWillDisappear.endEditing", fields: [
-            "animated": animated,
-        ])
         view.endEditing(true)
     }
     
@@ -507,6 +506,14 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         
         addonsController.presentCurrentSiteSettings(for: item)
     }
+
+    @objc private func lightSessionSettingsDidChange() {
+        let settings = LightSessionSettingsStore.shared.settings
+        for tab in tabManager.tabs {
+            tab.session.updateLightSession(enabled: settings.enabled, keep: settings.keep)
+        }
+        tabManager.selectedTab?.session.reload()
+    }
     
     func tabManagerDidChangeTabs(_ tabManager: TabManager) {
         if let selectedTab = tabManager.selectedTab {
@@ -633,9 +640,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     }
     
     func addressBarDidSubmit(_ searchTerm: String) {
-        ChatGPTShellDiagnostics.log("native.addressBar.submit", fields: [
-            "length": searchTerm.count,
-        ])
         browse(to: searchTerm)
         view.endEditing(true)
     }
@@ -796,7 +800,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     }
     
     @objc func dismissKeyboardTapped() {
-        ChatGPTShellDiagnostics.log("native.dismissKeyboardTapped")
         browserActions.dismissKeyboard()
     }
     

@@ -1,6 +1,6 @@
 # ChatGPT Gecko Port
 
-This folder is a vendored private fork of Reynard Browser, adapted as the experimental Gecko-backed ChatGPT app shell.
+This folder is a vendored private fork of Reynard Browser, adapted as the Gecko-backed ChatGPT app shell.
 
 ## Current baseline
 
@@ -8,8 +8,9 @@ This folder is a vendored private fork of Reynard Browser, adapted as the experi
 - Collapses the visible browser chrome so the Gecko view behaves more like the existing app shell.
 - Adds hidden edge gestures:
   - Swipe from the left edge to reload the current ChatGPT page.
-  - Swipe from the right edge to open Reynard's menu/settings sheet.
-- Uses Reynard's original `com.minh-ton.Reynard` bundle identifiers to keep TrollStore entitlements and process-extension identity aligned with upstream.
+  - Swipe from the right edge to open the native settings sheet.
+- Uses the old WK app bundle identifier, `com.codex.chatgpt`, with Reynard executable paths left intact for startup/JIT stability.
+- Adds native Light Session settings and enables conversation trimming by default.
 - Keeps the original `Downloads/ChatGPTWebV15` WKWebView app untouched.
 
 ## Build model
@@ -42,10 +43,10 @@ cd ReynardChatGPT
 ./tools/release/create-ipa.sh
 ```
 
-The root workflow `.github/workflows/reynard-ios-build.yml` runs the fast path on push and publishes `ChatGPT-Gecko.ipa` plus `ChatGPT-Gecko-TrollStore.tipa` to `ci-gecko-latest`.
+The root workflow `.github/workflows/reynard-ios-build.yml` runs the fast path on push and publishes `ChatGPT.ipa` plus `ChatGPT-TrollStore.tipa` to `ci-gecko-latest`.
 
 ## Next work
 
 - Verify GitHub Actions can complete the full Gecko build within runner limits.
 - Install the IPA on the target iOS 15 device and confirm ChatGPT login, text input, file upload, and long-thread rendering.
-- Port LightSession-style response trimming only after Gecko login and basic ChatGPT UX are proven.
+- Branding polish and UX cleanup after device testing.

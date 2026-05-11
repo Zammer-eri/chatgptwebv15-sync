@@ -6,6 +6,7 @@
 //
 
 import GeckoView
+import QuartzCore
 import UIKit
 
 final class BrowserUI {
@@ -14,6 +15,9 @@ final class BrowserUI {
     let geckoView: GeckoView = {
         let view = GeckoView()
         view.translatesAutoresizingMaskIntoConstraints = false
+        if #available(iOS 15.0, *) {
+            view.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+        }
         return view
     }()
     
@@ -26,6 +30,7 @@ final class BrowserUI {
     }()
     
     let keyboardDismissButton = KeyboardDismissButton()
+    let keyboardAccessoryBar = KeyboardAccessoryBar()
     
     let toolbarView: PhoneToolbar = {
         let bar = PhoneToolbar()
@@ -71,6 +76,8 @@ final class BrowserUI {
     var addressBarCompactPadTrailingConstraint: NSLayoutConstraint!
     var addressBarPadCenterYConstraint: NSLayoutConstraint!
     var addressBarPadHeightConstraint: NSLayoutConstraint!
+    var keyboardAccessoryBottomConstraint: NSLayoutConstraint!
+    var keyboardAccessoryHeightConstraint: NSLayoutConstraint!
     
     private unowned let controller: BrowserViewController
     private let tabCollectionHandler: TabCollectionHandler
@@ -99,6 +106,7 @@ final class BrowserUI {
         
         addressBar.configure(delegate: controller)
         keyboardDismissButton.button.addTarget(controller, action: #selector(BrowserViewController.dismissKeyboardTapped), for: .touchUpInside)
+        keyboardAccessoryBar.doneButton.addTarget(controller, action: #selector(BrowserViewController.dismissKeyboardTapped), for: .touchUpInside)
         toolbarView.delegate = controller
     }
 }

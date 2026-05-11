@@ -17,7 +17,6 @@ public class GeckoSession {
     let dispatcher: GeckoEventDispatcherWrapper = GeckoEventDispatcherWrapper()
     var window: GeckoViewWindow?
     var id: String?
-    public var diagnosticID: String? { id }
     public var isAddonPopup = false
     lazy var addonSessionListener = AddonSessionListener(session: self)
     public var userAgentOverride: String?
@@ -27,6 +26,16 @@ public class GeckoSession {
         guard isOpen() else { return }
         let uaValue: Any = ua ?? NSNull()
         dispatcher.dispatch(type: "GeckoView:UpdateSettings", message: ["userAgentOverride": uaValue])
+    }
+
+    public func updateLightSession(enabled: Bool, keep: Int) {
+        dispatcher.dispatch(
+            type: "GeckoView:UpdateLightSession",
+            message: [
+                "enabled": enabled,
+                "keep": keep,
+            ]
+        )
     }
     
     lazy var contentHandler = newContentHandler(self)

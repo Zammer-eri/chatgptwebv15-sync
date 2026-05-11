@@ -58,7 +58,13 @@ final class TabManagerImplementation: NSObject, TabManager {
     
     private func loadURL(_ url: String, in tab: Tab) {
         tab.session.updateUserAgent(UserAgentController.shared.userAgent(for: url, tabID: tab.id))
+        applyLightSessionSettings(to: tab.session)
         tab.session.load(url)
+    }
+
+    private func applyLightSessionSettings(to session: GeckoSession) {
+        let settings = LightSessionSettingsStore.shared.settings
+        session.updateLightSession(enabled: settings.enabled, keep: settings.keep)
     }
     
     private func makeTab(windowId: String?) -> Tab {
@@ -360,10 +366,7 @@ final class TabManagerImplementation: NSObject, TabManager {
         session.progressDelegate = self
         session.navigationDelegate = self
         session.open(windowId: windowId)
-        ChatGPTShellDiagnostics.log("native.session.open", fields: [
-            "sessionID": session.diagnosticID ?? "nil",
-            "windowID": windowId ?? "nil",
-        ])
+        applyLightSessionSettings(to: session)
         return session
     }
 }
@@ -385,10 +388,6 @@ extension TabManagerImplementation: ContentDelegate {
     func onPreviewImage(session: GeckoSession, previewImageUrl: String) {}
     
     func onFocusRequest(session: GeckoSession) {
-        ChatGPTShellDiagnostics.log("gecko.focusRequest", fields: [
-            "sessionID": session.diagnosticID ?? "nil",
-            "selected": selectedTab?.session === session,
-        ])
         guard selectedTab?.session === session else {
             return
         }
@@ -413,9 +412,6 @@ extension TabManagerImplementation: ContentDelegate {
     func onContextMenu(session: GeckoSession, screenX: Int, screenY: Int, element: ContextElement) {}
     
     func onCrash(session: GeckoSession) {
-        ChatGPTShellDiagnostics.log("gecko.contentCrash", fields: [
-            "sessionID": session.diagnosticID ?? "nil",
-        ])
         guard let index = tabIndex(for: session) else {
             return
         }
@@ -423,9 +419,6 @@ extension TabManagerImplementation: ContentDelegate {
     }
     
     func onKill(session: GeckoSession) {
-        ChatGPTShellDiagnostics.log("gecko.contentKill", fields: [
-            "sessionID": session.diagnosticID ?? "nil",
-        ])
         guard let index = tabIndex(for: session) else {
             return
         }
@@ -472,10 +465,6 @@ extension TabManagerImplementation: ContentDelegate {
 
 extension TabManagerImplementation: NavigationDelegate {
     func onLocationChange(session: GeckoSession, url: String?, permissions: [ContentPermission]) {
-        ChatGPTShellDiagnostics.log("gecko.locationChange", fields: [
-            "sessionID": session.diagnosticID ?? "nil",
-            "url": url ?? "nil",
-        ])
         guard let index = tabIndex(for: session) else {
             return
         }
@@ -494,6 +483,7 @@ extension TabManagerImplementation: NavigationDelegate {
         
         if let url {
             session.updateUserAgent(UserAgentController.shared.userAgent(for: url, tabID: tabs[index].id))
+            applyLightSessionSettings(to: session)
         }
         
         tabs[index].url = url
@@ -544,6 +534,7 @@ extension TabManagerImplementation: NavigationDelegate {
         
         let newTab = Tab(session: newSession)
         newSession.userAgentOverride = UserAgentController.shared.userAgent(for: uri, tabID: newTab.id)
+        applyLightSessionSettings(to: newSession)
         let controller = NowPlayingController(session: newSession)
         newSession.mediaSessionDelegate = controller
         newTab.nowPlayingController = controller
@@ -574,10 +565,6 @@ extension TabManagerImplementation: NavigationDelegate {
 
 extension TabManagerImplementation: ProgressDelegate {
     func onPageStart(session: GeckoSession, url: String) {
-        ChatGPTShellDiagnostics.log("gecko.pageStart", fields: [
-            "sessionID": session.diagnosticID ?? "nil",
-            "url": url,
-        ])
         guard let index = tabIndex(for: session) else {
             return
         }
@@ -595,19 +582,17 @@ extension TabManagerImplementation: ProgressDelegate {
         
         tabs[index].isLoading = true
         tabs[index].progress = 0
+        applyLightSessionSettings(to: session)
         delegate?.tabManager(self, didUpdateTabAt: index, reason: .loading)
     }
     
     func onPageStop(session: GeckoSession, success: Bool) {
-        ChatGPTShellDiagnostics.log("gecko.pageStop", fields: [
-            "sessionID": session.diagnosticID ?? "nil",
-            "success": success,
-        ])
         guard let index = tabIndex(for: session) else {
             return
         }
         
         tabs[index].isLoading = false
+        applyLightSessionSettings(to: session)
         delegate?.tabManager(self, didUpdateTabAt: index, reason: .loading)
         delegate?.tabManager(self, didUpdateTabAt: index, reason: .thumbnail)
     }

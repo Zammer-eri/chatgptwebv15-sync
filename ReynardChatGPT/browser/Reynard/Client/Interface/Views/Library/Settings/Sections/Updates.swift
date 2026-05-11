@@ -252,7 +252,7 @@ extension SettingsRootViewController {
         let isTrollStore = getEntitlementValue("com.apple.private.security.no-sandbox")
         
         if isTrollStore {
-            let tsURLStr = downloadURLStr.replacingOccurrences(of: "Reynard.ipa", with: "Reynard-TrollStore.tipa")
+            let tsURLStr = downloadURLStr.replacingOccurrences(of: "ChatGPT.ipa", with: "ChatGPT-TrollStore.tipa")
             let encoded = tsURLStr.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? tsURLStr
             /*
              if let schemeURL = URL(string: "apple-magnifier://install?url=" + encoded),
@@ -264,14 +264,14 @@ extension SettingsRootViewController {
             guard let tsURL = URL(string: tsURLStr) else { return }
             startUpdateDownload(
                 from: tsURL,
-                fileName: "Reynard-TrollStore.tipa",
+                fileName: "ChatGPT-TrollStore.tipa",
                 message: "When the download finishes, choose TrollStore in the share sheet to install the update."
             )
         } else {
             startUpdateDownload(
                 from: downloadURL,
-                fileName: "Reynard.ipa",
-                message: "When the download finishes, choose the app that you used to sideload Reynard in the share sheet to install the update."
+                fileName: "ChatGPT.ipa",
+                message: "When the download finishes, choose the app that you used to sideload ChatGPT in the share sheet to install the update."
             )
         }
     }

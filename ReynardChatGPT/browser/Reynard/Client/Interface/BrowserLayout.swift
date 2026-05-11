@@ -19,7 +19,7 @@ final class BrowserLayout {
     private var focusedInputBottomRatio: CGFloat?
     private var geckoPhoneVerticalOffset: CGFloat = 0
     private var focusedInputMetricsTask: Task<Void, Never>?
-    
+
     init(controller: BrowserViewController) {
         self.controller = controller
     }
@@ -35,6 +35,7 @@ final class BrowserLayout {
         
         view.addSubview(ui.chromeContainer.bottomSafeAreaFillView)
         view.addSubview(ui.geckoView)
+        view.addSubview(ui.keyboardAccessoryBar.view)
         view.addSubview(ui.chromeContainer.containerView)
         view.addSubview(ui.topBar.safeAreaFillView)
         ui.chromeContainer.containerView.addSubview(ui.addressBar)
@@ -96,6 +97,8 @@ final class BrowserLayout {
         ui.keyboardDismissButton.centerYConstraint = ui.keyboardDismissButton.button.centerYAnchor.constraint(equalTo: ui.addressBar.centerYAnchor)
         ui.keyboardDismissButton.widthConstraint = ui.keyboardDismissButton.button.widthAnchor.constraint(equalToConstant: 42)
         ui.keyboardDismissButton.heightConstraint = ui.keyboardDismissButton.button.heightAnchor.constraint(equalToConstant: 42)
+        ui.keyboardAccessoryBottomConstraint = ui.keyboardAccessoryBar.view.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+        ui.keyboardAccessoryHeightConstraint = ui.keyboardAccessoryBar.view.heightAnchor.constraint(equalToConstant: 44)
         
         ui.topBar.heightConstraint = ui.topBar.barView.heightAnchor.constraint(equalToConstant: 52)
         ui.topBar.topConstraint = ui.topBar.barView.topAnchor.constraint(equalTo: view.topAnchor)
@@ -144,6 +147,10 @@ final class BrowserLayout {
             ui.keyboardDismissButton.centerYConstraint,
             ui.keyboardDismissButton.widthConstraint,
             ui.keyboardDismissButton.heightConstraint,
+            ui.keyboardAccessoryBar.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            ui.keyboardAccessoryBar.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            ui.keyboardAccessoryBottomConstraint,
+            ui.keyboardAccessoryHeightConstraint,
             
             ui.toolbarView.leadingAnchor.constraint(equalTo: ui.chromeContainer.containerView.leadingAnchor, constant: 24),
             ui.toolbarView.trailingAnchor.constraint(equalTo: ui.chromeContainer.containerView.trailingAnchor, constant: -24),
@@ -228,9 +235,6 @@ final class BrowserLayout {
     }
     
     func observeKeyboard() {
-        ChatGPTShellDiagnostics.log("native.keyboardObserversInstalled", fields: [
-            "path": ChatGPTShellDiagnostics.logFilePath,
-        ])
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(keyboardWillChangeFrame(_:)),
@@ -454,23 +458,14 @@ final class BrowserLayout {
         let curveRaw = info[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 7
         let curve = UIView.AnimationOptions(rawValue: curveRaw << 16)
         requestFocusedInputMetricsIfNeeded(duration: duration, curve: curve)
-
-        ChatGPTShellDiagnostics.log("native.keyboardWillChangeFrame", fields: [
-            "duration": duration,
-            "keyboardHeight": keyboardHeight,
-            "keyboardFrame": ChatGPTShellDiagnostics.describeRect(keyboardFrame),
-            "screenFrame": ChatGPTShellDiagnostics.describeRect(frameValue.cgRectValue),
-            "isSearchFocused": controller.isSearchFocused,
-            "tabOverviewVisible": controller.tabOverviewPresentation.isVisible,
-            "focusedDescendant": ChatGPTShellDiagnostics.describeObject(controller.browserUI.geckoView.focusedDescendant()),
-            "geckoOffset": geckoPhoneVerticalOffset,
-        ])
         
         let shouldDockChromeToKeyboard = !controller.usesPadChromeLayout
         && controller.isSearchFocused
         && !controller.tabOverviewPresentation.isVisible
         && keyboardHeight > 0
         ui.phoneChromeBottomConstraint.constant = shouldDockChromeToKeyboard ? -keyboardHeight : 0
+        ui.keyboardAccessoryBottomConstraint.constant = -keyboardHeight
+        updateKeyboardAccessoryVisibility(keyboardVisible: keyboardHeight > 0)
         updateChromeLayoutState()
         
         UIView.animate(withDuration: duration, delay: 0, options: [curve]) {
@@ -481,19 +476,12 @@ final class BrowserLayout {
     
     @objc private func keyboardWillHide(_ notification: Notification) {
         let ui = controller.browserUI
-        ChatGPTShellDiagnostics.log("native.keyboardWillHide", fields: [
-            "keyboardHeight": keyboardHeight,
-            "keyboardFrame": ChatGPTShellDiagnostics.describeRect(keyboardFrame),
-            "isSearchFocused": controller.isSearchFocused,
-            "tabOverviewVisible": controller.tabOverviewPresentation.isVisible,
-            "focusedDescendant": ChatGPTShellDiagnostics.describeObject(controller.browserUI.geckoView.focusedDescendant()),
-            "geckoOffset": geckoPhoneVerticalOffset,
-        ])
-        
         keyboardHeight = 0
         keyboardFrame = .zero
         resetFocusedInputRelocation()
         ui.phoneChromeBottomConstraint.constant = 0
+        ui.keyboardAccessoryBottomConstraint.constant = 0
+        updateKeyboardAccessoryVisibility(keyboardVisible: false)
         updateChromeLayoutState()
         
         let duration = (notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval) ?? 0.25
@@ -505,6 +493,20 @@ final class BrowserLayout {
         }
     }
     
+    private func updateKeyboardAccessoryVisibility(keyboardVisible: Bool) {
+        let bar = controller.browserUI.keyboardAccessoryBar.view
+        let shouldShow = keyboardVisible
+            && !controller.isSearchFocused
+            && !controller.tabOverviewPresentation.isVisible
+        if shouldShow {
+            bar.isHidden = false
+        }
+        bar.alpha = shouldShow ? 1 : 0
+        if !shouldShow {
+            bar.isHidden = true
+        }
+    }
+
     private func updatePhoneDismissKeyboardButtonShadowPath() {
         let button = controller.browserUI.keyboardDismissButton.button
         guard !controller.usesPadChromeLayout else {

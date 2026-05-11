@@ -6,17 +6,29 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.minh-ton.Reynard</string>
+			<string>com.codex.chatgpt</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>reynard</string>
+				<string>chatgptwebv15</string>
 				<string>http</string>
 				<string>https</string>
 			</array>
 		</dict>
 	</array>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+	<key>CFBundleDisplayName</key>
+	<string>ChatGPT</string>
 	<key>GeckoVersion</key>
 	<string>$(GECKO_VERSION)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>ChatGPT uses your camera when you attach photos or video.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>ChatGPT uses your microphone for voice input when requested.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>ChatGPT can save generated images to your photo library.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>ChatGPT uses your photo library when you attach images.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

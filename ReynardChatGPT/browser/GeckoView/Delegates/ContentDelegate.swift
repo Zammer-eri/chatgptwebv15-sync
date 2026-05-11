@@ -110,7 +110,6 @@ enum ContentEvents: String, CaseIterable {
     case cookieBannerEventHandled = "GeckoView:CookieBannerEvent:Handled"
     case savePdf = "GeckoView:SavePdf"
     case onProductUrl = "GeckoView:OnProductUrl"
-    case chatGPTShellDiagnostic = "GeckoView:ChatGPTShellDiagnostic"
 }
 
 func newContentHandler(_ session: GeckoSession) -> GeckoSessionHandler {
@@ -276,18 +275,6 @@ func newContentHandler(_ session: GeckoSession) -> GeckoSessionHandler {
             
         case .onProductUrl:
             delegate?.onProductUrl(session: session)
-            return nil
-
-        case .chatGPTShellDiagnostic:
-            var fields: [String: Any] = [:]
-            for (key, value) in message ?? [:] {
-                fields[key] = value ?? "nil"
-            }
-            fields["sessionID"] = session.diagnosticID ?? "nil"
-            ChatGPTShellDiagnostics.log(
-                "page.\((message?["diagnosticEvent"] as? String) ?? "event")",
-                fields: fields
-            )
             return nil
         }
     }
