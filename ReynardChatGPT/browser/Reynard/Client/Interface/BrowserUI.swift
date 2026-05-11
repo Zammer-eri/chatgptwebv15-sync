@@ -6,7 +6,6 @@
 //
 
 import GeckoView
-import QuartzCore
 import UIKit
 
 final class BrowserUI {
@@ -15,9 +14,6 @@ final class BrowserUI {
     let geckoView: GeckoView = {
         let view = GeckoView()
         view.translatesAutoresizingMaskIntoConstraints = false
-        if #available(iOS 15.0, *) {
-            view.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
-        }
         return view
     }()
     
