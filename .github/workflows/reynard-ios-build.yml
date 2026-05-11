@@ -25,8 +25,6 @@ jobs:
         run: |
           xcodebuild -version
           python3 --version
-          rustc --version
-          cargo --version
 
       - name: Install packaging tools
         run: brew install ldid
@@ -43,20 +41,6 @@ jobs:
       - name: Prepare prebuilt Gecko engine
         working-directory: ReynardChatGPT
         run: ./tools/development/setup-prebuilt-gecko.sh
-
-      - name: Cache idevice build
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/git
-            ~/.cargo/registry
-            ReynardChatGPT/support/idevice/target
-            ReynardChatGPT/browser/Reynard/JIT/libidevice_ffi.a
-          key: reynard-idevice-${{ runner.os }}-${{ hashFiles('ReynardChatGPT/tools/development/build-idevice.sh') }}
-
-      - name: Build idevice bridge
-        working-directory: ReynardChatGPT
-        run: ./tools/development/build-idevice.sh
 
       - name: Build iOS archive
         working-directory: ReynardChatGPT

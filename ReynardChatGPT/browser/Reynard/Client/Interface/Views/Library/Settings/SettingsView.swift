@@ -42,10 +42,7 @@ final class SettingsRootViewController: SettingsTableViewController {
             hiddenSections.insert(.tab)
         }
         
-        // if using Trollstore or jailbroken, hide JIT section
-        if getEntitlementValue("com.apple.private.security.no-sandbox") {
-            hiddenSections.insert(.jit)
-        }
+        hiddenSections.insert(.jit)
         
         return Section.allCases.filter { !hiddenSections.contains($0) }
     }

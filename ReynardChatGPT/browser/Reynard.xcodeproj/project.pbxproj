@@ -107,6 +107,12 @@
 		018C67B02F2F289E001F0BBB /* Exceptions for "Reynard" folder in "Reynard" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				JIT/DDIManager.swift,
+				JIT/IdeviceFFI.h,
+				JIT/JITSupport.h,
+				JIT/JITSupport.m,
+				JIT/JITUtils.h,
+				JIT/JITUtils.m,
 				Resources/Info.plist,
 				TrollStore/JIT/ptrace_jit.c,
 			);
@@ -513,11 +519,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/Frameworks/GeckoView.framework",
 				);
-				LIBRARY_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(SRCROOT)/Reynard/JIT",
-					"$(PROJECT_DIR)/Reynard/JIT",
-				);
+				LIBRARY_SEARCH_PATHS = "$(inherited)";
 				MARKETING_VERSION = "$(CURRENT_VERSION)";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
@@ -578,11 +580,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/Frameworks/GeckoView.framework",
 				);
-				LIBRARY_SEARCH_PATHS = (
-					"$(inherited)",
-					"$(SRCROOT)/Reynard/JIT",
-					"$(PROJECT_DIR)/Reynard/JIT",
-				);
+				LIBRARY_SEARCH_PATHS = "$(inherited)";
 				MARKETING_VERSION = "$(CURRENT_VERSION)";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
