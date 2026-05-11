@@ -12,7 +12,7 @@ DIST_DIR="$ROOT_DIR/engine/prebuilt-gecko/obj-aarch64-apple-ios/dist"
 BIN_DIR="$DIST_DIR/bin"
 INCLUDE_DIR="$DIST_DIR/include/GeckoView"
 MARKER="$ROOT_DIR/engine/prebuilt-gecko/.release"
-SHIM_VERSION="4"
+SHIM_VERSION="5"
 
 if [ -f "$BIN_DIR/XUL" ] && [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "${TAG}/${ASSET}/shim-${SHIM_VERSION}" ]; then
 	echo "Using cached prebuilt Gecko dist at $DIST_DIR"
