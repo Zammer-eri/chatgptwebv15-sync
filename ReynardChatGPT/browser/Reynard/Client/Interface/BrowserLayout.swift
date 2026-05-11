@@ -10,6 +10,7 @@ import UIKit
 
 final class BrowserLayout {
     private static let chatGPTShellMode = true
+    private static let shellFocusedInputBottomRatio: CGFloat = 0.96
     private unowned let controller: BrowserViewController
     private var keyboardHeight: CGFloat = 0
     private var keyboardFrame: CGRect = .zero
@@ -524,7 +525,8 @@ final class BrowserLayout {
     
     private func requestFocusedInputMetricsIfNeeded(duration: TimeInterval, curve: UIView.AnimationOptions) {
         if Self.chatGPTShellMode {
-            focusedInputBottomRatio = nil
+            // Gecko's focused-input metrics query crashes on iOS 15.6; use a safe shell-mode estimate instead.
+            focusedInputBottomRatio = Self.shellFocusedInputBottomRatio
             applyFocusedInputRelocation(duration: duration, curve: curve)
             return
         }
