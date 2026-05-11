@@ -102,6 +102,10 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         super.viewDidLoad()
         
         view.backgroundColor = .systemBackground
+        ChatGPTShellDiagnostics.start(fields: [
+            "controller": "BrowserViewController",
+            "idiom": traitCollection.userInterfaceIdiom.rawValue,
+        ])
         
         if usesEmbeddedSplitRoot {
             configureEmbeddedSplitRoot()
@@ -176,6 +180,10 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         guard !usesEmbeddedSplitRoot else {
             return
         }
+        ChatGPTShellDiagnostics.log("native.viewWillDisappear.endEditing", fields: [
+            "animated": animated,
+            "firstResponder": ChatGPTShellDiagnostics.describeResponder(ChatGPTShellDiagnostics.currentFirstResponder()),
+        ])
         view.endEditing(true)
     }
     
@@ -626,6 +634,10 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     }
     
     func addressBarDidSubmit(_ searchTerm: String) {
+        ChatGPTShellDiagnostics.log("native.addressBar.submit", fields: [
+            "length": searchTerm.count,
+            "firstResponder": ChatGPTShellDiagnostics.describeResponder(ChatGPTShellDiagnostics.currentFirstResponder()),
+        ])
         browse(to: searchTerm)
         view.endEditing(true)
     }
@@ -786,6 +798,9 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     }
     
     @objc func dismissKeyboardTapped() {
+        ChatGPTShellDiagnostics.log("native.dismissKeyboardTapped", fields: [
+            "firstResponder": ChatGPTShellDiagnostics.describeResponder(ChatGPTShellDiagnostics.currentFirstResponder()),
+        ])
         browserActions.dismissKeyboard()
     }
     

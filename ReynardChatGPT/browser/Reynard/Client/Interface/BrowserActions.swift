@@ -57,6 +57,9 @@ final class BrowserActions {
     }
     
     func dismissKeyboard() {
+        ChatGPTShellDiagnostics.log("native.endEditing", fields: [
+            "firstResponder": ChatGPTShellDiagnostics.describeResponder(ChatGPTShellDiagnostics.currentFirstResponder()),
+        ])
         controller.view.endEditing(true)
     }
     

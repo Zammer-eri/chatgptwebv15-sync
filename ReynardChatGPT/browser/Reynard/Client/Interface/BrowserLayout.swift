@@ -228,6 +228,9 @@ final class BrowserLayout {
     }
     
     func observeKeyboard() {
+        ChatGPTShellDiagnostics.log("native.keyboardObserversInstalled", fields: [
+            "path": ChatGPTShellDiagnostics.logFileURL.path,
+        ])
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(keyboardWillChangeFrame(_:)),
@@ -451,6 +454,18 @@ final class BrowserLayout {
         let curveRaw = info[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 7
         let curve = UIView.AnimationOptions(rawValue: curveRaw << 16)
         requestFocusedInputMetricsIfNeeded(duration: duration, curve: curve)
+
+        ChatGPTShellDiagnostics.log("native.keyboardWillChangeFrame", fields: [
+            "duration": duration,
+            "keyboardHeight": keyboardHeight,
+            "keyboardFrame": ChatGPTShellDiagnostics.describeRect(keyboardFrame),
+            "screenFrame": ChatGPTShellDiagnostics.describeRect(frameValue.cgRectValue),
+            "isSearchFocused": controller.isSearchFocused,
+            "tabOverviewVisible": controller.tabOverviewPresentation.isVisible,
+            "firstResponder": ChatGPTShellDiagnostics.describeResponder(ChatGPTShellDiagnostics.currentFirstResponder()),
+            "focusedDescendant": ChatGPTShellDiagnostics.describeResponder(controller.browserUI.geckoView.focusedDescendant()),
+            "geckoOffset": geckoPhoneVerticalOffset,
+        ])
         
         let shouldDockChromeToKeyboard = !controller.usesPadChromeLayout
         && controller.isSearchFocused
@@ -467,6 +482,15 @@ final class BrowserLayout {
     
     @objc private func keyboardWillHide(_ notification: Notification) {
         let ui = controller.browserUI
+        ChatGPTShellDiagnostics.log("native.keyboardWillHide", fields: [
+            "keyboardHeight": keyboardHeight,
+            "keyboardFrame": ChatGPTShellDiagnostics.describeRect(keyboardFrame),
+            "isSearchFocused": controller.isSearchFocused,
+            "tabOverviewVisible": controller.tabOverviewPresentation.isVisible,
+            "firstResponder": ChatGPTShellDiagnostics.describeResponder(ChatGPTShellDiagnostics.currentFirstResponder()),
+            "focusedDescendant": ChatGPTShellDiagnostics.describeResponder(controller.browserUI.geckoView.focusedDescendant()),
+            "geckoOffset": geckoPhoneVerticalOffset,
+        ])
         
         keyboardHeight = 0
         keyboardFrame = .zero
@@ -665,7 +689,7 @@ private extension UIView {
             return responder
         }
 
-        guard let responder = UIResponder.currentFirstResponder() as? UIView,
+        guard let responder = ChatGPTShellDiagnostics.currentFirstResponder() as? UIView,
               responder.isDescendant(of: self) else {
             return nil
         }
@@ -686,27 +710,4 @@ private extension UIView {
 
         return nil
     }
-}
-
-private extension UIResponder {
-    static func currentFirstResponder() -> UIResponder? {
-        FirstResponderCapture.responder = nil
-        UIApplication.shared.sendAction(
-            #selector(captureFirstResponder(_:)),
-            to: nil,
-            from: nil,
-            for: nil
-        )
-        let responder = FirstResponderCapture.responder
-        FirstResponderCapture.responder = nil
-        return responder
-    }
-
-    @objc private func captureFirstResponder(_ sender: Any?) {
-        FirstResponderCapture.responder = self
-    }
-}
-
-private enum FirstResponderCapture {
-    static var responder: UIResponder?
 }

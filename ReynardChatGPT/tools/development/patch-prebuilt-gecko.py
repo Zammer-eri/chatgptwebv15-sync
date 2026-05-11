@@ -5,6 +5,7 @@ import sys
 
 
 EMOJI_RENDERER_MARKER = "installChatGPTShellEmojiRenderer"
+DIAGNOSTICS_MARKER = "installChatGPTShellDiagnostics"
 
 
 EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
@@ -148,34 +149,298 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
 '''
 
 
+DIAGNOSTICS_METHOD = r'''  installChatGPTShellDiagnostics() {
+    const win = this.contentWindow;
+    const doc = win?.document;
+    if (!win || !doc || win.__reynardChatGPTDiagnosticsInstalled) {
+      return;
+    }
+
+    try {
+      Object.defineProperty(win, "__reynardChatGPTDiagnosticsInstalled", {
+        value: true,
+      });
+    } catch (_) {
+      win.__reynardChatGPTDiagnosticsInstalled = true;
+    }
+
+    const isChatGPT = () => {
+      const host = win.location?.hostname || "";
+      return host === "chatgpt.com" || host.endsWith(".chatgpt.com");
+    };
+
+    const clean = value =>
+      String(value ?? "")
+        .replace(/\s+/g, " ")
+        .slice(0, 140);
+
+    const isEditable = element => {
+      if (!element) {
+        return false;
+      }
+      return (
+        (win.HTMLInputElement && element instanceof win.HTMLInputElement) ||
+        (win.HTMLTextAreaElement && element instanceof win.HTMLTextAreaElement) ||
+        element.isContentEditable === true
+      );
+    };
+
+    const elementSummary = element => {
+      if (!element) {
+        return "nil";
+      }
+
+      const tag = element.localName || element.nodeName || "unknown";
+      const parts = [tag];
+      if (element.id) {
+        parts.push(`#${clean(element.id)}`);
+      }
+      if (element.className && typeof element.className === "string") {
+        parts.push(`.${clean(element.className).replace(/\s+/g, ".")}`);
+      }
+
+      for (const name of ["data-testid", "aria-label", "role", "contenteditable", "name", "type"]) {
+        const value = element.getAttribute?.(name);
+        if (value) {
+          parts.push(`[${name}=${clean(value)}]`);
+        }
+      }
+
+      return parts.join("");
+    };
+
+    const editableTextLength = element => {
+      if (!isEditable(element)) {
+        return 0;
+      }
+      if (typeof element.value === "string") {
+        return element.value.length;
+      }
+      return (element.textContent || "").length;
+    };
+
+    const editableHasDraft = element => {
+      if (!isEditable(element)) {
+        return false;
+      }
+      const value =
+        typeof element.value === "string" ? element.value : element.textContent || "";
+      return value.replace(/\u200b/g, "").trim().length > 0;
+    };
+
+    const streamingActive = () => {
+      const candidates = doc.querySelectorAll("button,[role='button'],[data-testid]");
+      for (const element of candidates) {
+        const signature = clean(
+          `${element.getAttribute?.("aria-label") || ""} ${
+            element.getAttribute?.("data-testid") || ""
+          } ${element.textContent || ""}`
+        );
+        if (/\b(stop|interrupt|cancel response|stop generating)\b/i.test(signature)) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const activeState = () => {
+      const active = doc.activeElement;
+      return {
+        activeElement: elementSummary(active),
+        activeEditable: isEditable(active),
+        activeTextLength: editableTextLength(active),
+        hasDraft: editableHasDraft(active),
+        streaming: streamingActive(),
+        visibilityState: doc.visibilityState,
+        innerHeight: win.innerHeight,
+        visualViewportHeight: Math.round(win.visualViewport?.height || 0),
+        visualViewportOffsetTop: Math.round(win.visualViewport?.offsetTop || 0),
+      };
+    };
+
+    const dispatchDiagnostic = (diagnosticEvent, extra = {}) => {
+      if (!isChatGPT()) {
+        return;
+      }
+
+      const payload = {
+        type: "GeckoView:ChatGPTShellDiagnostic",
+        diagnosticEvent,
+        source: "page",
+        url: clean(win.location?.href || ""),
+        ...activeState(),
+        ...extra,
+      };
+
+      try {
+        this.eventDispatcher?.sendRequest(payload);
+      } catch (error) {
+        try {
+          console.warn("ChatGPT shell diagnostic dispatch failed", error);
+        } catch (_) {}
+      }
+    };
+
+    const keyName = event => {
+      if (!event?.key) {
+        return "";
+      }
+      return event.key.length === 1 ? "character" : event.key;
+    };
+
+    let lastStateSignature = "";
+    let stateScheduled = false;
+
+    const dispatchStateIfChanged = diagnosticEvent => {
+      stateScheduled = false;
+      if (!isChatGPT()) {
+        return;
+      }
+
+      const state = activeState();
+      const signature = JSON.stringify(state);
+      if (signature === lastStateSignature) {
+        return;
+      }
+      lastStateSignature = signature;
+      dispatchDiagnostic(diagnosticEvent, { stateSignature: signature });
+    };
+
+    const scheduleStateCheck = diagnosticEvent => {
+      if (stateScheduled) {
+        return;
+      }
+      stateScheduled = true;
+      win.setTimeout(() => dispatchStateIfChanged(diagnosticEvent), 180);
+    };
+
+    const eventOptions = { capture: true, passive: true };
+    for (const eventName of ["focusin", "focusout", "blur", "input", "beforeinput"]) {
+      doc.addEventListener(
+        eventName,
+        event => {
+          dispatchDiagnostic(eventName, {
+            target: elementSummary(event.target),
+            relatedTarget: elementSummary(event.relatedTarget),
+            inputType: clean(event.inputType || ""),
+            isComposing: event.isComposing === true,
+          });
+        },
+        eventOptions
+      );
+    }
+
+    for (const eventName of ["keydown", "keyup"]) {
+      doc.addEventListener(
+        eventName,
+        event => {
+          dispatchDiagnostic(eventName, {
+            target: elementSummary(event.target),
+            key: keyName(event),
+            code: event.key?.length === 1 ? "character" : clean(event.code || ""),
+            metaKey: event.metaKey === true,
+            altKey: event.altKey === true,
+            ctrlKey: event.ctrlKey === true,
+            shiftKey: event.shiftKey === true,
+          });
+        },
+        eventOptions
+      );
+    }
+
+    doc.addEventListener(
+      "selectionchange",
+      () => scheduleStateCheck("selectionchange"),
+      eventOptions
+    );
+    doc.addEventListener(
+      "visibilitychange",
+      () => dispatchDiagnostic("visibilitychange"),
+      eventOptions
+    );
+    win.visualViewport?.addEventListener(
+      "resize",
+      () => dispatchDiagnostic("visualViewport.resize"),
+      eventOptions
+    );
+    win.visualViewport?.addEventListener(
+      "scroll",
+      () => scheduleStateCheck("visualViewport.scroll"),
+      eventOptions
+    );
+
+    const observer = new win.MutationObserver(() => scheduleStateCheck("mutation"));
+    if (doc.documentElement) {
+      observer.observe(doc.documentElement, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["aria-label", "data-testid", "disabled", "class"],
+      });
+    }
+
+    dispatchDiagnostic("diagnostics.installed");
+  }
+
+'''
+
+
 def patch_geckoview_content_child(bin_dir: Path) -> None:
     path = bin_dir / "actors" / "GeckoViewContentChild.sys.mjs"
     text = path.read_text()
-    if EMOJI_RENDERER_MARKER in text:
+    if EMOJI_RENDERER_MARKER in text and DIAGNOSTICS_MARKER in text:
         return
 
-    original_actor_created = """  actorCreated() {
+    actor_created_variants = [
+        (
+            """  actorCreated() {
     this.pageShow = new Promise(resolve => {
       this.receivedPageShow = resolve;
     });
   }
-"""
-    patched_actor_created = """  actorCreated() {
+""",
+            """  actorCreated() {
     this.pageShow = new Promise(resolve => {
       this.receivedPageShow = resolve;
     });
     this.installChatGPTShellEmojiRenderer();
+    this.installChatGPTShellDiagnostics();
   }
-"""
+""",
+        ),
+        (
+            """  actorCreated() {
+    super.actorCreated();
 
-    if original_actor_created not in text:
+    this.pageShow = new Promise(resolve => {
+      this.receivedPageShow = resolve;
+    });
+  }
+""",
+            """  actorCreated() {
+    super.actorCreated();
+
+    this.pageShow = new Promise(resolve => {
+      this.receivedPageShow = resolve;
+    });
+    this.installChatGPTShellEmojiRenderer();
+    this.installChatGPTShellDiagnostics();
+  }
+""",
+        ),
+    ]
+
+    for original_actor_created, patched_actor_created in actor_created_variants:
+        if original_actor_created in text:
+            text = text.replace(original_actor_created, patched_actor_created, 1)
+            break
+    else:
         raise RuntimeError(f"Cannot find actorCreated hook in {path}")
-    text = text.replace(original_actor_created, patched_actor_created, 1)
 
     marker = "  collectSessionState() {\n"
     if marker not in text:
         raise RuntimeError(f"Cannot find collectSessionState hook in {path}")
-    text = text.replace(marker, EMOJI_RENDERER_METHOD + marker, 1)
+    text = text.replace(marker, EMOJI_RENDERER_METHOD + DIAGNOSTICS_METHOD + marker, 1)
 
     original_pageshow = """      case "pageshow": {
         this.receivedPageShow();
@@ -184,6 +449,7 @@ def patch_geckoview_content_child(bin_dir: Path) -> None:
 """
     patched_pageshow = """      case "pageshow": {
         this.installChatGPTShellEmojiRenderer();
+        this.installChatGPTShellDiagnostics();
         this.receivedPageShow();
         break;
       }
