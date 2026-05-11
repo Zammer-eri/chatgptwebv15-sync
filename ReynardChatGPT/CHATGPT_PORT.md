@@ -9,7 +9,7 @@ This folder is a vendored private fork of Reynard Browser, adapted as the experi
 - Adds hidden edge gestures:
   - Swipe from the left edge to reload the current ChatGPT page.
   - Swipe from the right edge to open Reynard's menu/settings sheet.
-- Uses `com.codex.ChatGPTReynard` bundle identifiers so it can coexist with the existing fallback app.
+- Uses Reynard's original `com.minh-ton.Reynard` bundle identifiers to keep TrollStore entitlements and process-extension identity aligned with upstream.
 - Keeps the original `Downloads/ChatGPTWebV15` WKWebView app untouched.
 
 ## Build model

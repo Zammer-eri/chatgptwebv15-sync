@@ -24,6 +24,7 @@ xcodebuild archive \
 	-arch arm64 \
 	-configuration Release \
 	-xcconfig "$DIST_DIR/Reynard.xcconfig" \
+	ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=YES \
 	CODE_SIGNING_ALLOWED=NO \
 	CODE_SIGNING_REQUIRED=NO \
 	CODE_SIGN_IDENTITY=""

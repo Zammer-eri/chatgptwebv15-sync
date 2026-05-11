@@ -233,7 +233,7 @@ NSData *extractPKCS1PrivateKeyFromPKCS8(NSData *pkcs8Key) {
     return [NSData dataWithBytes:bytes + offset length:fieldLength];
 }
 
-static NSString * const legacyPairingIdentityLabel = @"com.codex.ChatGPTReynard.LegacyPairingIdentity";
+static NSString * const legacyPairingIdentityLabel = @"com.minh-ton.Reynard.LegacyPairingIdentity";
 
 SecKeyRef createPrivateKeyFromPairingData(NSData *privateKeyData) {
     if (!privateKeyData || privateKeyData.length == 0) return NULL;
