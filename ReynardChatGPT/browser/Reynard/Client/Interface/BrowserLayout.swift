@@ -15,12 +15,14 @@ final class BrowserLayout {
     private var keyboardFrame: CGRect = .zero
     private var focusedInputBottomRatio: CGFloat?
     private var geckoPhoneVerticalOffset: CGFloat = 0
+    private var focusedInputMetricsTask: Task<Void, Never>?
     
     init(controller: BrowserViewController) {
         self.controller = controller
     }
     
     deinit {
+        focusedInputMetricsTask?.cancel()
         NotificationCenter.default.removeObserver(self)
     }
     
@@ -525,18 +527,40 @@ final class BrowserLayout {
               !controller.tabOverviewPresentation.isVisible,
               keyboardHeight > 0 else {
             focusedInputBottomRatio = nil
+            focusedInputMetricsTask?.cancel()
+            focusedInputMetricsTask = nil
             applyFocusedInputRelocation(duration: duration, curve: curve)
             return
         }
 
+        focusedInputMetricsTask?.cancel()
         focusedInputBottomRatio = focusedTextInputBottomRatio()
         applyFocusedInputRelocation(duration: duration, curve: curve)
+        startFocusedInputMetricsPolling(duration: duration, curve: curve)
+    }
+
+    private func startFocusedInputMetricsPolling(duration: TimeInterval, curve: UIView.AnimationOptions) {
+        focusedInputMetricsTask = Task { @MainActor [weak self] in
+            while true {
+                try? await Task.sleep(nanoseconds: 150_000_000)
+                guard let self,
+                      !Task.isCancelled,
+                      self.keyboardHeight > 0,
+                      !self.controller.isSearchFocused,
+                      !self.controller.tabOverviewPresentation.isVisible else {
+                    return
+                }
+
+                self.focusedInputBottomRatio = self.focusedTextInputBottomRatio()
+                self.applyFocusedInputRelocation(duration: duration, curve: curve)
+            }
+        }
     }
 
     private func focusedTextInputBottomRatio() -> CGFloat? {
         let geckoView = controller.browserUI.geckoView
         guard geckoView.bounds.height > 1,
-              let focusedView = geckoView.firstResponderDescendant(),
+              let focusedView = geckoView.focusedDescendant(),
               let textInput = focusedView as? (UIView & UITextInput),
               let selectedRange = textInput.selectedTextRange else {
             return nil
@@ -545,7 +569,7 @@ final class BrowserLayout {
         let inputRect = selectedRange.isEmpty ? textInput.caretRect(for: selectedRange.end) : textInput.firstRect(for: selectedRange)
         guard inputRect.isFinite,
               !inputRect.isNull,
-              inputRect.height > 0 else {
+              inputRect.maxY > 0 else {
             return nil
         }
 
@@ -574,6 +598,8 @@ final class BrowserLayout {
     }
     
     private func resetFocusedInputRelocation() {
+        focusedInputMetricsTask?.cancel()
+        focusedInputMetricsTask = nil
         focusedInputBottomRatio = nil
         geckoPhoneVerticalOffset = 0
     }
@@ -622,7 +648,20 @@ private extension CGRect {
 }
 
 private extension UIView {
-    func firstResponderDescendant() -> UIView? {
+    func focusedDescendant() -> UIView? {
+        if let responder = firstResponderDescendant() {
+            return responder
+        }
+
+        guard let responder = UIResponder.currentFirstResponder() as? UIView,
+              responder.isDescendant(of: self) else {
+            return nil
+        }
+
+        return responder
+    }
+
+    private func firstResponderDescendant() -> UIView? {
         if isFirstResponder {
             return self
         }
@@ -635,4 +674,27 @@ private extension UIView {
 
         return nil
     }
+}
+
+private extension UIResponder {
+    static func currentFirstResponder() -> UIResponder? {
+        FirstResponderCapture.responder = nil
+        UIApplication.shared.sendAction(
+            #selector(captureFirstResponder(_:)),
+            to: nil,
+            from: nil,
+            for: nil
+        )
+        let responder = FirstResponderCapture.responder
+        FirstResponderCapture.responder = nil
+        return responder
+    }
+
+    @objc private func captureFirstResponder(_ sender: Any?) {
+        FirstResponderCapture.responder = self
+    }
+}
+
+private enum FirstResponderCapture {
+    static var responder: UIResponder?
 }
