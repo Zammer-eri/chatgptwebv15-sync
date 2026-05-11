@@ -10,7 +10,9 @@ import UIKit
 
 final class BrowserLayout {
     private static let chatGPTShellMode = true
-    private static let shellFocusedInputBottomRatio: CGFloat = 0.96
+    private static let shellFocusedInputBottomRatio: CGFloat = 0.88
+    private static let shellMaximumKeyboardLift: CGFloat = 150
+    private static let shellMaximumKeyboardLiftRatio: CGFloat = 0.45
     private unowned let controller: BrowserViewController
     private var keyboardHeight: CGFloat = 0
     private var keyboardFrame: CGRect = .zero
@@ -614,6 +616,12 @@ final class BrowserLayout {
         
         let focusBottom = geckoFrame.height * bottomRatio
         let visibleBottom = max(0, geckoFrame.height - keyboardOverlap - 12)
-        return min(keyboardOverlap, max(0, focusBottom - visibleBottom))
+        let requestedLift = min(keyboardOverlap, max(0, focusBottom - visibleBottom))
+        guard Self.chatGPTShellMode else {
+            return requestedLift
+        }
+
+        let maximumShellLift = min(Self.shellMaximumKeyboardLift, keyboardOverlap * Self.shellMaximumKeyboardLiftRatio)
+        return min(requestedLift, maximumShellLift)
     }
 }
