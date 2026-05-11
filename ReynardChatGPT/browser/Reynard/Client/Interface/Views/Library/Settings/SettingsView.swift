@@ -302,6 +302,40 @@ final class SettingsView: UIView {
     }
 }
 
+extension SettingsRootViewController {
+    func attachProgressView(_ progressView: UIProgressView, to alert: UIAlertController) {
+        guard let messageText = alert.message,
+              let messageLabel = alert.view.firstDescendantLabel(withText: messageText) else { return }
+        alert.view.addSubview(progressView)
+        let cancelAnchorView: UIView? = {
+            if let button = alert.view.firstDescendantButton(withTitle: "Cancel") { return button }
+            return alert.view.firstDescendantView(containingLabelText: "Cancel")
+        }()
+        var constraints = [
+            progressView.widthAnchor.constraint(equalTo: messageLabel.widthAnchor),
+            progressView.centerXAnchor.constraint(equalTo: messageLabel.centerXAnchor),
+            progressView.topAnchor.constraint(greaterThanOrEqualTo: messageLabel.bottomAnchor, constant: 12),
+        ]
+        if let cancelAnchorView {
+            let verticalGuide = UILayoutGuide()
+            alert.view.addLayoutGuide(verticalGuide)
+            constraints.append(contentsOf: [
+                verticalGuide.topAnchor.constraint(equalTo: messageLabel.bottomAnchor, constant: 16),
+                verticalGuide.bottomAnchor.constraint(equalTo: cancelAnchorView.topAnchor, constant: -16),
+                progressView.centerYAnchor.constraint(equalTo: verticalGuide.centerYAnchor),
+            ])
+        } else {
+            constraints.append(progressView.topAnchor.constraint(equalTo: messageLabel.bottomAnchor, constant: 20))
+        }
+        NSLayoutConstraint.activate(constraints)
+    }
+
+    func dismissAlertIfPresented(_ alert: UIAlertController, completion: @escaping () -> Void) {
+        guard presentedViewController === alert else { completion(); return }
+        alert.dismiss(animated: true, completion: completion)
+    }
+}
+
 extension UIViewController {
     func presentAlert(title: String, message: String) {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
