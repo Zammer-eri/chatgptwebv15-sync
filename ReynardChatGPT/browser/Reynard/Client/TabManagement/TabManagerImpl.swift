@@ -361,8 +361,8 @@ final class TabManagerImplementation: NSObject, TabManager {
         session.navigationDelegate = self
         session.open(windowId: windowId)
         ChatGPTShellDiagnostics.log("native.session.open", fields: [
-            "sessionID": session.id,
-            "windowID": windowId,
+            "sessionID": session.id ?? "nil",
+            "windowID": windowId ?? "nil",
         ])
         return session
     }
@@ -386,9 +386,8 @@ extension TabManagerImplementation: ContentDelegate {
     
     func onFocusRequest(session: GeckoSession) {
         ChatGPTShellDiagnostics.log("gecko.focusRequest", fields: [
-            "sessionID": session.id,
+            "sessionID": session.id ?? "nil",
             "selected": selectedTab?.session === session,
-            "firstResponder": ChatGPTShellDiagnostics.describeResponder(ChatGPTShellDiagnostics.currentFirstResponder()),
         ])
         guard selectedTab?.session === session else {
             return
@@ -415,7 +414,7 @@ extension TabManagerImplementation: ContentDelegate {
     
     func onCrash(session: GeckoSession) {
         ChatGPTShellDiagnostics.log("gecko.contentCrash", fields: [
-            "sessionID": session.id,
+            "sessionID": session.id ?? "nil",
         ])
         guard let index = tabIndex(for: session) else {
             return
@@ -425,7 +424,7 @@ extension TabManagerImplementation: ContentDelegate {
     
     func onKill(session: GeckoSession) {
         ChatGPTShellDiagnostics.log("gecko.contentKill", fields: [
-            "sessionID": session.id,
+            "sessionID": session.id ?? "nil",
         ])
         guard let index = tabIndex(for: session) else {
             return
@@ -474,8 +473,8 @@ extension TabManagerImplementation: ContentDelegate {
 extension TabManagerImplementation: NavigationDelegate {
     func onLocationChange(session: GeckoSession, url: String?, permissions: [ContentPermission]) {
         ChatGPTShellDiagnostics.log("gecko.locationChange", fields: [
-            "sessionID": session.id,
-            "url": url,
+            "sessionID": session.id ?? "nil",
+            "url": url ?? "nil",
         ])
         guard let index = tabIndex(for: session) else {
             return
@@ -576,7 +575,7 @@ extension TabManagerImplementation: NavigationDelegate {
 extension TabManagerImplementation: ProgressDelegate {
     func onPageStart(session: GeckoSession, url: String) {
         ChatGPTShellDiagnostics.log("gecko.pageStart", fields: [
-            "sessionID": session.id,
+            "sessionID": session.id ?? "nil",
             "url": url,
         ])
         guard let index = tabIndex(for: session) else {
@@ -601,7 +600,7 @@ extension TabManagerImplementation: ProgressDelegate {
     
     func onPageStop(session: GeckoSession, success: Bool) {
         ChatGPTShellDiagnostics.log("gecko.pageStop", fields: [
-            "sessionID": session.id,
+            "sessionID": session.id ?? "nil",
             "success": success,
         ])
         guard let index = tabIndex(for: session) else {

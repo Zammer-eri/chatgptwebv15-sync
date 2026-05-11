@@ -3,104 +3,82 @@
 //  GeckoView
 //
 
+import CoreGraphics
 import Foundation
-import UIKit
 
 public enum ChatGPTShellDiagnostics {
     private static let fileName = "chatgpt-shell-diagnostics.log"
     private static let maxFileSize = 1024 * 1024
-    private static let maxStringLength = 360
+    private static let maxValueLength = 360
     private static let queue = DispatchQueue(label: "chatgpt.shell.diagnostics")
 
-    public static var logFileURL: URL {
-        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
-        return (documents ?? URL(fileURLWithPath: NSTemporaryDirectory()))
-            .appendingPathComponent(fileName)
+    public static var logFilePath: String {
+        let directories = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true)
+        let directory = directories.first ?? NSTemporaryDirectory()
+        return (directory as NSString).appendingPathComponent(fileName)
     }
 
-    public static func start(fields: [String: Any?] = [:]) {
-        var merged = fields
-        merged["path"] = logFileURL.path
-        merged["bundle"] = Bundle.main.bundleIdentifier
-        merged["version"] = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")
-        merged["build"] = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion")
-        log("diagnostics.start", fields: merged)
+    public static func start(fields: [String: Any] = [:]) {
+        var values = fields
+        values["path"] = logFilePath
+        values["bundle"] = Bundle.main.bundleIdentifier ?? "nil"
+        values["version"] = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") ?? "nil"
+        values["build"] = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") ?? "nil"
+        log("diagnostics.start", fields: values)
     }
 
-    public static func log(_ event: String, fields: [String: Any?] = [:]) {
-        var merged = fields
-        merged["mainThread"] = Thread.isMainThread
+    public static func log(_ event: String, fields: [String: Any] = [:]) {
+        var values = fields
+        values["mainThread"] = Thread.isMainThread
 
         let timestamp = String(format: "%.3f", Date().timeIntervalSince1970)
-        let payload = formatFields(merged)
-        let line = payload.isEmpty ? "\(timestamp) \(event)\n" : "\(timestamp) \(event) \(payload)\n"
+        let body = formatFields(values)
+        let line = body.isEmpty ? "\(timestamp) \(event)\n" : "\(timestamp) \(event) \(body)\n"
         NSLog("%@", line.trimmingCharacters(in: .newlines))
 
         queue.async {
-            write(line)
+            append(line)
         }
     }
 
-    public static func describeResponder(_ responder: UIResponder?) -> String {
-        guard let responder else {
+    public static func describeObject(_ value: Any?) -> String {
+        guard let value = value else {
             return "nil"
         }
-
-        var parts = ["class=\(String(describing: type(of: responder)))"]
-        parts.append("first=\(responder.isFirstResponder)")
-
-        if let view = responder as? UIView {
-            parts.append("window=\(view.window != nil)")
-            parts.append("frame=\(formatRect(view.frame))")
-            parts.append("hidden=\(view.isHidden)")
-            parts.append("alpha=\(String(format: "%.2f", Double(view.alpha)))")
-        }
-
-        if responder is UITextInput {
-            parts.append("textInput=true")
-        }
-
-        return parts.joined(separator: ",")
-    }
-
-    public static func currentFirstResponder() -> UIResponder? {
-        ChatGPTShellFirstResponderCapture.responder = nil
-        UIApplication.shared.sendAction(
-            #selector(UIResponder.chatGPTShellCaptureFirstResponder(_:)),
-            to: nil,
-            from: nil,
-            for: nil
-        )
-        let responder = ChatGPTShellFirstResponderCapture.responder
-        ChatGPTShellFirstResponderCapture.responder = nil
-        return responder
+        return String(describing: type(of: value))
     }
 
     public static func describeRect(_ rect: CGRect) -> String {
-        formatRect(rect)
+        return String(
+            format: "%.1f,%.1f,%.1f,%.1f",
+            Double(rect.origin.x),
+            Double(rect.origin.y),
+            Double(rect.size.width),
+            Double(rect.size.height)
+        )
     }
 
-    private static func write(_ line: String) {
-        let fileManager = FileManager.default
-        let url = logFileURL
-        try? fileManager.createDirectory(
-            at: url.deletingLastPathComponent(),
-            withIntermediateDirectories: true,
-            attributes: nil
-        )
+    private static func append(_ line: String) {
+        let path = logFilePath
+        let manager = FileManager.default
+        let directory = (path as NSString).deletingLastPathComponent
 
-        if let attributes = try? fileManager.attributesOfItem(atPath: url.path),
-           let size = attributes[.size] as? NSNumber,
-           size.intValue > maxFileSize {
-            try? fileManager.removeItem(at: url)
+        if !manager.fileExists(atPath: directory) {
+            try? manager.createDirectory(atPath: directory, withIntermediateDirectories: true, attributes: nil)
         }
 
-        if !fileManager.fileExists(atPath: url.path) {
-            _ = fileManager.createFile(atPath: url.path, contents: nil)
+        if let attributes = try? manager.attributesOfItem(atPath: path),
+           let size = attributes[.size] as? NSNumber,
+           size.intValue > maxFileSize {
+            try? manager.removeItem(atPath: path)
+        }
+
+        if !manager.fileExists(atPath: path) {
+            _ = manager.createFile(atPath: path, contents: nil, attributes: nil)
         }
 
         guard let data = line.data(using: .utf8),
-              let handle = FileHandle(forWritingAtPath: url.path) else {
+              let handle = FileHandle(forWritingAtPath: path) else {
             return
         }
 
@@ -109,30 +87,15 @@ public enum ChatGPTShellDiagnostics {
         handle.closeFile()
     }
 
-    private static func formatFields(_ fields: [String: Any?]) -> String {
-        fields.keys.sorted().map { key in
-            let value: Any?
-            switch fields[key] {
-            case .some(let wrapped):
-                value = wrapped
-            case .none:
-                value = nil
-            }
-            return "\(key)=\(formatValue(value))"
+    private static func formatFields(_ fields: [String: Any]) -> String {
+        return fields.keys.sorted().map { key in
+            return "\(key)=\(formatValue(fields[key] ?? "nil"))"
         }.joined(separator: " ")
     }
 
-    private static func formatValue(_ value: Any?) -> String {
-        guard let value else {
-            return "nil"
-        }
-
+    private static func formatValue(_ value: Any) -> String {
         if value is NSNull {
             return "null"
-        }
-
-        if let string = value as? String {
-            return quoted(string)
         }
 
         if let bool = value as? Bool {
@@ -143,40 +106,20 @@ public enum ChatGPTShellDiagnostics {
             return number.stringValue
         }
 
-        return quoted(String(describing: value))
+        return quote(String(describing: value))
     }
 
-    private static func quoted(_ value: String) -> String {
-        var normalized = value
+    private static func quote(_ value: String) -> String {
+        var output = value
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\n", with: "\\n")
             .replacingOccurrences(of: "\r", with: "\\r")
             .replacingOccurrences(of: "\"", with: "'")
 
-        if normalized.count > maxStringLength {
-            normalized = String(normalized.prefix(maxStringLength)) + "..."
+        if output.count > maxValueLength {
+            output = String(output.prefix(maxValueLength)) + "..."
         }
 
-        return "\"\(normalized)\""
-    }
-
-    private static func formatRect(_ rect: CGRect) -> String {
-        String(
-            format: "%.1f,%.1f,%.1f,%.1f",
-            Double(rect.origin.x),
-            Double(rect.origin.y),
-            Double(rect.size.width),
-            Double(rect.size.height)
-        )
-    }
-}
-
-private final class ChatGPTShellFirstResponderCapture {
-    static var responder: UIResponder?
-}
-
-extension UIResponder {
-    @objc func chatGPTShellCaptureFirstResponder(_ sender: Any?) {
-        ChatGPTShellFirstResponderCapture.responder = self
+        return "\"\(output)\""
     }
 }

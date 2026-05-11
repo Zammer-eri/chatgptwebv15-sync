@@ -182,7 +182,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         }
         ChatGPTShellDiagnostics.log("native.viewWillDisappear.endEditing", fields: [
             "animated": animated,
-            "firstResponder": ChatGPTShellDiagnostics.describeResponder(ChatGPTShellDiagnostics.currentFirstResponder()),
         ])
         view.endEditing(true)
     }
@@ -636,7 +635,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     func addressBarDidSubmit(_ searchTerm: String) {
         ChatGPTShellDiagnostics.log("native.addressBar.submit", fields: [
             "length": searchTerm.count,
-            "firstResponder": ChatGPTShellDiagnostics.describeResponder(ChatGPTShellDiagnostics.currentFirstResponder()),
         ])
         browse(to: searchTerm)
         view.endEditing(true)
@@ -798,9 +796,7 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     }
     
     @objc func dismissKeyboardTapped() {
-        ChatGPTShellDiagnostics.log("native.dismissKeyboardTapped", fields: [
-            "firstResponder": ChatGPTShellDiagnostics.describeResponder(ChatGPTShellDiagnostics.currentFirstResponder()),
-        ])
+        ChatGPTShellDiagnostics.log("native.dismissKeyboardTapped")
         browserActions.dismissKeyboard()
     }
     

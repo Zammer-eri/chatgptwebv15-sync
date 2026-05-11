@@ -229,7 +229,7 @@ final class BrowserLayout {
     
     func observeKeyboard() {
         ChatGPTShellDiagnostics.log("native.keyboardObserversInstalled", fields: [
-            "path": ChatGPTShellDiagnostics.logFileURL.path,
+            "path": ChatGPTShellDiagnostics.logFilePath,
         ])
         NotificationCenter.default.addObserver(
             self,
@@ -462,8 +462,7 @@ final class BrowserLayout {
             "screenFrame": ChatGPTShellDiagnostics.describeRect(frameValue.cgRectValue),
             "isSearchFocused": controller.isSearchFocused,
             "tabOverviewVisible": controller.tabOverviewPresentation.isVisible,
-            "firstResponder": ChatGPTShellDiagnostics.describeResponder(ChatGPTShellDiagnostics.currentFirstResponder()),
-            "focusedDescendant": ChatGPTShellDiagnostics.describeResponder(controller.browserUI.geckoView.focusedDescendant()),
+            "focusedDescendant": ChatGPTShellDiagnostics.describeObject(controller.browserUI.geckoView.focusedDescendant()),
             "geckoOffset": geckoPhoneVerticalOffset,
         ])
         
@@ -487,8 +486,7 @@ final class BrowserLayout {
             "keyboardFrame": ChatGPTShellDiagnostics.describeRect(keyboardFrame),
             "isSearchFocused": controller.isSearchFocused,
             "tabOverviewVisible": controller.tabOverviewPresentation.isVisible,
-            "firstResponder": ChatGPTShellDiagnostics.describeResponder(ChatGPTShellDiagnostics.currentFirstResponder()),
-            "focusedDescendant": ChatGPTShellDiagnostics.describeResponder(controller.browserUI.geckoView.focusedDescendant()),
+            "focusedDescendant": ChatGPTShellDiagnostics.describeObject(controller.browserUI.geckoView.focusedDescendant()),
             "geckoOffset": geckoPhoneVerticalOffset,
         ])
         
@@ -689,7 +687,7 @@ private extension UIView {
             return responder
         }
 
-        guard let responder = ChatGPTShellDiagnostics.currentFirstResponder() as? UIView,
+        guard let responder = UIResponder.currentFirstResponder() as? UIView,
               responder.isDescendant(of: self) else {
             return nil
         }
@@ -710,4 +708,27 @@ private extension UIView {
 
         return nil
     }
+}
+
+private extension UIResponder {
+    static func currentFirstResponder() -> UIResponder? {
+        FirstResponderCapture.responder = nil
+        UIApplication.shared.sendAction(
+            #selector(captureFirstResponder(_:)),
+            to: nil,
+            from: nil,
+            for: nil
+        )
+        let responder = FirstResponderCapture.responder
+        FirstResponderCapture.responder = nil
+        return responder
+    }
+
+    @objc private func captureFirstResponder(_ sender: Any?) {
+        FirstResponderCapture.responder = self
+    }
+}
+
+private enum FirstResponderCapture {
+    static var responder: UIResponder?
 }
