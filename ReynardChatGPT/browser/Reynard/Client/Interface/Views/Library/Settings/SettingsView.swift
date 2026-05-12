@@ -208,8 +208,9 @@ final class SettingsRootViewController: SettingsTableViewController {
             if indexPath.row == 1 { presentUpdateAlert() }
         case .chatgpt:
             let viewController = LightSessionSettingsViewController(settings: LightSessionSettingsStore.shared.settings)
-            viewController.onSave = { settings in
+            viewController.onSave = { [weak self] settings in
                 LightSessionSettingsStore.shared.save(settings)
+                self?.tableView.reloadData()
             }
             navigationController?.pushViewController(viewController, animated: true)
         case .jit where indexPath.row == 1:

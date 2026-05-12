@@ -28,6 +28,11 @@ final class LightSessionSettingsViewController: UIViewController, UITextFieldDel
         applyState()
     }
 
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        _ = commitSettings(showErrors: false)
+    }
+
     private func configureNavigation() {
         navigationItem.rightBarButtonItem = UIBarButtonItem(
             title: "Save",
@@ -47,6 +52,7 @@ final class LightSessionSettingsViewController: UIViewController, UITextFieldDel
         keepField.text = "\(settings.keep)"
         keepField.placeholder = "\(LightSessionSettings.defaultKeep)"
         keepField.delegate = self
+        keepField.addTarget(self, action: #selector(keepChanged), for: .editingChanged)
 
         let toolbar = UIToolbar()
         toolbar.sizeToFit()
@@ -118,23 +124,21 @@ final class LightSessionSettingsViewController: UIViewController, UITextFieldDel
         return Int(value)
     }
 
-    @objc private func enabledChanged() {
-        settings.enabled = enabledSwitch.isOn
-        applyState()
-    }
-
-    @objc private func saveTapped() {
-        view.endEditing(true)
-
+    @discardableResult
+    private func commitSettings(showErrors: Bool) -> Bool {
         if enabledSwitch.isOn {
             guard let keep = parsedKeepValue() else {
-                presentAlert(title: "Invalid value", message: "Enter a number between \(LightSessionSettings.minimumKeep) and \(LightSessionSettings.maximumKeep).")
-                return
+                if showErrors {
+                    presentAlert(title: "Invalid value", message: "Enter a number between \(LightSessionSettings.minimumKeep) and \(LightSessionSettings.maximumKeep).")
+                }
+                return false
             }
 
             guard (LightSessionSettings.minimumKeep...LightSessionSettings.maximumKeep).contains(keep) else {
-                presentAlert(title: "Out of range", message: "Choose a value between \(LightSessionSettings.minimumKeep) and \(LightSessionSettings.maximumKeep).")
-                return
+                if showErrors {
+                    presentAlert(title: "Out of range", message: "Choose a value between \(LightSessionSettings.minimumKeep) and \(LightSessionSettings.maximumKeep).")
+                }
+                return false
             }
 
             settings.keep = keep
@@ -142,15 +146,38 @@ final class LightSessionSettingsViewController: UIViewController, UITextFieldDel
 
         settings.enabled = enabledSwitch.isOn
         onSave?(settings.sanitized)
+        return true
+    }
+
+    @objc private func enabledChanged() {
+        settings.enabled = enabledSwitch.isOn
+        applyState()
+        commitSettings(showErrors: false)
+    }
+
+    @objc private func keepChanged() {
+        commitSettings(showErrors: false)
+    }
+
+    @objc private func saveTapped() {
+        view.endEditing(true)
+
+        guard commitSettings(showErrors: true) else { return }
         navigationController?.popViewController(animated: true)
     }
 
     @objc private func doneTapped() {
         view.endEditing(true)
+        commitSettings(showErrors: true)
     }
 
     func textFieldShouldReturn(_ textField: UITextField) -> Bool {
         view.endEditing(true)
+        commitSettings(showErrors: true)
         return true
+    }
+
+    func textFieldDidEndEditing(_ textField: UITextField) {
+        commitSettings(showErrors: false)
     }
 }
