@@ -180,41 +180,66 @@ PAGE_WORLD_SCRIPT = r'''(() => {
       node.parentNode?.replaceChild(fragment, node);
     };
 
+    const messageRootSelector =
+      'article[data-testid^="conversation-turn-"],[data-message-author-role]';
+    const collectMessageRoots = () => {
+      const roots = [];
+      for (const element of doc.querySelectorAll(messageRootSelector)) {
+        const root =
+          element.closest('article[data-testid^="conversation-turn-"]') ||
+          element.closest("[data-message-author-role]") ||
+          element;
+        if (!root || roots.some(existing => existing === root || existing.contains(root))) {
+          continue;
+        }
+        roots.push(root);
+      }
+      return roots;
+    };
+
     const renderEmojiText = () => {
       scheduled = false;
       if (!doc.body) {
-        scheduleRender(120);
+        scheduleRender(300);
         return;
       }
 
-      const walker = doc.createTreeWalker(
-        doc.body,
-        win.NodeFilter.SHOW_TEXT,
-        {
-          acceptNode: node =>
-            shouldSkipTextNode(node)
-              ? win.NodeFilter.FILTER_REJECT
-              : win.NodeFilter.FILTER_ACCEPT,
-        }
-      );
-
-      const nodes = [];
-      while (nodes.length < 250) {
-        const node = walker.nextNode();
-        if (!node) {
-          break;
-        }
-        nodes.push(node);
+      const roots = collectMessageRoots();
+      if (!roots.length) {
+        scheduleRender(600);
+        return;
       }
+      const nodes = [];
+      for (const root of roots) {
+        const walker = doc.createTreeWalker(
+          root,
+          win.NodeFilter.SHOW_TEXT,
+          {
+            acceptNode: node =>
+              shouldSkipTextNode(node)
+                ? win.NodeFilter.FILTER_REJECT
+                : win.NodeFilter.FILTER_ACCEPT,
+          }
+        );
+
+        while (nodes.length < 250) {
+          const node = walker.nextNode();
+          if (!node) {
+            break;
+          }
+          nodes.push(node);
+        }
+      }
+
       for (const node of nodes) {
         renderTextNode(node);
       }
       if (nodes.length === 250) {
-        scheduleRender(80);
+        scheduleRender(300);
       }
     };
 
-    const scheduleRender = (delay = 80) => {
+    const scheduleRender = (delay = 300) => {
       if (scheduled) {
         return;
       }
@@ -234,7 +259,7 @@ PAGE_WORLD_SCRIPT = r'''(() => {
       characterData: true,
       subtree: true,
     });
-    scheduleRender(0);
+    scheduleRender(1200);
   };
 
   const STATUS_ID = "codex-lightsession-status";
@@ -287,6 +312,10 @@ PAGE_WORLD_SCRIPT = r'''(() => {
   };
 
   const ensureStatusElement = () => {
+    if (!doc.body) {
+      return null;
+    }
+
     ensureStatusStyle();
 
     let container = doc.getElementById(STATUS_ID);
@@ -299,15 +328,18 @@ PAGE_WORLD_SCRIPT = r'''(() => {
     const pill = doc.createElement("div");
     pill.className = "pill";
     container.appendChild(pill);
-    (doc.body || doc.documentElement).appendChild(container);
+    doc.body.appendChild(container);
     return container;
   };
 
   const showStatus = (text, timeoutMs = 0, state = "active") => {
     const container = ensureStatusElement();
+    if (!container) {
+      return false;
+    }
     const pill = container.firstElementChild;
     if (!pill) {
-      return;
+      return false;
     }
 
     pill.textContent = text;
@@ -325,6 +357,7 @@ PAGE_WORLD_SCRIPT = r'''(() => {
         shell.lightSessionStatusTimer = null;
       }, timeoutMs);
     }
+    return true;
   };
 
   const hideStatus = () => {
@@ -339,25 +372,235 @@ PAGE_WORLD_SCRIPT = r'''(() => {
     container.classList.remove("visible");
   };
 
-  if (nextConfig.enabled) {
-    if (!shell.lightSessionStatusShown || (hasConfigUpdate && configChanged)) {
-      shell.lightSessionStatusShown = true;
-      showStatus(
-        "LightSession enabled - limit " + nextConfig.keep,
-        2200,
-        "active"
-      );
-    }
-  } else {
+  if (!nextConfig.enabled) {
     shell.lightSessionStatusShown = false;
-    if (hasConfigUpdate && configChanged) {
-      showStatus("LightSession disabled", 1800, "disabled");
-    } else {
-      hideStatus();
-    }
+    hideStatus();
   }
 
   const installLightSession = () => {
+    if (!doc.documentElement) {
+      return;
+    }
+
+    const restoreLightSessionElement = element => {
+      const previousDisplay = element.getAttribute(
+        "data-reynard-lightsession-display"
+      );
+      if (previousDisplay && previousDisplay !== "__unset__") {
+        element.style.display = previousDisplay;
+      } else {
+        element.style.removeProperty("display");
+      }
+      element.removeAttribute("data-reynard-lightsession-hidden");
+      element.removeAttribute("data-reynard-lightsession-display");
+    };
+
+    const restoreLightSessionDOM = () => {
+      for (const element of doc.querySelectorAll("[data-reynard-lightsession-hidden]")) {
+        restoreLightSessionElement(element);
+      }
+    };
+
+    const getMessageRole = element => {
+      const roleElement = element.matches("[data-message-author-role]")
+        ? element
+        : element.querySelector("[data-message-author-role]");
+      const role = roleElement?.getAttribute("data-message-author-role") || "";
+      if (role && !HIDDEN_ROLES.has(role)) {
+        return role;
+      }
+      const testID = element.getAttribute("data-testid") || "";
+      if (testID.startsWith("conversation-turn-")) {
+        return "message";
+      }
+      return "";
+    };
+
+    const collectLightSessionMessages = () => {
+      const selectors = [
+        'main article[data-testid^="conversation-turn-"]',
+        'main [data-testid^="conversation-turn-"]',
+        "main [data-message-author-role]",
+        'article[data-testid^="conversation-turn-"]',
+        "[data-message-author-role]",
+      ];
+      const messages = [];
+      for (const selector of selectors) {
+        for (const element of doc.querySelectorAll(selector)) {
+          const root =
+            element.closest('article[data-testid^="conversation-turn-"]') ||
+            element.closest('[data-testid^="conversation-turn-"]') ||
+            element.closest("[data-message-author-role]") ||
+            element;
+          if (
+            !root ||
+            !getMessageRole(root) ||
+            root.closest("form,textarea,input,[contenteditable='true']")
+          ) {
+            continue;
+          }
+          if (messages.some(existing => existing === root || existing.contains(root))) {
+            continue;
+          }
+          messages.push(root);
+        }
+      }
+
+      messages.sort((left, right) => {
+        if (left === right) {
+          return 0;
+        }
+        return left.compareDocumentPosition(right) & win.Node.DOCUMENT_POSITION_PRECEDING
+          ? 1
+          : -1;
+      });
+
+      return messages;
+    };
+
+    const countTurns = messages => {
+      let total = 0;
+      let previousRole = null;
+      for (const element of messages) {
+        const role = getMessageRole(element);
+        if (role && role !== previousRole) {
+          total += 1;
+          previousRole = role;
+        }
+      }
+      return total;
+    };
+
+    const applyLightSessionDOM = () => {
+      const config = sanitizeConfig(shell.lightSessionConfig || DEFAULT_CONFIG);
+      if (!config.enabled) {
+        restoreLightSessionDOM();
+        if (hasConfigUpdate && configChanged) {
+          showStatus("LightSession disabled", 1800, "disabled");
+        } else {
+          hideStatus();
+        }
+        shell.lightSessionDomSignature = "disabled";
+        return;
+      }
+
+      const messages = collectLightSessionMessages();
+      if (!messages.length) {
+        if (
+          config.enabled &&
+          (!shell.lightSessionStatusShown || (hasConfigUpdate && configChanged)) &&
+          showStatus(
+            "LightSession enabled - limit " + config.keep,
+            2200,
+            "active"
+          )
+        ) {
+          shell.lightSessionStatusShown = true;
+        }
+        return;
+      }
+
+      const keepSet = new Set();
+      let keptTurns = 0;
+      let lastRole = null;
+      for (let index = messages.length - 1; index >= 0; index -= 1) {
+        const role = getMessageRole(messages[index]);
+        if (role && role !== lastRole) {
+          keptTurns += 1;
+          lastRole = role;
+        }
+        if (keptTurns > config.keep) {
+          break;
+        }
+        keepSet.add(messages[index]);
+      }
+
+      let hiddenCount = 0;
+      for (const element of messages) {
+        if (keepSet.has(element)) {
+          continue;
+        }
+        if (!element.hasAttribute("data-reynard-lightsession-display")) {
+          element.setAttribute(
+            "data-reynard-lightsession-display",
+            element.style.display || "__unset__"
+          );
+        }
+        element.setAttribute("data-reynard-lightsession-hidden", "true");
+        element.style.setProperty("display", "none", "important");
+        hiddenCount += 1;
+      }
+
+      const totalTurns = countTurns(messages);
+      const shownTurns = Math.min(totalTurns, config.keep);
+      const messageSet = new Set(messages);
+      for (const element of doc.querySelectorAll("[data-reynard-lightsession-hidden]")) {
+        if (!messageSet.has(element) || keepSet.has(element)) {
+          restoreLightSessionElement(element);
+        }
+      }
+
+      const signature = [
+        "enabled",
+        config.keep,
+        messages.length,
+        hiddenCount,
+        totalTurns,
+      ].join(":");
+
+      if (signature !== shell.lightSessionDomSignature || hasConfigUpdate) {
+        shell.lightSessionDomSignature = signature;
+        if (hiddenCount > 0) {
+          if (showStatus(
+            "LightSession: showing " +
+              shownTurns +
+              "/" +
+              totalTurns +
+              " turn(s) - hidden " +
+              hiddenCount,
+            3200,
+            "active"
+          )) {
+            shell.lightSessionStatusShown = true;
+          }
+        } else if (!shell.lightSessionStatusShown) {
+          if (showStatus(
+            "LightSession enabled - limit " + config.keep,
+            2200,
+            "active"
+          )) {
+            shell.lightSessionStatusShown = true;
+          }
+        }
+      }
+    };
+
+    if (!shell.lightSessionDomInstalled) {
+      shell.lightSessionDomInstalled = true;
+      let domScheduled = false;
+      const scheduleLightSessionDOM = (delay = 250) => {
+        if (domScheduled) {
+          return;
+        }
+        domScheduled = true;
+        win.setTimeout(() => {
+          domScheduled = false;
+          applyLightSessionDOM();
+        }, delay);
+      };
+      const observer = new win.MutationObserver(() => scheduleLightSessionDOM());
+      observer.observe(doc.documentElement, {
+        childList: true,
+        subtree: true,
+      });
+      for (const delay of [0, 500, 1500, 3000]) {
+        win.setTimeout(() => applyLightSessionDOM(), delay);
+      }
+    }
+
+    applyLightSessionDOM();
+    return;
+
     if (shell.lightSessionFetchPatched) {
       return;
     }
