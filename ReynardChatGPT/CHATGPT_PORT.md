@@ -8,12 +8,11 @@ This folder is a vendored private fork of Reynard Browser, adapted as the Gecko-
 - Collapses the visible browser chrome so the Gecko view behaves more like the existing app shell.
 - Adds one hidden edge gesture:
   - Swipe from the right edge to reload the current ChatGPT page.
-- Uses the old WK app bundle identifier, `com.codex.chatgpt`, with Reynard executable paths left intact for startup/JIT stability.
+- Uses the current app bundle identifier, `com.codex.chatgpt`, with Reynard executable paths left intact for startup/JIT stability.
 - Restores the earlier Twemoji-style image replacement path for ChatGPT emoji rendering.
 - Removes the settings tab from the library sheet.
 - Uses only the right-edge swipe for refresh; the left edge has no shell action.
 - Locks the app shell to portrait orientation.
-- Keeps the original `Downloads/ChatGPTWebV15` WKWebView app untouched.
 
 ## Build model
 
