@@ -36,6 +36,9 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     private var pendingSelectionAnimation = false
     
     let downloadHaptic = UINotificationFeedbackGenerator()
+    private var shellStatusToast: UILabel?
+    private var shellStatusToastHideWorkItem: DispatchWorkItem?
+    private var didShowInitialLightSessionStatus = false
     
     var isLibrarySidebarVisible: Bool {
         (splitViewController as? BrowserSplitViewController)?.isLibrarySidebarVisible ?? false
@@ -91,6 +94,7 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     }
     
     deinit {
+        shellStatusToastHideWorkItem?.cancel()
         NotificationCenter.default.removeObserver(self)
     }
     
@@ -194,6 +198,7 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         syncPadSidebarButtonItem()
         syncDownloadButtonState()
         browserLayout.applyChromeLayout(animated: false)
+        showInitialLightSessionStatusIfNeeded()
     }
     
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
@@ -502,6 +507,8 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         for tab in tabManager.tabs {
             tab.session.updateLightSession(enabled: settings.enabled, keep: settings.keep)
         }
+        let statusMessage = settings.enabled ? "LightSession enabled - limit \(settings.keep)" : "LightSession disabled"
+        showShellStatus(statusMessage)
         if let selectedTab = tabManager.selectedTab {
             reloadTabCleanly(selectedTab)
         }
@@ -708,6 +715,63 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         }
         tab.session.stop()
         tabManager.browse(to: url, in: tab)
+    }
+
+    private func showInitialLightSessionStatusIfNeeded() {
+        guard !didShowInitialLightSessionStatus else { return }
+        didShowInitialLightSessionStatus = true
+
+        let settings = LightSessionSettingsStore.shared.settings
+        guard settings.enabled else { return }
+        showShellStatus("LightSession enabled - limit \(settings.keep)")
+    }
+
+    private func showShellStatus(_ message: String, timeout: TimeInterval = 2.2) {
+        let label: UILabel
+        if let existing = shellStatusToast {
+            label = existing
+        } else {
+            label = UILabel()
+            label.translatesAutoresizingMaskIntoConstraints = false
+            label.backgroundColor = UIColor(red: 24.0 / 255.0, green: 135.0 / 255.0, blue: 84.0 / 255.0, alpha: 0.96)
+            label.textColor = .white
+            label.font = .systemFont(ofSize: 12, weight: .semibold)
+            label.numberOfLines = 0
+            label.textAlignment = .center
+            label.layer.cornerRadius = 12
+            label.layer.masksToBounds = true
+            view.addSubview(label)
+            NSLayoutConstraint.activate([
+                label.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 12),
+                label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+                label.widthAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.widthAnchor, constant: -32),
+            ])
+            shellStatusToast = label
+        }
+
+        shellStatusToastHideWorkItem?.cancel()
+        label.text = "  \(message)  "
+        label.alpha = 0
+        label.transform = CGAffineTransform(translationX: 0, y: -6)
+        label.isHidden = false
+        view.bringSubviewToFront(label)
+
+        UIView.animate(withDuration: 0.16) {
+            label.alpha = 1
+            label.transform = .identity
+        }
+
+        let hideWorkItem = DispatchWorkItem { [weak label] in
+            guard let label else { return }
+            UIView.animate(withDuration: 0.16) {
+                label.alpha = 0
+                label.transform = CGAffineTransform(translationX: 0, y: -6)
+            } completion: { _ in
+                label.isHidden = true
+            }
+        }
+        shellStatusToastHideWorkItem = hideWorkItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(Int(timeout * 1000)), execute: hideWorkItem)
     }
     
     private func presentNextDownloadConfirmationIfNeeded() {

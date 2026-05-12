@@ -31,11 +31,11 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
     const emojiPattern =
       /[\u{1f1e6}-\u{1f1ff}\u{1f300}-\u{1faff}\u{2600}-\u{27bf}]/u;
     const skipParentSelector =
-      'script,style,noscript,textarea,input,[contenteditable="true"],[data-reynard-emoji]';
+      'script,style,noscript,textarea,input,button,a,code,pre,kbd,samp,select,option,[role="button"],[contenteditable="true"],[data-reynard-emoji]';
     const segmenter = win.Intl?.Segmenter
       ? new win.Intl.Segmenter(undefined, { granularity: "grapheme" })
       : null;
-    let scheduled = false;
+    let renderTimer = null;
 
     const splitGraphemes = text => {
       if (segmenter) {
@@ -44,14 +44,20 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
       return Array.from(text);
     };
 
-    const emojiCodepoint = text =>
+    const emojiCodepoint = (text, keepEmojiPresentation = false) =>
       Array.from(text)
         .map(char => char.codePointAt(0).toString(16))
-        .filter(codepoint => codepoint !== "fe0f" && codepoint !== "fe0e")
+        .filter(codepoint =>
+          codepoint !== "fe0e" && (keepEmojiPresentation || codepoint !== "fe0f")
+        )
         .join("-");
+
+    const emojiAssetURL = codepoint =>
+      `https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.2/assets/72x72/${codepoint}.png`;
 
     const emojiImage = text => {
       const codepoint = emojiCodepoint(text);
+      const fallbackCodepoint = emojiCodepoint(text, true);
       if (!codepoint) {
         return doc.createTextNode(text);
       }
@@ -60,12 +66,30 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
       image.setAttribute("data-reynard-emoji", "true");
       image.setAttribute("alt", text);
       image.setAttribute("draggable", "false");
-      image.src = `https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/${codepoint}.png`;
+      image.setAttribute("decoding", "async");
+      image.src = emojiAssetURL(codepoint);
       image.style.width = "1.2em";
       image.style.height = "1.2em";
       image.style.margin = "0 .03em";
       image.style.verticalAlign = "-0.2em";
       image.style.display = "inline-block";
+      image.addEventListener(
+        "error",
+        () => {
+          if (fallbackCodepoint && fallbackCodepoint !== codepoint) {
+            image.src = emojiAssetURL(fallbackCodepoint);
+            image.addEventListener(
+              "error",
+              () => image.replaceWith(doc.createTextNode(text)),
+              { once: true }
+            );
+            return;
+          }
+
+          image.replaceWith(doc.createTextNode(text));
+        },
+        { once: true }
+      );
       return image;
     };
 
@@ -96,7 +120,7 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
     };
 
     const renderEmojiText = () => {
-      scheduled = false;
+      renderTimer = null;
       if (!isChatGPT() || !doc.body) {
         return;
       }
@@ -113,7 +137,7 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
       );
 
       const nodes = [];
-      while (nodes.length < 250) {
+      while (nodes.length < 120) {
         const node = walker.nextNode();
         if (!node) {
           break;
@@ -123,14 +147,16 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
       for (const node of nodes) {
         renderTextNode(node);
       }
+      if (nodes.length === 120) {
+        scheduleRender();
+      }
     };
 
     const scheduleRender = () => {
-      if (scheduled) {
-        return;
+      if (renderTimer) {
+        win.clearTimeout(renderTimer);
       }
-      scheduled = true;
-      win.setTimeout(renderEmojiText, 80);
+      renderTimer = win.setTimeout(renderEmojiText, 160);
     };
 
     const style = doc.createElement("style");
@@ -180,9 +206,15 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
       };
     };
 
-    win.__codexLightSessionConfig__ = sanitizeConfig(
-      configUpdate || win.__codexLightSessionConfig__ || DEFAULT_CONFIG
+    const previousConfig = win.__codexLightSessionConfig__ || null;
+    const nextConfig = sanitizeConfig(configUpdate || previousConfig || DEFAULT_CONFIG);
+    const hasConfigUpdate = configUpdate !== null && typeof configUpdate === "object";
+    const configChanged = Boolean(
+      previousConfig &&
+        (previousConfig.enabled !== nextConfig.enabled ||
+          previousConfig.keep !== nextConfig.keep)
     );
+    win.__codexLightSessionConfig__ = nextConfig;
 
     const isChatGPT = () => {
       const host = win.location?.hostname || "";
@@ -226,6 +258,15 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
           text-align: center;
           overflow-wrap: anywhere;
         }
+        #${STATUS_ID}[data-state="idle"] .pill {
+          background: rgba(15, 23, 42, 0.92);
+          border: 1px solid rgba(55, 65, 81, 0.9);
+          color: #e5e7eb;
+        }
+        #${STATUS_ID}[data-state="disabled"] .pill {
+          background: rgba(63, 63, 70, 0.92);
+          color: #f4f4f5;
+        }
       `;
       (doc.head || doc.documentElement).appendChild(style);
     };
@@ -247,7 +288,7 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
       return container;
     };
 
-    const showStatus = (text, timeoutMs) => {
+    const showStatus = (text, timeoutMs = 0, state = "active") => {
       const container = ensureStatusElement();
       const pill = container.firstElementChild;
       if (!pill) {
@@ -255,6 +296,7 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
       }
 
       pill.textContent = text;
+      container.setAttribute("data-state", state);
       container.classList.add("visible");
 
       if (win.__codexLightSessionStatusTimer__) {
@@ -270,15 +312,41 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
       }
     };
 
+    const hideStatus = () => {
+      const container = doc.getElementById(STATUS_ID);
+      if (!container) {
+        return;
+      }
+      if (win.__codexLightSessionStatusTimer__) {
+        win.clearTimeout(win.__codexLightSessionStatusTimer__);
+        win.__codexLightSessionStatusTimer__ = null;
+      }
+      container.classList.remove("visible");
+    };
+
     if (!isChatGPT()) {
       return;
     }
 
     if (win.__codexLightSessionConfig__.enabled) {
-      showStatus(
-        "LightSession enabled - limit " + win.__codexLightSessionConfig__.keep,
-        2200
-      );
+      if (
+        !doc.__reynardChatGPTLightSessionStatusShown ||
+        (hasConfigUpdate && configChanged)
+      ) {
+        doc.__reynardChatGPTLightSessionStatusShown = true;
+        showStatus(
+          "LightSession enabled - limit " + win.__codexLightSessionConfig__.keep,
+          0,
+          "active"
+        );
+      }
+    } else {
+      doc.__reynardChatGPTLightSessionStatusShown = false;
+      if (hasConfigUpdate && configChanged) {
+        showStatus("LightSession disabled", 1800, "disabled");
+      } else {
+        hideStatus();
+      }
     }
 
     if (doc.__reynardChatGPTLightSessionInstalled) {
@@ -359,12 +427,12 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
       }
 
       const keptRaw = path.slice(cutIndex);
-      const kept = keptRaw.filter(nodeId => {
+      const keptVisible = keptRaw.filter(nodeId => {
         const node = mapping[nodeId];
         return Boolean(node) && isVisibleMessage(node);
       });
 
-      if (!kept.length) {
+      if (!keptVisible.length) {
         return null;
       }
 
@@ -374,22 +442,27 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
         originalRootId && originalRootNode && !isVisibleMessage(originalRootNode)
       );
 
+      const keptPath =
+        hasOriginalRoot && originalRootId && keptRaw[0] === originalRootId
+          ? keptRaw.slice(1)
+          : keptRaw;
+
       const newMapping = {};
       let visibleKept = 0;
       let previousRole = null;
       if (hasOriginalRoot) {
         newMapping[originalRootId] = Object.assign({}, originalRootNode, {
           parent: null,
-          children: kept[0] ? [kept[0]] : [],
+          children: keptPath[0] ? [keptPath[0]] : [],
         });
       }
 
-      for (let index = 0; index < kept.length; index += 1) {
-        const nodeId = kept[index];
+      for (let index = 0; index < keptPath.length; index += 1) {
+        const nodeId = keptPath[index];
         const originalNode = mapping[nodeId];
         const previousId =
-          index === 0 ? (hasOriginalRoot ? originalRootId : null) : kept[index - 1];
-        const nextId = kept[index + 1] || null;
+          index === 0 ? (hasOriginalRoot ? originalRootId : null) : keptPath[index - 1];
+        const nextId = keptPath[index + 1] || null;
 
         if (!originalNode) {
           continue;
@@ -407,8 +480,8 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
         }
       }
 
-      const root = hasOriginalRoot ? originalRootId : kept[0];
-      const current = kept[kept.length - 1];
+      const root = hasOriginalRoot ? originalRootId : keptPath[0];
+      const current = keptPath[keptPath.length - 1];
       if (!root || !current) {
         return null;
       }
@@ -504,9 +577,10 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
         const removed = Math.max(0, trimmed.visibleTotal - trimmed.visibleKept);
         if (trimmed.visibleKept === trimmed.visibleTotal) {
           showStatus(
-            "LightSession: kept " + trimmed.visibleKept + "/" + trimmed.visibleTotal +
-              " turn(s) (limit " + config.keep + ")",
-            2600
+            "LightSession: all " + trimmed.visibleTotal +
+              " turn(s) visible (limit " + config.keep + ")",
+            0,
+            "idle"
           );
           return response;
         }
@@ -515,10 +589,11 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
           ? Math.round((removed / trimmed.visibleTotal) * 100)
           : 0;
         showStatus(
-          "LightSession: kept " + trimmed.visibleKept + "/" + trimmed.visibleTotal +
-            " turn(s) (limit " + config.keep + ") - removed " + removed +
-            " (~" + removedPercent + "%)",
-          3400
+          "LightSession: " + removed + " turn(s) hidden - showing " +
+            trimmed.visibleKept + "/" + trimmed.visibleTotal +
+            " (limit " + config.keep + ", ~" + removedPercent + "% hidden)",
+          0,
+          "active"
         );
 
         return createModifiedResponse(
@@ -695,11 +770,7 @@ def patch_geckoview_content_module(bin_dir: Path) -> None:
     method_anchor = "  async _hasCookieBannerRuleForBrowsingContextTree(aCallback) {\n"
     method_patch = """  async _updateLightSession(aData) {
     try {
-      const actor =
-        this.browser.browsingContext.currentWindowGlobal.getActor(
-          "GeckoViewContent"
-        );
-      actor?.sendAsyncMessage("ChatGPTShell:UpdateLightSession", aData || {});
+      this.sendToAllChildren("ChatGPTShell:UpdateLightSession", aData || {});
     } catch (error) {
       debug`Cannot update LightSession config: ${error}`;
     }
