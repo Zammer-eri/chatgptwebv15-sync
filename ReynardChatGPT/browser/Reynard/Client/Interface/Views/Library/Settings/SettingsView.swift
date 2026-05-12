@@ -301,9 +301,9 @@ enum ChatGPTDiagnosticInfo {
     static func currentText() -> String {
         var lines = [
             "ChatGPT iOS diagnostics",
-            "App version: \(bundleValue(\"CFBundleShortVersionString\")) (\(bundleValue(\"CFBundleVersion\")))",
-            "Gecko version: \(bundleValue(\"GeckoVersion\"))",
-            "Bundle id: \(Bundle.main.bundleIdentifier ?? \"Unknown\")",
+            "App version: \(bundleValue("CFBundleShortVersionString")) (\(bundleValue("CFBundleVersion")))",
+            "Gecko version: \(bundleValue("GeckoVersion"))",
+            "Bundle id: \(Bundle.main.bundleIdentifier ?? "Unknown")",
             "Device model: \(UIDevice.current.model)",
             "System: \(UIDevice.current.systemName) \(UIDevice.current.systemVersion)",
             "Process: \(ProcessInfo.processInfo.processName)",
