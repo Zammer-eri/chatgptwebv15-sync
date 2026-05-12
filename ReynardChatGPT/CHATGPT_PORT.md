@@ -43,7 +43,7 @@ cd ReynardChatGPT
 ./tools/release/create-ipa.sh
 ```
 
-The root workflow `.github/workflows/reynard-ios-build.yml` runs the fast path on push and publishes `ChatGPT.ipa` plus `ChatGPT-TrollStore.tipa` to `ci-gecko-latest`.
+The root workflow `.github/workflows/reynard-ios-build.yml` runs the fast path on push, clears old release assets, and publishes only `ChatGPT-TrollStore.tipa` to `ci-gecko-latest`.
 
 ## Next work
 

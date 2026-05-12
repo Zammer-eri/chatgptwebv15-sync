@@ -32,12 +32,11 @@ plutil -replace CFBundleDisplayName -string "ChatGPT Helper" "$APP_PATH/PlugIns/
 plutil -replace CFBundleIdentifier -string "com.codex.chatgpt.OpenIn" "$APP_PATH/PlugIns/OpenIn.appex/Info.plist"
 plutil -replace CFBundleDisplayName -string "Open in ChatGPT" "$APP_PATH/PlugIns/OpenIn.appex/Info.plist"
 
-rm -rf "$WORK_DIR" "$ROOT_DIR/dist/Reynard.ipa" "$ROOT_DIR/dist/Reynard-TrollStore.ipa"
+rm -rf "$WORK_DIR" "$ROOT_DIR/dist/Reynard-TrollStore.tipa"
 mkdir -p "$WORK_DIR/Payload"
 cp -R "$APP_PATH" "$WORK_DIR/Payload/"
 
 cd "$WORK_DIR"
-zip -r ../Reynard.ipa Payload -x "._*" -x ".DS_Store" -x "__MACOSX" # normal ipa
 
 PTRACE_JIT_SRC="$ROOT_DIR/browser/Reynard/TrollStore/JIT/ptrace_jit.c"
 PTRACE_JIT_OUT="Payload/Reynard.app/ptrace_jit"
