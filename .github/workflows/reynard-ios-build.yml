@@ -2,14 +2,6 @@ name: ChatGPT iOS 15 Build
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - "ReynardChatGPT/**"
-      - ".github/workflows/reynard-ios-build.yml"
-  pull_request:
-    paths:
-      - "ReynardChatGPT/**"
-      - ".github/workflows/reynard-ios-build.yml"
 
 jobs:
   build-chatgpt-ios15:
@@ -32,10 +24,9 @@ jobs:
         run: brew install ldid
 
       - name: Make Reynard scripts executable
-        run: chmod +x ReynardChatGPT/tools/development/*.sh ReynardChatGPT/tools/release/*.sh
+        run: chmod +x tools/development/*.sh tools/release/*.sh
 
       - name: Check ChatGPT shell syntax
-        working-directory: ReynardChatGPT
         run: |
           node --check tools/development/chatgpt-shell/emoji-renderer.js
           node --check tools/development/chatgpt-shell/page-runtime.js
@@ -43,22 +34,19 @@ jobs:
       - name: Cache prebuilt Gecko engine
         uses: actions/cache@v4
         with:
-          path: ReynardChatGPT/engine/prebuilt-gecko
+          path: engine/prebuilt-gecko
           key: reynard-prebuilt-gecko-0.3.0-Reynard-ipa-shim-v25-mode-all
 
       - name: Prepare prebuilt Gecko engine
-        working-directory: ReynardChatGPT
         run: ./tools/development/setup-prebuilt-gecko.sh
 
       - name: Build iOS archive
-        working-directory: ReynardChatGPT
         run: ./tools/release/build-app.sh
 
       - name: Package TrollStore TIPA
-        working-directory: ReynardChatGPT
         run: |
           ./tools/release/create-ipa.sh
-          cp dist/Reynard-TrollStore.tipa ../ChatGPT-TrollStore.tipa
+          cp dist/Reynard-TrollStore.tipa ChatGPT-TrollStore.tipa
 
       - name: Clear rolling prerelease assets
         if: github.event_name != 'pull_request'

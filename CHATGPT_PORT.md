@@ -1,6 +1,6 @@
 # ChatGPT Gecko Port
 
-This folder is a vendored private fork of Reynard Browser, adapted as the Gecko-backed ChatGPT app shell.
+This repository is a vendored private fork of Reynard Browser, adapted as the Gecko-backed ChatGPT app shell.
 
 ## Current baseline
 
@@ -25,7 +25,6 @@ Reynard's wrapper source is committed here, but the large upstream engine is not
 Manual build order on macOS:
 
 ```sh
-cd ReynardChatGPT
 ./tools/development/update-gecko.sh
 ./tools/development/apply-patches.sh
 ./tools/development/build-idevice.sh
@@ -37,14 +36,13 @@ cd ReynardChatGPT
 Fast build order on macOS, matching CI:
 
 ```sh
-cd ReynardChatGPT
 ./tools/development/setup-prebuilt-gecko.sh
 ./tools/development/build-idevice.sh
 ./tools/release/build-app.sh
 ./tools/release/create-ipa.sh
 ```
 
-The root workflow `.github/workflows/reynard-ios-build.yml` runs the fast path on push, clears old release assets, and publishes only `ChatGPT-TrollStore.tipa` to `ci-gecko-latest`.
+The root workflow `.github/workflows/reynard-ios-build.yml` runs only when manually dispatched, clears old release assets, and publishes only `ChatGPT-TrollStore.tipa` to `ci-gecko-latest`.
 
 ## Next work
 

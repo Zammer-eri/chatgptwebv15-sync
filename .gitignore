@@ -1,2 +1,24 @@
+# macOS
+.DS_Store
+
+# VSCode
+.vscode
+
+# Xcode
+*.xcuserstate
+project.xcworkspace/
+xcuserdata/
+
+# AI agent stuff
+AGENTS.md
 _inspect/
 __pycache__/
+
+# Build artifacts
+dist/
+browser/Reynard/JIT/libidevice_ffi.a
+
+# Large upstream dependencies fetched by setup/build scripts
+engine/firefox/
+engine/prebuilt-gecko/
+support/idevice/
