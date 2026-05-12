@@ -13,14 +13,14 @@ DIST_DIR="$ROOT_DIR/engine/prebuilt-gecko/obj-aarch64-apple-ios/dist"
 BIN_DIR="$DIST_DIR/bin"
 INCLUDE_DIR="$DIST_DIR/include/GeckoView"
 MARKER="$ROOT_DIR/engine/prebuilt-gecko/.release"
-SHIM_VERSION="22"
-PREFS_APPENDED="true"
+SHIM_VERSION="23"
+PREFS_APPENDED="false"
 
 case "$SHIM_MODE" in
-	baseline|emoji|lightsession-dom|lightsession-fetch|all|legacy-all) ;;
+	baseline|emoji|all) ;;
 	*)
 		echo "Unsupported REYNARD_CHATGPT_SHIM_MODE: $SHIM_MODE"
-		echo "Expected: baseline, emoji, lightsession-dom, lightsession-fetch, all, legacy-all"
+		echo "Expected: baseline, emoji, all"
 		exit 1
 		;;
 esac
@@ -66,17 +66,8 @@ cp -R "$GECKOVIEW_FW/Frameworks/." "$BIN_DIR/"
 find "$BIN_DIR" -maxdepth 1 -type f -name 'libswift*.dylib' -delete
 python3 "$SCRIPT_DIR/patch-prebuilt-gecko.py" "$BIN_DIR" "$SHIM_MODE"
 
-PREF_DIR="$BIN_DIR/defaults/pref"
-mkdir -p "$PREF_DIR"
-cat > "$PREF_DIR/reynard-chatgpt.js" <<'EOF'
-// ChatGPT shell runtime prefs. Keep these in the extracted prebuilt payload so
-// CI and local builds do not depend on rebuilding Gecko from Reynard patches.
-pref("gfx.font_rendering.coretext.enabled", true);
-pref("font.default.x-unicode", "sans-serif");
-pref("font.default.x-western", "sans-serif");
-pref("font.name-list.emoji", "Apple Color Emoji");
-pref("font.name-list.sans-serif.x-unicode", "-apple-system, Arial");
-pref("font.name-list.sans-serif.x-western", "-apple-system, Arial");
+cat > "$BIN_DIR/reynard-chatgpt-build.json" <<EOF
+{"release_tag":"$TAG","asset":"$ASSET","shim_version":"$SHIM_VERSION","shim_mode":"$SHIM_MODE","prefs_appended":$PREFS_APPENDED,"lightsession":"removed"}
 EOF
 
 cat > "$INCLUDE_DIR/GeckoViewSwiftSupport.h" <<'EOF'

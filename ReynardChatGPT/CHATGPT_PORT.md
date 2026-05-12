@@ -10,7 +10,10 @@ This folder is a vendored private fork of Reynard Browser, adapted as the Gecko-
   - Swipe from the left edge to reload the current ChatGPT page.
   - Swipe from the right edge to open the native settings sheet.
 - Uses the old WK app bundle identifier, `com.codex.chatgpt`, with Reynard executable paths left intact for startup/JIT stability.
-- Adds native Light Session settings and enables conversation trimming by default.
+- Removes the unproven LightSession path. There is no native LightSession setting, JavaScript fetch rewriting, or conversation trimming in this build.
+- Adds Settings > ChatGPT diagnostics:
+  - `Emoji Matrix` opens a bundled local Gecko emoji diagnostic page.
+  - `Copy Diagnostic Info` copies app, device, Gecko, and prebuilt marker data.
 - Keeps the original `Downloads/ChatGPTWebV15` WKWebView app untouched.
 
 ## Build model
@@ -48,5 +51,5 @@ The root workflow `.github/workflows/reynard-ios-build.yml` runs the fast path o
 ## Next work
 
 - Verify GitHub Actions can complete the full Gecko build within runner limits.
-- Install the IPA on the target iOS 15 device and confirm ChatGPT login, text input, file upload, and long-thread rendering.
+- Install the IPA on the target iOS 15 device and confirm ChatGPT login, text input, file upload, emoji matrix output, copied diagnostic info, and long-thread rendering.
 - Branding polish and UX cleanup after device testing.

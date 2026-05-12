@@ -16,21 +16,6 @@
     }
   };
 
-  const sanitizedConversationURL = value => {
-    try {
-      const url = new win.URL(String(value), win.location?.href || "https://chatgpt.com");
-      url.pathname = url.pathname.replace(
-        /^\/backend-api\/(conversation|shared_conversation)\/[^/]+\/?$/,
-        "/backend-api/$1/<id>"
-      );
-      url.search = "";
-      url.hash = "";
-      return url.pathname;
-    } catch (_) {
-      return null;
-    }
-  };
-
   const ensure = mode => {
     const previous = win[KEY] && typeof win[KEY] === "object" ? win[KEY] : {};
     const diagnostics = Object.assign(
@@ -40,10 +25,7 @@
         pageRuntimeInstalled: false,
         emojiFallbackInstalled: false,
         emojiFallbackReason: null,
-        lightSessionConfigReceived: false,
-        fetchPatched: false,
-        firstConversationURL: null,
-        trimResult: null,
+        emojiSamples: [],
         events: [],
       },
       previous
@@ -82,6 +64,5 @@
     ensure,
     set,
     event,
-    sanitizedConversationURL,
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);

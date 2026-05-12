@@ -137,8 +137,8 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         )
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(lightSessionSettingsDidChange),
-            name: LightSessionSettingsStore.didChangeNotification,
+            selector: #selector(openEmojiDiagnosticsRequested),
+            name: .chatGPTOpenEmojiDiagnostics,
             object: nil
         )
         
@@ -497,10 +497,18 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         addonsController.presentCurrentSiteSettings(for: item)
     }
 
-    @objc private func lightSessionSettingsDidChange() {
-        let settings = LightSessionSettingsStore.shared.settings
-        for tab in tabManager.tabs {
-            tab.session.updateLightSession(enabled: settings.enabled, keep: settings.keep)
+    @objc private func openEmojiDiagnosticsRequested() {
+        let targetController = activeContentBrowserViewController
+        let openDiagnostics = {
+            targetController.browse(to: "about:chatgpt-emoji")
+        }
+
+        if let presentedViewController = targetController.presentedViewController {
+            presentedViewController.dismiss(animated: true, completion: openDiagnostics)
+        } else if let presentedViewController = presentedViewController {
+            presentedViewController.dismiss(animated: true, completion: openDiagnostics)
+        } else {
+            openDiagnostics()
         }
     }
     
@@ -943,6 +951,10 @@ final class BrowserSplitViewController: UISplitViewController, UISplitViewContro
     @objc private func applicationDidBecomeActive() {
         refreshSidebarVisibility()
     }
+}
+
+extension Notification.Name {
+    static let chatGPTOpenEmojiDiagnostics = Notification.Name("ChatGPTOpenEmojiDiagnostics")
 }
 
 enum SidebarToggleButtonConfiguration {

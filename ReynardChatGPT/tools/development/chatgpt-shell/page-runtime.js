@@ -5,22 +5,7 @@
   const registry = win.__reynardChatGPTShellModules || {};
   win.__reynardChatGPTShellModules = registry;
 
-  const LIGHTSESSION_MODES = new Set([
-    "lightsession-dom",
-    "lightsession-fetch",
-    "all",
-    "legacy-all",
-  ]);
-  const EMOJI_MODES = new Set(["emoji", "all", "legacy-all"]);
-
-  const readConfigUpdate = () => {
-    try {
-      const raw = root.__REYNARD_CHATGPT_SHELL_CONFIG_JSON__;
-      return raw ? JSON.parse(raw) : null;
-    } catch (_) {
-      return null;
-    }
-  };
+  const EMOJI_MODES = new Set(["emoji", "all"]);
 
   const isChatGPT = () => {
     const host = win.location?.hostname || "";
@@ -41,15 +26,11 @@
     const shell = win.__reynardChatGPTShell || {};
     win.__reynardChatGPTShell = shell;
 
-    const configUpdate = readConfigUpdate();
     const context = {
       win,
       doc,
       mode,
       shell,
-      configUpdate,
-      hasConfigUpdate:
-        configUpdate !== null && typeof configUpdate === "object" && !Array.isArray(configUpdate),
       diagnostics: registry.diagnostics,
     };
 
@@ -61,9 +42,6 @@
       registry.emojiRenderer?.install(context);
     }
 
-    if (LIGHTSESSION_MODES.has(mode)) {
-      registry.lightSessionRuntime?.install(context);
-    }
   };
 
   win.ReynardChatGPTShellRuntime = {

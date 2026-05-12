@@ -13,40 +13,6 @@ protocol GeckoSessionHandlerCommon: GeckoEventListenerInternal {
     var enabled: Bool { get }
 }
 
-private func currentChatGPTLightSessionSettings() -> [String: Any] {
-    let defaults: [String: Any] = ["enabled": false, "keep": 20]
-    guard
-        let data = UserDefaults.standard.data(forKey: "lightSessionSettings"),
-        let rawObject = try? JSONSerialization.jsonObject(with: data),
-        let object = rawObject as? [String: Any]
-    else {
-        return defaults
-    }
-
-    let keepValue: Int
-    if let keep = object["keep"] as? Int {
-        keepValue = keep
-    } else if let keep = object["keep"] as? NSNumber {
-        keepValue = keep.intValue
-    } else {
-        keepValue = 20
-    }
-
-    let enabledValue: Bool
-    if let enabled = object["enabled"] as? Bool {
-        enabledValue = enabled
-    } else if let enabled = object["enabled"] as? NSNumber {
-        enabledValue = enabled.boolValue
-    } else {
-        enabledValue = false
-    }
-
-    return [
-        "enabled": enabledValue,
-        "keep": min(100, max(1, keepValue)),
-    ]
-}
-
 public class GeckoSession {
     let dispatcher: GeckoEventDispatcherWrapper = GeckoEventDispatcherWrapper()
     var window: GeckoViewWindow?
@@ -60,16 +26,6 @@ public class GeckoSession {
         guard isOpen() else { return }
         let uaValue: Any = ua ?? NSNull()
         dispatcher.dispatch(type: "GeckoView:UpdateSettings", message: ["userAgentOverride": uaValue])
-    }
-
-    public func updateLightSession(enabled: Bool, keep: Int) {
-        dispatcher.dispatch(
-            type: "GeckoView:UpdateLightSession",
-            message: [
-                "enabled": enabled,
-                "keep": keep,
-            ]
-        )
     }
     
     lazy var contentHandler = newContentHandler(self)
@@ -149,7 +105,6 @@ public class GeckoSession {
             "isExtensionPopup": isAddonPopup,
             "sessionContextId": NSNull(),
             "unsafeSessionContextId": NSNull(),
-            "chatGPTLightSession": currentChatGPTLightSessionSettings(),
         ]
         
         let modules = Dictionary(uniqueKeysWithValues: sessionHandlers.map {

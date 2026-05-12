@@ -58,7 +58,6 @@ final class TabManagerImplementation: NSObject, TabManager {
     
     private func loadURL(_ url: String, in tab: Tab) {
         tab.session.updateUserAgent(UserAgentController.shared.userAgent(for: url, tabID: tab.id))
-        applyLightSessionSettings(to: tab.session)
         tab.session.load(url)
     }
 
@@ -75,11 +74,6 @@ final class TabManagerImplementation: NSObject, TabManager {
         }
     }
 
-    private func applyLightSessionSettings(to session: GeckoSession) {
-        let settings = LightSessionSettingsStore.shared.settings
-        session.updateLightSession(enabled: settings.enabled, keep: settings.keep)
-    }
-    
     private func makeTab(windowId: String?) -> Tab {
         let tab = Tab(session: createSession(windowId: windowId))
         let controller = NowPlayingController(session: tab.session)
@@ -384,7 +378,6 @@ final class TabManagerImplementation: NSObject, TabManager {
         session.progressDelegate = self
         session.navigationDelegate = self
         session.open(windowId: windowId)
-        applyLightSessionSettings(to: session)
         return session
     }
 }
@@ -501,7 +494,6 @@ extension TabManagerImplementation: NavigationDelegate {
         
         if let url {
             session.updateUserAgent(UserAgentController.shared.userAgent(for: url, tabID: tabs[index].id))
-            applyLightSessionSettings(to: session)
         }
         
         tabs[index].url = url
@@ -552,7 +544,6 @@ extension TabManagerImplementation: NavigationDelegate {
         
         let newTab = Tab(session: newSession)
         newSession.userAgentOverride = UserAgentController.shared.userAgent(for: uri, tabID: newTab.id)
-        applyLightSessionSettings(to: newSession)
         let controller = NowPlayingController(session: newSession)
         newSession.mediaSessionDelegate = controller
         newTab.nowPlayingController = controller
@@ -600,7 +591,6 @@ extension TabManagerImplementation: ProgressDelegate {
         
         tabs[index].isLoading = true
         tabs[index].progress = 0
-        applyLightSessionSettings(to: session)
         delegate?.tabManager(self, didUpdateTabAt: index, reason: .loading)
     }
     
@@ -610,7 +600,6 @@ extension TabManagerImplementation: ProgressDelegate {
         }
         
         tabs[index].isLoading = false
-        applyLightSessionSettings(to: session)
         delegate?.tabManager(self, didUpdateTabAt: index, reason: .loading)
         delegate?.tabManager(self, didUpdateTabAt: index, reason: .thumbnail)
     }
