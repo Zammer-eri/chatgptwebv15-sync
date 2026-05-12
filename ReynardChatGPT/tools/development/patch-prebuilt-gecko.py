@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import json
 from pathlib import Path
 import sys
 
@@ -7,6 +8,642 @@ import sys
 EMOJI_RENDERER_MARKER = "installChatGPTShellEmojiRenderer"
 LIGHT_SESSION_MARKER = "installChatGPTShellLightSession"
 SHELL_RUNTIME_MARKER = "installChatGPTShellRuntime"
+
+
+PAGE_WORLD_SCRIPT = r'''(() => {
+  "use strict";
+
+  const readConfigUpdate = () => {
+    try {
+      const raw = globalThis.__REYNARD_CHATGPT_SHELL_CONFIG_JSON__;
+      return raw ? JSON.parse(raw) : null;
+    } catch (_) {
+      return null;
+    }
+  };
+
+  const win = window;
+  const doc = document;
+  const host = win.location?.hostname || "";
+  if (host !== "chatgpt.com" && !host.endsWith(".chatgpt.com")) {
+    return;
+  }
+
+  const shell = win.__reynardChatGPTShell || {};
+  win.__reynardChatGPTShell = shell;
+
+  const DEFAULT_CONFIG = { enabled: true, keep: 20 };
+  const incomingConfig = readConfigUpdate();
+  const hasConfigUpdate =
+    incomingConfig !== null && typeof incomingConfig === "object";
+
+  const sanitizeConfig = value => {
+    const keepValue = Number(value && value.keep);
+    const boundedKeep = Number.isFinite(keepValue)
+      ? Math.min(100, Math.max(1, Math.round(keepValue)))
+      : DEFAULT_CONFIG.keep;
+
+    return {
+      enabled:
+        value && typeof value.enabled === "boolean"
+          ? value.enabled
+          : DEFAULT_CONFIG.enabled,
+      keep: boundedKeep,
+    };
+  };
+
+  const previousConfig = shell.lightSessionConfig || null;
+  const nextConfig = sanitizeConfig(
+    hasConfigUpdate ? incomingConfig : previousConfig || DEFAULT_CONFIG
+  );
+  const configChanged = Boolean(
+    previousConfig &&
+      (previousConfig.enabled !== nextConfig.enabled ||
+        previousConfig.keep !== nextConfig.keep)
+  );
+  shell.lightSessionConfig = nextConfig;
+  shell.lightSessionConfigReceived =
+    shell.lightSessionConfigReceived || hasConfigUpdate;
+  win.__codexLightSessionConfig__ = nextConfig;
+  win.__codexLightSessionConfigReceived__ = shell.lightSessionConfigReceived;
+
+  const installEmojiRenderer = () => {
+    if (shell.emojiRendererInstalled || !doc.documentElement) {
+      return;
+    }
+    shell.emojiRendererInstalled = true;
+
+    const emojiPattern =
+      /[\u{1f1e6}-\u{1f1ff}\u{1f300}-\u{1faff}\u{2600}-\u{27bf}]/u;
+    const skipParentSelector =
+      'script,style,noscript,textarea,input,[contenteditable="true"],[data-reynard-emoji]';
+    const segmenter = win.Intl?.Segmenter
+      ? new win.Intl.Segmenter(undefined, { granularity: "grapheme" })
+      : null;
+    let scheduled = false;
+
+    const splitGraphemes = text => {
+      if (segmenter) {
+        return Array.from(segmenter.segment(text), segment => segment.segment);
+      }
+      return Array.from(text);
+    };
+
+    const emojiCodepoint = (text, keepEmojiPresentation = false) =>
+      Array.from(text)
+        .map(char => char.codePointAt(0).toString(16))
+        .filter(codepoint =>
+          codepoint !== "fe0e" && (keepEmojiPresentation || codepoint !== "fe0f")
+        )
+        .join("-");
+
+    const emojiAssetURLs = codepoints => {
+      const urls = [];
+      for (const codepoint of codepoints) {
+        if (!codepoint || urls.some(url => url.includes(`/${codepoint}.png`))) {
+          continue;
+        }
+        urls.push(
+          `https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/${codepoint}.png`
+        );
+        urls.push(
+          `https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.2/assets/72x72/${codepoint}.png`
+        );
+        urls.push(`https://twemoji.maxcdn.com/v/latest/72x72/${codepoint}.png`);
+      }
+      return urls;
+    };
+
+    const emojiImage = text => {
+      const codepoint = emojiCodepoint(text);
+      const fallbackCodepoint = emojiCodepoint(text, true);
+      if (!codepoint) {
+        return doc.createTextNode(text);
+      }
+
+      const sources = emojiAssetURLs(
+        [codepoint, fallbackCodepoint].filter(
+          (value, index, values) => value && values.indexOf(value) === index
+        )
+      );
+      if (!sources.length) {
+        return doc.createTextNode(text);
+      }
+
+      const image = doc.createElement("img");
+      image.setAttribute("data-reynard-emoji", "true");
+      image.setAttribute("alt", text);
+      image.setAttribute("draggable", "false");
+      image.setAttribute("decoding", "async");
+      image.setAttribute("referrerpolicy", "no-referrer");
+      image.style.width = "1.2em";
+      image.style.height = "1.2em";
+      image.style.margin = "0 .03em";
+      image.style.verticalAlign = "-0.2em";
+      image.style.display = "inline-block";
+      let sourceIndex = 0;
+      image.addEventListener("error", () => {
+        sourceIndex += 1;
+        if (sourceIndex < sources.length) {
+          image.src = sources[sourceIndex];
+        }
+      });
+      image.src = sources[sourceIndex];
+      return image;
+    };
+
+    const shouldSkipTextNode = node => {
+      const parent = node.parentElement;
+      if (
+        !parent ||
+        !parent.isConnected ||
+        parent.closest(skipParentSelector)
+      ) {
+        return true;
+      }
+      return !emojiPattern.test(node.nodeValue || "");
+    };
+
+    const renderTextNode = node => {
+      if (shouldSkipTextNode(node)) {
+        return;
+      }
+
+      const fragment = doc.createDocumentFragment();
+      for (const segment of splitGraphemes(node.nodeValue || "")) {
+        fragment.appendChild(
+          emojiPattern.test(segment)
+            ? emojiImage(segment)
+            : doc.createTextNode(segment)
+        );
+      }
+      node.parentNode?.replaceChild(fragment, node);
+    };
+
+    const renderEmojiText = () => {
+      scheduled = false;
+      if (!doc.body) {
+        scheduleRender(120);
+        return;
+      }
+
+      const walker = doc.createTreeWalker(
+        doc.body,
+        win.NodeFilter.SHOW_TEXT,
+        {
+          acceptNode: node =>
+            shouldSkipTextNode(node)
+              ? win.NodeFilter.FILTER_REJECT
+              : win.NodeFilter.FILTER_ACCEPT,
+        }
+      );
+
+      const nodes = [];
+      while (nodes.length < 250) {
+        const node = walker.nextNode();
+        if (!node) {
+          break;
+        }
+        nodes.push(node);
+      }
+      for (const node of nodes) {
+        renderTextNode(node);
+      }
+      if (nodes.length === 250) {
+        scheduleRender(80);
+      }
+    };
+
+    const scheduleRender = (delay = 80) => {
+      if (scheduled) {
+        return;
+      }
+      scheduled = true;
+      win.setTimeout(renderEmojiText, delay);
+    };
+
+    const style = doc.createElement("style");
+    style.setAttribute("data-reynard-emoji", "true");
+    style.textContent =
+      'img[data-reynard-emoji="true"]{font-size:inherit;line-height:inherit}';
+    doc.documentElement.appendChild(style);
+
+    const observer = new win.MutationObserver(() => scheduleRender());
+    observer.observe(doc.documentElement, {
+      childList: true,
+      characterData: true,
+      subtree: true,
+    });
+    scheduleRender(0);
+  };
+
+  const STATUS_ID = "codex-lightsession-status";
+  const STATUS_STYLE_ID = "codex-lightsession-status-style";
+  const HIDDEN_ROLES = new Set(["system", "tool", "thinking"]);
+
+  const ensureStatusStyle = () => {
+    if (doc.getElementById(STATUS_STYLE_ID)) {
+      return;
+    }
+
+    const style = doc.createElement("style");
+    style.id = STATUS_STYLE_ID;
+    style.textContent = `
+      #${STATUS_ID} {
+        position: fixed;
+        top: calc(env(safe-area-inset-top, 0px) + 12px);
+        left: 16px;
+        right: 16px;
+        z-index: 2147483646;
+        display: flex;
+        justify-content: center;
+        pointer-events: none;
+        opacity: 0;
+        transform: translateY(-6px);
+        transition: opacity 160ms ease, transform 160ms ease;
+      }
+      #${STATUS_ID}.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      #${STATUS_ID} .pill {
+        max-width: min(100%, 720px);
+        padding: 9px 14px;
+        border-radius: 12px;
+        background: rgba(24, 135, 84, 0.96);
+        color: #ffffff;
+        font: 600 12px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+        white-space: normal;
+        text-align: center;
+        overflow-wrap: anywhere;
+      }
+      #${STATUS_ID}[data-state="disabled"] .pill {
+        background: rgba(63, 63, 70, 0.92);
+        color: #f4f4f5;
+      }
+    `;
+    (doc.head || doc.documentElement).appendChild(style);
+  };
+
+  const ensureStatusElement = () => {
+    ensureStatusStyle();
+
+    let container = doc.getElementById(STATUS_ID);
+    if (container) {
+      return container;
+    }
+
+    container = doc.createElement("div");
+    container.id = STATUS_ID;
+    const pill = doc.createElement("div");
+    pill.className = "pill";
+    container.appendChild(pill);
+    (doc.body || doc.documentElement).appendChild(container);
+    return container;
+  };
+
+  const showStatus = (text, timeoutMs = 0, state = "active") => {
+    const container = ensureStatusElement();
+    const pill = container.firstElementChild;
+    if (!pill) {
+      return;
+    }
+
+    pill.textContent = text;
+    container.setAttribute("data-state", state);
+    container.classList.add("visible");
+
+    if (shell.lightSessionStatusTimer) {
+      win.clearTimeout(shell.lightSessionStatusTimer);
+      shell.lightSessionStatusTimer = null;
+    }
+
+    if (timeoutMs && timeoutMs > 0) {
+      shell.lightSessionStatusTimer = win.setTimeout(() => {
+        container.classList.remove("visible");
+        shell.lightSessionStatusTimer = null;
+      }, timeoutMs);
+    }
+  };
+
+  const hideStatus = () => {
+    const container = doc.getElementById(STATUS_ID);
+    if (!container) {
+      return;
+    }
+    if (shell.lightSessionStatusTimer) {
+      win.clearTimeout(shell.lightSessionStatusTimer);
+      shell.lightSessionStatusTimer = null;
+    }
+    container.classList.remove("visible");
+  };
+
+  if (nextConfig.enabled) {
+    if (!shell.lightSessionStatusShown || (hasConfigUpdate && configChanged)) {
+      shell.lightSessionStatusShown = true;
+      showStatus(
+        "LightSession enabled - limit " + nextConfig.keep,
+        2200,
+        "active"
+      );
+    }
+  } else {
+    shell.lightSessionStatusShown = false;
+    if (hasConfigUpdate && configChanged) {
+      showStatus("LightSession disabled", 1800, "disabled");
+    } else {
+      hideStatus();
+    }
+  }
+
+  const installLightSession = () => {
+    if (shell.lightSessionFetchPatched) {
+      return;
+    }
+    shell.lightSessionFetchPatched = true;
+
+    const isVisibleMessage = node => {
+      const role = node?.message?.author?.role;
+      return Boolean(role) && !HIDDEN_ROLES.has(role);
+    };
+
+    const trimMapping = (data, limit) => {
+      const mapping = data?.mapping;
+      const currentNode = data?.current_node;
+      if (!mapping || !currentNode || !mapping[currentNode]) {
+        return null;
+      }
+
+      const path = [];
+      let cursor = currentNode;
+      const visited = new Set();
+
+      while (cursor) {
+        const node = mapping[cursor];
+        if (!node || visited.has(cursor)) {
+          break;
+        }
+        visited.add(cursor);
+        path.push(cursor);
+        cursor = node.parent || null;
+      }
+
+      path.reverse();
+
+      let visibleTotal = 0;
+      let lastVisibleRole = null;
+      for (const nodeId of path) {
+        const node = mapping[nodeId];
+        if (node && isVisibleMessage(node)) {
+          const role = node.message?.author?.role || "";
+          if (role !== lastVisibleRole) {
+            visibleTotal += 1;
+            lastVisibleRole = role;
+          }
+        }
+      }
+
+      const effectiveLimit = Math.max(1, limit);
+      let turnCount = 0;
+      let cutIndex = 0;
+      let lastRole = null;
+
+      for (let index = path.length - 1; index >= 0; index -= 1) {
+        const nodeId = path[index];
+        const node = mapping[nodeId];
+        if (!node || !isVisibleMessage(node)) {
+          continue;
+        }
+
+        const role = node.message?.author?.role || "";
+        if (role !== lastRole) {
+          turnCount += 1;
+          lastRole = role;
+        }
+
+        if (turnCount > effectiveLimit) {
+          cutIndex = index + 1;
+          break;
+        }
+      }
+
+      const keptRaw = path.slice(cutIndex);
+      const kept = keptRaw.filter(nodeId => {
+        const node = mapping[nodeId];
+        return Boolean(node) && isVisibleMessage(node);
+      });
+
+      if (!kept.length) {
+        return null;
+      }
+
+      const originalRootId = path[0];
+      const originalRootNode = originalRootId ? mapping[originalRootId] : null;
+      const hasOriginalRoot = Boolean(
+        originalRootId && originalRootNode && !isVisibleMessage(originalRootNode)
+      );
+
+      const newMapping = {};
+      let visibleKept = 0;
+      let previousRole = null;
+      if (hasOriginalRoot) {
+        newMapping[originalRootId] = Object.assign({}, originalRootNode, {
+          parent: null,
+          children: kept[0] ? [kept[0]] : [],
+        });
+      }
+
+      for (let index = 0; index < kept.length; index += 1) {
+        const nodeId = kept[index];
+        const originalNode = mapping[nodeId];
+        const previousId =
+          index === 0 ? (hasOriginalRoot ? originalRootId : null) : kept[index - 1];
+        const nextId = kept[index + 1] || null;
+
+        if (!originalNode) {
+          continue;
+        }
+
+        newMapping[nodeId] = Object.assign({}, originalNode, {
+          parent: previousId || null,
+          children: nextId ? [nextId] : [],
+        });
+
+        const role = originalNode.message?.author?.role || "";
+        if (isVisibleMessage(originalNode) && role !== previousRole) {
+          visibleKept += 1;
+          previousRole = role;
+        }
+      }
+
+      const root = hasOriginalRoot ? originalRootId : kept[0];
+      const current = kept[kept.length - 1];
+      if (!root || !current) {
+        return null;
+      }
+
+      for (const [nodeId, node] of Object.entries(newMapping)) {
+        if (node.parent && !newMapping[node.parent]) {
+          return null;
+        }
+        for (const childId of node.children || []) {
+          if (!newMapping[childId]) {
+            return null;
+          }
+        }
+        if (nodeId !== root && node.parent === null) {
+          return null;
+        }
+      }
+
+      return {
+        mapping: newMapping,
+        current_node: current,
+        root,
+        visibleKept,
+        visibleTotal,
+      };
+    };
+
+    const isConversationRequest = (method, url) =>
+      method === "GET" &&
+      /^\/backend-api\/(conversation|shared_conversation)\/[^/]+\/?$/.test(
+        url.pathname
+      );
+
+    const isJsonResponse = response =>
+      (response.headers.get("content-type") || "")
+        .toLowerCase()
+        .includes("application/json");
+
+    const createModifiedResponse = (originalResponse, modifiedData) => {
+      const headers = new Headers(originalResponse.headers);
+      headers.delete("content-length");
+      headers.delete("content-encoding");
+      headers.set("content-type", "application/json; charset=utf-8");
+
+      const response = new Response(JSON.stringify(modifiedData), {
+        status: originalResponse.status,
+        statusText: originalResponse.statusText,
+        headers,
+      });
+
+      try {
+        if (originalResponse.url) {
+          Object.defineProperty(response, "url", { value: originalResponse.url });
+        }
+        if (originalResponse.type) {
+          Object.defineProperty(response, "type", { value: originalResponse.type });
+        }
+      } catch (_) {}
+
+      return response;
+    };
+
+    const nativeFetch = win.fetch.bind(win);
+    let firstConversationConfigWait = true;
+
+    win.fetch = async function(...args) {
+      const [input, init] = args;
+      let urlString;
+      let method;
+
+      if (typeof Request !== "undefined" && input instanceof Request) {
+        urlString = input.url;
+        method = (init?.method || input.method || "GET").toUpperCase();
+      } else if (typeof URL !== "undefined" && input instanceof URL) {
+        urlString = input.href;
+        method = (init?.method || "GET").toUpperCase();
+      } else {
+        urlString = String(input);
+        method = (init?.method || "GET").toUpperCase();
+      }
+
+      const url = new URL(urlString, win.location.href);
+      if (!isConversationRequest(method, url)) {
+        return nativeFetch(...args);
+      }
+
+      if (firstConversationConfigWait && !shell.lightSessionConfigReceived) {
+        firstConversationConfigWait = false;
+        await new Promise(resolve => win.setTimeout(resolve, 100));
+      }
+
+      const config = sanitizeConfig(shell.lightSessionConfig || DEFAULT_CONFIG);
+      if (!config.enabled) {
+        return nativeFetch(...args);
+      }
+
+      const response = await nativeFetch(...args);
+      try {
+        if (!isJsonResponse(response)) {
+          return response;
+        }
+
+        const json = await response.clone().json().catch(() => null);
+        if (!json || typeof json !== "object" || !json.mapping || !json.current_node) {
+          return response;
+        }
+
+        const trimmed = trimMapping(json, config.keep);
+        if (!trimmed) {
+          return response;
+        }
+
+        const removed = Math.max(0, trimmed.visibleTotal - trimmed.visibleKept);
+        if (removed <= 0) {
+          showStatus(
+            "LightSession: kept " +
+              trimmed.visibleKept +
+              "/" +
+              trimmed.visibleTotal +
+              " turn(s) (limit " +
+              config.keep +
+              ")",
+            2600,
+            "active"
+          );
+          return response;
+        }
+
+        const removedPercent =
+          trimmed.visibleTotal > 0
+            ? Math.round((removed / trimmed.visibleTotal) * 100)
+            : 0;
+        showStatus(
+          "LightSession: kept " +
+            trimmed.visibleKept +
+            "/" +
+            trimmed.visibleTotal +
+            " turn(s) (limit " +
+            config.keep +
+            ") - removed " +
+            removed +
+            " (~" +
+            removedPercent +
+            "%)",
+          3400,
+          "active"
+        );
+
+        return createModifiedResponse(
+          response,
+          Object.assign({}, json, {
+            mapping: trimmed.mapping,
+            current_node: trimmed.current_node,
+            root: trimmed.root,
+          })
+        );
+      } catch (_) {
+        return response;
+      }
+    };
+  };
+
+  installEmojiRenderer();
+  installLightSession();
+})();'''
 
 
 EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
@@ -645,21 +1282,46 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
 
 
 SHELL_RUNTIME_METHOD = r'''  installChatGPTShellRuntime(configUpdate = null) {
-    const run = () => {
-      try {
-        this.installChatGPTShellEmojiRenderer();
-      } catch (error) {
-        debug`Cannot install ChatGPT emoji renderer: ${error}`;
+    const run = update => {
+      const win = this.contentWindow;
+      const doc = win?.document;
+      if (!win || !doc?.nodePrincipal) {
+        return;
+      }
+
+      const host = win.location?.hostname || "";
+      if (host !== "chatgpt.com" && !host.endsWith(".chatgpt.com")) {
+        return;
+      }
+
+      if (update !== null && typeof update === "object") {
+        this._chatGPTShellLastConfig = update;
       }
 
       try {
-        this.installChatGPTShellLightSession(configUpdate);
+        const sandbox = Cu.Sandbox([doc.nodePrincipal], {
+          sandboxName: "Reynard ChatGPT shell page runtime",
+          sandboxPrototype: win,
+          sameZoneAs: win,
+          originAttributes: doc.nodePrincipal.originAttributes,
+          wantXrays: false,
+        });
+        sandbox.__REYNARD_CHATGPT_SHELL_CONFIG_JSON__ = JSON.stringify(
+          this._chatGPTShellLastConfig || null
+        );
+        Cu.evalInSandbox(
+          __REYNARD_CHATGPT_PAGE_SCRIPT__,
+          sandbox,
+          null,
+          "reynard-chatgpt-shell.js",
+          1
+        );
       } catch (error) {
-        debug`Cannot install ChatGPT LightSession: ${error}`;
+        debug`Cannot install ChatGPT page runtime: ${error}`;
       }
     };
 
-    run();
+    run(configUpdate);
 
     const win = this.contentWindow;
     if (!win || this._chatGPTShellRuntimeHooksInstalled) {
@@ -667,18 +1329,19 @@ SHELL_RUNTIME_METHOD = r'''  installChatGPTShellRuntime(configUpdate = null) {
     }
 
     this._chatGPTShellRuntimeHooksInstalled = true;
+    const rerun = () => run(null);
     for (const eventName of ["DOMContentLoaded", "pageshow", "load"]) {
-      win.addEventListener(eventName, run, {
+      win.addEventListener(eventName, rerun, {
         capture: true,
         mozSystemGroup: true,
       });
     }
     for (const delay of [0, 250, 1000, 2500]) {
-      win.setTimeout(run, delay);
+      win.setTimeout(rerun, delay);
     }
   }
 
-'''
+'''.replace("__REYNARD_CHATGPT_PAGE_SCRIPT__", json.dumps(PAGE_WORLD_SCRIPT))
 
 
 def patch_geckoview_content_child(bin_dir: Path) -> None:
