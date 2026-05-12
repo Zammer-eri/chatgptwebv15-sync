@@ -443,12 +443,12 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
       }
 
       const keptRaw = path.slice(cutIndex);
-      const keptVisible = keptRaw.filter(nodeId => {
+      const kept = keptRaw.filter(nodeId => {
         const node = mapping[nodeId];
         return Boolean(node) && isVisibleMessage(node);
       });
 
-      if (!keptVisible.length) {
+      if (!kept.length) {
         return null;
       }
 
@@ -458,27 +458,22 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
         originalRootId && originalRootNode && !isVisibleMessage(originalRootNode)
       );
 
-      const keptPath =
-        hasOriginalRoot && originalRootId && keptRaw[0] === originalRootId
-          ? keptRaw.slice(1)
-          : keptRaw;
-
       const newMapping = {};
       let visibleKept = 0;
       let previousRole = null;
       if (hasOriginalRoot) {
         newMapping[originalRootId] = Object.assign({}, originalRootNode, {
           parent: null,
-          children: keptPath[0] ? [keptPath[0]] : [],
+          children: kept[0] ? [kept[0]] : [],
         });
       }
 
-      for (let index = 0; index < keptPath.length; index += 1) {
-        const nodeId = keptPath[index];
+      for (let index = 0; index < kept.length; index += 1) {
+        const nodeId = kept[index];
         const originalNode = mapping[nodeId];
         const previousId =
-          index === 0 ? (hasOriginalRoot ? originalRootId : null) : keptPath[index - 1];
-        const nextId = keptPath[index + 1] || null;
+          index === 0 ? (hasOriginalRoot ? originalRootId : null) : kept[index - 1];
+        const nextId = kept[index + 1] || null;
 
         if (!originalNode) {
           continue;
@@ -496,10 +491,24 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
         }
       }
 
-      const root = hasOriginalRoot ? originalRootId : keptPath[0];
-      const current = keptPath[keptPath.length - 1];
+      const root = hasOriginalRoot ? originalRootId : kept[0];
+      const current = kept[kept.length - 1];
       if (!root || !current) {
         return null;
+      }
+
+      for (const [nodeId, node] of Object.entries(newMapping)) {
+        if (node.parent && !newMapping[node.parent]) {
+          return null;
+        }
+        for (const childId of node.children || []) {
+          if (!newMapping[childId]) {
+            return null;
+          }
+        }
+        if (nodeId !== root && node.parent === null) {
+          return null;
+        }
       }
 
       return {
@@ -597,7 +606,7 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
         }
 
         const removed = Math.max(0, trimmed.visibleTotal - trimmed.visibleKept);
-        if (trimmed.visibleKept === trimmed.visibleTotal) {
+        if (removed <= 0) {
           showStatus(
             "LightSession: kept " + trimmed.visibleKept + "/" + trimmed.visibleTotal +
               " turn(s) (limit " + config.keep + ")",
