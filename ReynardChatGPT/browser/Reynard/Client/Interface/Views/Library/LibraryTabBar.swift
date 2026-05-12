@@ -11,7 +11,6 @@ enum LibrarySection: Int, CaseIterable {
     case bookmarks
     case history
     case downloads
-    case settings
     
     var title: String {
         switch self {
@@ -21,8 +20,6 @@ enum LibrarySection: Int, CaseIterable {
             return "History"
         case .downloads:
             return "Downloads"
-        case .settings:
-            return "Settings"
         }
     }
     
@@ -34,8 +31,6 @@ enum LibrarySection: Int, CaseIterable {
             return "clock"
         case .downloads:
             return "arrow.down.circle"
-        case .settings:
-            return "gearshape"
         }
     }
     
@@ -47,8 +42,6 @@ enum LibrarySection: Int, CaseIterable {
             return "clock.fill"
         case .downloads:
             return "arrow.down.circle.fill"
-        case .settings:
-            return "gearshape.fill"
         }
     }
     

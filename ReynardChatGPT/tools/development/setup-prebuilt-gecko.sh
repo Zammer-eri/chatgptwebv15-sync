@@ -13,9 +13,9 @@ DIST_DIR="$ROOT_DIR/engine/prebuilt-gecko/obj-aarch64-apple-ios/dist"
 BIN_DIR="$DIST_DIR/bin"
 INCLUDE_DIR="$DIST_DIR/include/GeckoView"
 MARKER="$ROOT_DIR/engine/prebuilt-gecko/.release"
-SHIM_VERSION="24"
+SHIM_VERSION="25"
 PREFS_APPENDED="false"
-EMOJI_FALLBACK="native-apple-color-emoji-css"
+EMOJI_FALLBACK="twemoji-cdn"
 
 case "$SHIM_MODE" in
 	baseline|emoji|all) ;;
@@ -28,7 +28,7 @@ esac
 
 MARKER_VALUE="${TAG}/${ASSET}/shim-${SHIM_VERSION}/mode-${SHIM_MODE}"
 
-echo "Reynard ChatGPT prebuilt diagnostics:"
+echo "Reynard ChatGPT prebuilt setup:"
 echo "  release tag: $TAG"
 echo "  asset: $ASSET"
 echo "  shim version: $SHIM_VERSION"
@@ -67,10 +67,6 @@ find "$APP_DIR/Frameworks" -maxdepth 1 -type f -name '*.dylib' -exec cp -f {} "$
 cp -R "$GECKOVIEW_FW/Frameworks/." "$BIN_DIR/"
 find "$BIN_DIR" -maxdepth 1 -type f -name 'libswift*.dylib' -delete
 python3 "$SCRIPT_DIR/patch-prebuilt-gecko.py" "$BIN_DIR" "$SHIM_MODE"
-
-cat > "$BIN_DIR/reynard-chatgpt-build.json" <<EOF
-{"release_tag":"$TAG","asset":"$ASSET","shim_version":"$SHIM_VERSION","shim_mode":"$SHIM_MODE","prefs_appended":$PREFS_APPENDED,"emoji_fallback":"$EMOJI_FALLBACK","lightsession":"removed"}
-EOF
 
 cat > "$INCLUDE_DIR/GeckoViewSwiftSupport.h" <<'EOF'
 #import <Foundation/Foundation.h>

@@ -36,6 +36,14 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     private var pendingSelectionAnimation = false
     
     let downloadHaptic = UINotificationFeedbackGenerator()
+
+    override var shouldAutorotate: Bool {
+        false
+    }
+
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        .portrait
+    }
     
     var isLibrarySidebarVisible: Bool {
         (splitViewController as? BrowserSplitViewController)?.isLibrarySidebarVisible ?? false
@@ -135,13 +143,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
             name: AddressBarMenu.presentAddonSettingsNotification,
             object: nil
         )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(openEmojiDiagnosticsRequested),
-            name: .chatGPTOpenEmojiDiagnostics,
-            object: nil
-        )
-        
         browserLayout.configureLayout()
         syncBrowserNavigationChrome(animated: false)
         syncPadSidebarButtonItem()
@@ -497,21 +498,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         addonsController.presentCurrentSiteSettings(for: item)
     }
 
-    @objc private func openEmojiDiagnosticsRequested() {
-        let targetController = activeContentBrowserViewController
-        let openDiagnostics = {
-            targetController.browse(to: "about:chatgpt-emoji")
-        }
-
-        if let presentedViewController = targetController.presentedViewController {
-            presentedViewController.dismiss(animated: true, completion: openDiagnostics)
-        } else if let presentedViewController = presentedViewController {
-            presentedViewController.dismiss(animated: true, completion: openDiagnostics)
-        } else {
-            openDiagnostics()
-        }
-    }
-    
     func tabManagerDidChangeTabs(_ tabManager: TabManager) {
         if let selectedTab = tabManager.selectedTab {
             if browserUI.geckoView.session !== selectedTab.session {
@@ -668,30 +654,12 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     
     private func configureChatGPTShellGestures() {
         let reloadGesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleShellReloadGesture(_:)))
-        reloadGesture.edges = .left
+        reloadGesture.edges = .right
         reloadGesture.cancelsTouchesInView = false
         view.addGestureRecognizer(reloadGesture)
-        
-        let menuGesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleShellMenuGesture(_:)))
-        menuGesture.edges = .right
-        menuGesture.cancelsTouchesInView = false
-        view.addGestureRecognizer(menuGesture)
     }
     
     @objc private func handleShellReloadGesture(_ gesture: UIScreenEdgePanGestureRecognizer) {
-        guard gesture.state == .ended || gesture.state == .recognized else {
-            return
-        }
-        
-        guard gesture.translation(in: view).x > 24 else {
-            return
-        }
-        
-        guard let tab = tabManager.selectedTab else { return }
-        reloadTabCleanly(tab)
-    }
-    
-    @objc private func handleShellMenuGesture(_ gesture: UIScreenEdgePanGestureRecognizer) {
         guard gesture.state == .ended || gesture.state == .recognized else {
             return
         }
@@ -700,7 +668,8 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
             return
         }
         
-        browserActions.presentMenuSheet()
+        guard let tab = tabManager.selectedTab else { return }
+        reloadTabCleanly(tab)
     }
 
     private func reloadTabCleanly(_ tab: Tab) {
@@ -831,6 +800,14 @@ final class BrowserSplitViewController: UISplitViewController, UISplitViewContro
     private let browserViewController: BrowserViewController
     private var sidebarVisible = false
     private lazy var libraryViewController = LibrarySidebarViewController()
+
+    override var shouldAutorotate: Bool {
+        false
+    }
+
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        .portrait
+    }
     
     var contentBrowserViewController: BrowserViewController {
         browserViewController
@@ -951,10 +928,6 @@ final class BrowserSplitViewController: UISplitViewController, UISplitViewContro
     @objc private func applicationDidBecomeActive() {
         refreshSidebarVisibility()
     }
-}
-
-extension Notification.Name {
-    static let chatGPTOpenEmojiDiagnostics = Notification.Name("ChatGPTOpenEmojiDiagnostics")
 }
 
 enum SidebarToggleButtonConfiguration {

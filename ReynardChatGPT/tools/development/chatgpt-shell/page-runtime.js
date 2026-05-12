@@ -23,20 +23,11 @@
       return;
     }
 
-    const shell = win.__reynardChatGPTShell || {};
-    win.__reynardChatGPTShell = shell;
-
     const context = {
       win,
       doc,
       mode,
-      shell,
-      diagnostics: registry.diagnostics,
     };
-
-    registry.diagnostics?.ensure(mode);
-    registry.diagnostics?.set(mode, "pageRuntimeInstalled", true);
-    registry.diagnostics?.event(mode, "page-runtime-installed", { mode });
 
     if (EMOJI_MODES.has(mode)) {
       registry.emojiRenderer?.install(context);

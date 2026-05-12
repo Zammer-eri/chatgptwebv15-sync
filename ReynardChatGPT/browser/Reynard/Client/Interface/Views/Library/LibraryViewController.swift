@@ -32,20 +32,6 @@ final class LibraryViewController: UITabBarController, UITabBarControllerDelegat
             navigationItem.rightBarButtonItem = makeCloseBarButtonItem()
         }
         updateNavigationTitle()
-        
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(applySettingsTabBadge),
-            name: AppUpdates.updateAvailableNotification,
-            object: nil
-        )
-        if AppUpdates.shared.hasUpdate {
-            applySettingsTabBadge()
-        }
-    }
-    
-    @objc private func applySettingsTabBadge() {
-        viewControllers?[LibrarySection.settings.rawValue].tabBarItem.badgeValue = ""
     }
     
     override func viewWillAppear(_ animated: Bool) {
@@ -69,7 +55,6 @@ final class LibraryViewController: UITabBarController, UITabBarControllerDelegat
             makeSectionViewController(for: .bookmarks, contentViewController: LibraryHostedSectionViewController(hostedViewFactory: { BookmarksManagerView() })),
             makeSectionViewController(for: .history, contentViewController: LibraryHostedSectionViewController(hostedViewFactory: { HistoryManagerView() })),
             makeSectionViewController(for: .downloads, contentViewController: LibraryHostedSectionViewController(hostedViewFactory: { DownloadsManagerView() })),
-            makeSectionViewController(for: .settings, contentViewController: LibraryHostedSectionViewController(hostedViewFactory: { SettingsView() })),
         ]
     }
     

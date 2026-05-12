@@ -15,7 +15,7 @@ final class BrowserActions {
         self.controller = controller
     }
     
-    func presentMenuSheet(initialSection: LibrarySection = .settings) {
+    func presentMenuSheet(initialSection: LibrarySection = .bookmarks) {
         let viewController = LibraryViewController(initialSection: initialSection) { [weak controller] in
             controller?.dismiss(animated: true)
         }

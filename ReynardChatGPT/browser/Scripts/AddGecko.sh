@@ -9,8 +9,6 @@ GECKOVIEW_FW="${FRAMEWORKS_DIR}/GeckoView.framework"
 GECKOVIEW_FW_FRAMEWORKS="${GECKOVIEW_FW}/Frameworks"
 
 DEFAULT_THEME_SRC="${SRCROOT}/../engine/firefox/toolkit/mozapps/extensions/default-theme"
-CHATGPT_DIAGNOSTICS_SRC="${SRCROOT}/Reynard/Resources/ChatGPTDiagnostics"
-CHATGPT_DIAGNOSTICS_DST="${APP_BUNDLE}/ChatGPTDiagnostics"
 
 sign_if_needed() {
 	if [ "${CODE_SIGNING_ALLOWED:-YES}" != "YES" ] || [ -z "${EXPANDED_CODE_SIGN_IDENTITY:-}" ]; then
@@ -40,12 +38,6 @@ if [ -d "${DEFAULT_THEME_SRC}" ]; then
 	mkdir -p "${GECKOVIEW_FW_FRAMEWORKS}/default-theme"
 	cp -RfL "${DEFAULT_THEME_SRC}/" "${GECKOVIEW_FW_FRAMEWORKS}/default-theme/"
 	echo "resource default-theme file:default-theme/" >> "${GECKOVIEW_FW_FRAMEWORKS}/chrome.manifest"
-fi
-
-if [ -d "${CHATGPT_DIAGNOSTICS_SRC}" ]; then
-	rm -rf "${CHATGPT_DIAGNOSTICS_DST}"
-	mkdir -p "${CHATGPT_DIAGNOSTICS_DST}"
-	cp -RfL "${CHATGPT_DIAGNOSTICS_SRC}/" "${CHATGPT_DIAGNOSTICS_DST}/"
 fi
 
 # sign the GeckoView.framework

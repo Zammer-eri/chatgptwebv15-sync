@@ -23,7 +23,6 @@ class SettingsTableViewController: UITableViewController {
 final class SettingsRootViewController: SettingsTableViewController {
     enum Section: Int, CaseIterable {
         case updates
-        case chatgpt
         case jit
         case general
         case search
@@ -103,7 +102,6 @@ final class SettingsRootViewController: SettingsTableViewController {
         guard visibleSections.indices.contains(section) else { return 0 }
         switch visibleSections[section] {
         case .updates: return 2
-        case .chatgpt: return 2
         case .jit: return 2
         case .general: return 2
         case .search: return 1
@@ -120,19 +118,6 @@ final class SettingsRootViewController: SettingsTableViewController {
             return makeReleaseNotesCell()
         case .updates:
             return makeUpdateNowCell()
-        case .chatgpt:
-            let cell = UITableViewCell(style: .subtitle, reuseIdentifier: nil)
-            if indexPath.row == 0 {
-                cell.textLabel?.text = "Emoji Matrix"
-                cell.detailTextLabel?.text = "Open the Gecko emoji diagnostic page"
-                cell.accessoryType = .disclosureIndicator
-            } else {
-                cell.textLabel?.text = "Copy Diagnostic Info"
-                cell.detailTextLabel?.text = "Copy build and device data"
-                cell.accessoryType = .none
-            }
-            cell.detailTextLabel?.textColor = .secondaryLabel
-            return cell
         case .jit where indexPath.row == 0:
             let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
             cell.textLabel?.text = "Enable JIT"
@@ -212,12 +197,6 @@ final class SettingsRootViewController: SettingsTableViewController {
         switch visibleSections[indexPath.section] {
         case .updates:
             if indexPath.row == 1 { presentUpdateAlert() }
-        case .chatgpt:
-            if indexPath.row == 0 {
-                NotificationCenter.default.post(name: .chatGPTOpenEmojiDiagnostics, object: nil)
-            } else {
-                copyChatGPTDiagnosticInfo()
-            }
         case .jit where indexPath.row == 1:
             presentPairingFilePicker()
         case .general:
@@ -252,7 +231,6 @@ final class SettingsRootViewController: SettingsTableViewController {
         guard visibleSections.indices.contains(section) else { return nil }
         switch visibleSections[section] {
         case .updates: return "Update Available"
-        case .chatgpt: return "ChatGPT"
         case .jit: return "JIT"
         case .general: return "General"
         case .search: return "Search"
@@ -266,8 +244,6 @@ final class SettingsRootViewController: SettingsTableViewController {
         guard visibleSections.indices.contains(section) else { return nil }
         switch visibleSections[section] {
         case .updates, .jit, .general, .search, .tab: return nil
-        case .chatgpt:
-            return "Use Emoji Matrix after installing a build. Screenshot the matrix and copy diagnostic info with the same build."
         case .compatibility:
             if preferences.useAndroidUserAgent {
                 return preferences.requestDesktopWebsite
@@ -288,70 +264,6 @@ final class SettingsRootViewController: SettingsTableViewController {
     override func tableView(_ tableView: UITableView, viewForFooterInSection section: Int) -> UIView? {
         guard visibleSections.indices.contains(section), visibleSections[section] == .jit else { return nil }
         return makeJITFooterView()
-    }
-
-    private func copyChatGPTDiagnosticInfo() {
-        let text = ChatGPTDiagnosticInfo.currentText()
-        UIPasteboard.general.string = text
-        presentAlert(title: "Copied", message: text)
-    }
-}
-
-enum ChatGPTDiagnosticInfo {
-    static func currentText() -> String {
-        var lines = [
-            "ChatGPT iOS diagnostics",
-            "App version: \(bundleValue("CFBundleShortVersionString")) (\(bundleValue("CFBundleVersion")))",
-            "Gecko version: \(bundleValue("GeckoVersion"))",
-            "Bundle id: \(Bundle.main.bundleIdentifier ?? "Unknown")",
-            "Device model: \(UIDevice.current.model)",
-            "System: \(UIDevice.current.systemName) \(UIDevice.current.systemVersion)",
-            "Process: \(ProcessInfo.processInfo.processName)",
-        ]
-
-        if let payload = geckoBuildPayload() {
-            lines.append("Prebuilt Gecko marker: \(payload)")
-        } else {
-            lines.append("Prebuilt Gecko marker: missing")
-        }
-
-        lines.append("Emoji matrix route: Settings > ChatGPT > Emoji Matrix")
-        lines.append("LightSession: removed")
-        return lines.joined(separator: "\n")
-    }
-
-    private static func bundleValue(_ key: String) -> String {
-        Bundle.main.object(forInfoDictionaryKey: key) as? String ?? "Unknown"
-    }
-
-    private static func geckoBuildPayload() -> String? {
-        guard let frameworksURL = Bundle.main.privateFrameworksURL else {
-            return nil
-        }
-
-        let candidates = [
-            frameworksURL
-                .appendingPathComponent("GeckoView.framework")
-                .appendingPathComponent("Frameworks")
-                .appendingPathComponent("reynard-chatgpt-build.json"),
-            frameworksURL
-                .appendingPathComponent("GeckoView.framework")
-                .appendingPathComponent("reynard-chatgpt-build.json"),
-        ]
-
-        for url in candidates {
-            guard
-                let data = try? Data(contentsOf: url),
-                let text = String(data: data, encoding: .utf8)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines),
-                !text.isEmpty
-            else {
-                continue
-            }
-            return text
-        }
-
-        return nil
     }
 }
 

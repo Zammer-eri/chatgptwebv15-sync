@@ -29,7 +29,7 @@ jobs:
           python3 --version
 
       - name: Install packaging tools
-        run: brew install ldid ripgrep
+        run: brew install ldid
 
       - name: Make Reynard scripts executable
         run: chmod +x ReynardChatGPT/tools/development/*.sh ReynardChatGPT/tools/release/*.sh
@@ -37,19 +37,14 @@ jobs:
       - name: Check ChatGPT shell syntax
         working-directory: ReynardChatGPT
         run: |
-          node --check tools/development/chatgpt-shell/diagnostics.js
           node --check tools/development/chatgpt-shell/emoji-renderer.js
           node --check tools/development/chatgpt-shell/page-runtime.js
-
-      - name: Check remote emoji assets
-        working-directory: ReynardChatGPT
-        run: sh tools/development/check-no-remote-emoji.sh
 
       - name: Cache prebuilt Gecko engine
         uses: actions/cache@v4
         with:
           path: ReynardChatGPT/engine/prebuilt-gecko
-          key: reynard-prebuilt-gecko-0.3.0-Reynard-ipa-shim-v24-mode-all
+          key: reynard-prebuilt-gecko-0.3.0-Reynard-ipa-shim-v25-mode-all
 
       - name: Prepare prebuilt Gecko engine
         working-directory: ReynardChatGPT

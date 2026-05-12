@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 
 
-SHIM_VERSION = 24
+SHIM_VERSION = 25
 VALID_MODES = {
     "baseline",
     "emoji",
@@ -17,7 +17,6 @@ SHELL_RUNTIME_MARKER = "installChatGPTShellRuntime"
 SCRIPT_DIR = Path(__file__).resolve().parent
 SHELL_DIR = SCRIPT_DIR / "chatgpt-shell"
 PAGE_RUNTIME_FILES = [
-    "diagnostics.js",
     "emoji-renderer.js",
     "page-runtime.js",
 ]
@@ -228,16 +227,15 @@ def main() -> None:
     content_child_changed = patch_geckoview_content_child(bin_dir, mode)
     startup_changed = patch_geckoview_startup(bin_dir, mode)
 
-    print("Reynard ChatGPT shim patch diagnostics:")
+    print("Reynard ChatGPT shim patch:")
     print(f"  shim version: {SHIM_VERSION}")
     print(f"  shim mode: {mode}")
     print(f"  ChatGPT runtime hooks requested: {mode in RUNTIME_MODES}")
-    print("  emoji fallback: native-apple-color-emoji-css")
+    print("  emoji fallback: twemoji-cdn")
     print(
         "  ChatGPT runtime hooks patched: "
         f"{content_child_changed or startup_changed}"
     )
-    print("  LightSession: removed")
 
 
 if __name__ == "__main__":
