@@ -12,7 +12,7 @@ DIST_DIR="$ROOT_DIR/engine/prebuilt-gecko/obj-aarch64-apple-ios/dist"
 BIN_DIR="$DIST_DIR/bin"
 INCLUDE_DIR="$DIST_DIR/include/GeckoView"
 MARKER="$ROOT_DIR/engine/prebuilt-gecko/.release"
-SHIM_VERSION="13"
+SHIM_VERSION="14"
 
 if [ -f "$BIN_DIR/XUL" ] && [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "${TAG}/${ASSET}/shim-${SHIM_VERSION}" ]; then
 	echo "Using cached prebuilt Gecko dist at $DIST_DIR"
@@ -50,7 +50,11 @@ cat > "$PREF_DIR/reynard-chatgpt.js" <<'EOF'
 // ChatGPT shell runtime prefs. Keep these in the extracted prebuilt payload so
 // CI and local builds do not depend on rebuilding Gecko from Reynard patches.
 pref("gfx.font_rendering.coretext.enabled", true);
+pref("font.default.x-unicode", "sans-serif");
+pref("font.default.x-western", "sans-serif");
 pref("font.name-list.emoji", "Apple Color Emoji");
+pref("font.name-list.sans-serif.x-unicode", "-apple-system, Arial");
+pref("font.name-list.sans-serif.x-western", "-apple-system, Arial");
 EOF
 
 cat > "$INCLUDE_DIR/GeckoViewSwiftSupport.h" <<'EOF'

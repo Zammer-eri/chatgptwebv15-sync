@@ -32,8 +32,6 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
       /[\u{1f1e6}-\u{1f1ff}\u{1f300}-\u{1faff}\u{2600}-\u{27bf}]/u;
     const skipParentSelector =
       'script,style,noscript,textarea,input,button,a,code,pre,kbd,samp,select,option,[role="button"],[contenteditable="true"],[data-reynard-emoji]';
-    const emojiContainerSelector =
-      '[data-message-author-role],[data-testid^="conversation-turn"],article,main';
     const segmenter = win.Intl?.Segmenter
       ? new win.Intl.Segmenter(undefined, { granularity: "grapheme" })
       : null;
@@ -100,8 +98,7 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
       if (
         !parent ||
         !parent.isConnected ||
-        parent.closest(skipParentSelector) ||
-        !parent.closest(emojiContainerSelector)
+        parent.closest(skipParentSelector)
       ) {
         return true;
       }
