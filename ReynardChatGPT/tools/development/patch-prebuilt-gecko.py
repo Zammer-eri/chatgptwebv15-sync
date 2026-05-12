@@ -6,6 +6,7 @@ import sys
 
 EMOJI_RENDERER_MARKER = "installChatGPTShellEmojiRenderer"
 LIGHT_SESSION_MARKER = "installChatGPTShellLightSession"
+SHELL_RUNTIME_MARKER = "installChatGPTShellRuntime"
 
 
 EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
@@ -634,10 +635,51 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
 '''
 
 
+SHELL_RUNTIME_METHOD = r'''  installChatGPTShellRuntime(configUpdate = null) {
+    const run = () => {
+      try {
+        this.installChatGPTShellEmojiRenderer();
+      } catch (error) {
+        debug`Cannot install ChatGPT emoji renderer: ${error}`;
+      }
+
+      try {
+        this.installChatGPTShellLightSession(configUpdate);
+      } catch (error) {
+        debug`Cannot install ChatGPT LightSession: ${error}`;
+      }
+    };
+
+    run();
+
+    const win = this.contentWindow;
+    if (!win || this._chatGPTShellRuntimeHooksInstalled) {
+      return;
+    }
+
+    this._chatGPTShellRuntimeHooksInstalled = true;
+    for (const eventName of ["DOMContentLoaded", "pageshow", "load"]) {
+      win.addEventListener(eventName, run, {
+        capture: true,
+        mozSystemGroup: true,
+      });
+    }
+    for (const delay of [0, 250, 1000, 2500]) {
+      win.setTimeout(run, delay);
+    }
+  }
+
+'''
+
+
 def patch_geckoview_content_child(bin_dir: Path) -> None:
     path = bin_dir / "actors" / "GeckoViewContentChild.sys.mjs"
     text = path.read_text()
-    if EMOJI_RENDERER_MARKER in text and LIGHT_SESSION_MARKER in text:
+    if (
+        EMOJI_RENDERER_MARKER in text
+        and LIGHT_SESSION_MARKER in text
+        and SHELL_RUNTIME_MARKER in text
+    ):
         return
 
     actor_created_variants = [
@@ -652,8 +694,7 @@ def patch_geckoview_content_child(bin_dir: Path) -> None:
     this.pageShow = new Promise(resolve => {
       this.receivedPageShow = resolve;
     });
-    this.installChatGPTShellEmojiRenderer();
-    this.installChatGPTShellLightSession();
+    this.installChatGPTShellRuntime();
   }
 """,
         ),
@@ -672,8 +713,24 @@ def patch_geckoview_content_child(bin_dir: Path) -> None:
     this.pageShow = new Promise(resolve => {
       this.receivedPageShow = resolve;
     });
+    this.installChatGPTShellRuntime();
+  }
+""",
+        ),
+        (
+            """  actorCreated() {
+    this.pageShow = new Promise(resolve => {
+      this.receivedPageShow = resolve;
+    });
     this.installChatGPTShellEmojiRenderer();
     this.installChatGPTShellLightSession();
+  }
+""",
+            """  actorCreated() {
+    this.pageShow = new Promise(resolve => {
+      this.receivedPageShow = resolve;
+    });
+    this.installChatGPTShellRuntime();
   }
 """,
         ),
@@ -689,14 +746,13 @@ def patch_geckoview_content_child(bin_dir: Path) -> None:
     this.pageShow = new Promise(resolve => {
       this.receivedPageShow = resolve;
     });
-    this.installChatGPTShellEmojiRenderer();
-    this.installChatGPTShellLightSession();
+    this.installChatGPTShellRuntime();
   }
 """,
         ),
     ]
 
-    if LIGHT_SESSION_MARKER not in text:
+    if SHELL_RUNTIME_MARKER not in text:
         for original_actor_created, patched_actor_created in actor_created_variants:
             if original_actor_created in text:
                 text = text.replace(original_actor_created, patched_actor_created, 1)
@@ -712,6 +768,8 @@ def patch_geckoview_content_child(bin_dir: Path) -> None:
         methods_to_insert += EMOJI_RENDERER_METHOD
     if LIGHT_SESSION_MARKER not in text:
         methods_to_insert += LIGHT_SESSION_METHOD
+    if SHELL_RUNTIME_MARKER not in text:
+        methods_to_insert += SHELL_RUNTIME_METHOD
     if methods_to_insert:
         text = text.replace(marker, methods_to_insert + marker, 1)
 
@@ -720,9 +778,12 @@ def patch_geckoview_content_child(bin_dir: Path) -> None:
         break;
       }
 """
-    patched_pageshow = """      case "pageshow": {
-        this.installChatGPTShellEmojiRenderer();
-        this.installChatGPTShellLightSession();
+    patched_pageshow = """      case "DOMContentLoaded": {
+        this.installChatGPTShellRuntime();
+        break;
+      }
+      case "pageshow": {
+        this.installChatGPTShellRuntime();
         this.receivedPageShow();
         break;
       }
@@ -737,13 +798,15 @@ def patch_geckoview_content_child(bin_dir: Path) -> None:
         text = text.replace(original_pageshow, patched_pageshow, 1)
     elif emoji_only_pageshow in text:
         text = text.replace(emoji_only_pageshow, patched_pageshow, 1)
+    elif '      case "DOMContentLoaded": {\n        this.installChatGPTShellRuntime();' not in text:
+        raise RuntimeError(f"Cannot find pageshow hook in {path}")
 
     original_receive = """      case "ContainsFormData": {
         return this.containsFormData();
       }
 """
     patched_receive = """      case "ChatGPTShell:UpdateLightSession": {
-        this.installChatGPTShellLightSession(message.data || {});
+        this.installChatGPTShellRuntime(message.data || {});
         break;
       }
       case "ContainsFormData": {
@@ -755,6 +818,29 @@ def patch_geckoview_content_child(bin_dir: Path) -> None:
             raise RuntimeError(f"Cannot find receiveMessage hook in {path}")
         text = text.replace(original_receive, patched_receive, 1)
 
+    path.write_text(text)
+
+
+def patch_geckoview_startup(bin_dir: Path) -> None:
+    path = bin_dir / "chrome" / "geckoview" / "content" / "geckoview.js"
+    text = path.read_text()
+    if "DOMContentLoaded: { capture: true, mozSystemGroup: true }" in text:
+        return
+
+    event_anchor = """              events: {
+                mozcaretstatechanged: { capture: true, mozSystemGroup: true },
+                pageshow: { mozSystemGroup: true },
+              },
+"""
+    event_patch = """              events: {
+                mozcaretstatechanged: { capture: true, mozSystemGroup: true },
+                DOMContentLoaded: { capture: true, mozSystemGroup: true },
+                pageshow: { mozSystemGroup: true },
+              },
+"""
+    if event_anchor not in text:
+        raise RuntimeError(f"Cannot find GeckoViewContent actor event hook in {path}")
+    text = text.replace(event_anchor, event_patch, 1)
     path.write_text(text)
 
 
@@ -824,6 +910,7 @@ def main() -> None:
 
     bin_dir = Path(sys.argv[1])
     patch_geckoview_content_child(bin_dir)
+    patch_geckoview_startup(bin_dir)
     patch_geckoview_content_module(bin_dir)
 
 
