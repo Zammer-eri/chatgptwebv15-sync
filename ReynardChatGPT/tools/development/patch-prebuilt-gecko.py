@@ -31,11 +31,13 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
     const emojiPattern =
       /[\u{1f1e6}-\u{1f1ff}\u{1f300}-\u{1faff}\u{2600}-\u{27bf}]/u;
     const skipParentSelector =
-      'script,style,noscript,textarea,input,[contenteditable="true"],[data-reynard-emoji]';
+      'script,style,noscript,textarea,input,button,a,code,pre,kbd,samp,select,option,[role="button"],[contenteditable="true"],[data-reynard-emoji]';
+    const emojiContainerSelector =
+      '[data-message-author-role],[data-testid^="conversation-turn"],article,main';
     const segmenter = win.Intl?.Segmenter
       ? new win.Intl.Segmenter(undefined, { granularity: "grapheme" })
       : null;
-    let scheduled = false;
+    let renderTimer = null;
 
     const splitGraphemes = text => {
       if (segmenter) {
@@ -44,14 +46,20 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
       return Array.from(text);
     };
 
-    const emojiCodepoint = text =>
+    const emojiCodepoint = (text, keepEmojiPresentation = false) =>
       Array.from(text)
         .map(char => char.codePointAt(0).toString(16))
-        .filter(codepoint => codepoint !== "fe0f" && codepoint !== "fe0e")
+        .filter(codepoint =>
+          codepoint !== "fe0e" && (keepEmojiPresentation || codepoint !== "fe0f")
+        )
         .join("-");
+
+    const emojiAssetURL = codepoint =>
+      `https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.2/assets/72x72/${codepoint}.png`;
 
     const emojiImage = text => {
       const codepoint = emojiCodepoint(text);
+      const fallbackCodepoint = emojiCodepoint(text, true);
       if (!codepoint) {
         return doc.createTextNode(text);
       }
@@ -60,18 +68,41 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
       image.setAttribute("data-reynard-emoji", "true");
       image.setAttribute("alt", text);
       image.setAttribute("draggable", "false");
-      image.src = `https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/${codepoint}.png`;
+      image.setAttribute("decoding", "async");
+      image.src = emojiAssetURL(codepoint);
       image.style.width = "1.2em";
       image.style.height = "1.2em";
       image.style.margin = "0 .03em";
       image.style.verticalAlign = "-0.2em";
       image.style.display = "inline-block";
+      image.addEventListener(
+        "error",
+        () => {
+          if (fallbackCodepoint && fallbackCodepoint !== codepoint) {
+            image.src = emojiAssetURL(fallbackCodepoint);
+            image.addEventListener(
+              "error",
+              () => image.replaceWith(doc.createTextNode(text)),
+              { once: true }
+            );
+            return;
+          }
+
+          image.replaceWith(doc.createTextNode(text));
+        },
+        { once: true }
+      );
       return image;
     };
 
     const shouldSkipTextNode = node => {
       const parent = node.parentElement;
-      if (!parent || parent.closest(skipParentSelector)) {
+      if (
+        !parent ||
+        !parent.isConnected ||
+        parent.closest(skipParentSelector) ||
+        !parent.closest(emojiContainerSelector)
+      ) {
         return true;
       }
       return !emojiPattern.test(node.nodeValue || "");
@@ -92,7 +123,7 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
     };
 
     const renderEmojiText = () => {
-      scheduled = false;
+      renderTimer = null;
       if (!isChatGPT() || !doc.body) {
         return;
       }
@@ -109,7 +140,7 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
       );
 
       const nodes = [];
-      while (nodes.length < 250) {
+      while (nodes.length < 120) {
         const node = walker.nextNode();
         if (!node) {
           break;
@@ -119,14 +150,16 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
       for (const node of nodes) {
         renderTextNode(node);
       }
+      if (nodes.length === 120) {
+        scheduleRender();
+      }
     };
 
     const scheduleRender = () => {
-      if (scheduled) {
-        return;
+      if (renderTimer) {
+        win.clearTimeout(renderTimer);
       }
-      scheduled = true;
-      win.setTimeout(renderEmojiText, 80);
+      renderTimer = win.setTimeout(renderEmojiText, 160);
     };
 
     const style = doc.createElement("style");
@@ -158,6 +191,8 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
 
     const DEFAULT_CONFIG = { enabled: true, keep: 20 };
     const HIDDEN_ROLES = new Set(["system", "tool", "thinking"]);
+    const STATUS_ID = "codex-lightsession-status";
+    const STATUS_STYLE_ID = "codex-lightsession-status-style";
 
     const sanitizeConfig = value => {
       const keepValue = Number(value && value.keep);
@@ -174,16 +209,120 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
       };
     };
 
-    win.__codexLightSessionConfig__ = sanitizeConfig(
-      configUpdate || win.__codexLightSessionConfig__ || DEFAULT_CONFIG
+    const previousConfig = win.__codexLightSessionConfig__ || null;
+    const nextConfig = sanitizeConfig(configUpdate || previousConfig || DEFAULT_CONFIG);
+    const configChanged = Boolean(
+      previousConfig &&
+        (previousConfig.enabled !== nextConfig.enabled ||
+          previousConfig.keep !== nextConfig.keep)
     );
+    win.__codexLightSessionConfig__ = nextConfig;
 
     const isChatGPT = () => {
       const host = win.location?.hostname || "";
       return host === "chatgpt.com" || host.endsWith(".chatgpt.com");
     };
 
-    if (!isChatGPT() || doc.__reynardChatGPTLightSessionInstalled) {
+    const ensureStatusStyle = () => {
+      if (doc.getElementById(STATUS_STYLE_ID)) {
+        return;
+      }
+
+      const style = doc.createElement("style");
+      style.id = STATUS_STYLE_ID;
+      style.textContent = `
+        #${STATUS_ID} {
+          position: fixed;
+          top: calc(env(safe-area-inset-top, 0px) + 12px);
+          left: 16px;
+          right: 16px;
+          z-index: 2147483646;
+          display: flex;
+          justify-content: center;
+          pointer-events: none;
+          opacity: 0;
+          transform: translateY(-6px);
+          transition: opacity 160ms ease, transform 160ms ease;
+        }
+        #${STATUS_ID}.visible {
+          opacity: 1;
+          transform: translateY(0);
+        }
+        #${STATUS_ID} .pill {
+          max-width: min(100%, 720px);
+          padding: 9px 14px;
+          border-radius: 12px;
+          background: rgba(24, 135, 84, 0.96);
+          color: #ffffff;
+          font: 600 12px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+          box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+          white-space: normal;
+          text-align: center;
+          overflow-wrap: anywhere;
+        }
+      `;
+      (doc.head || doc.documentElement).appendChild(style);
+    };
+
+    const ensureStatusElement = () => {
+      ensureStatusStyle();
+
+      let container = doc.getElementById(STATUS_ID);
+      if (container) {
+        return container;
+      }
+
+      container = doc.createElement("div");
+      container.id = STATUS_ID;
+      const pill = doc.createElement("div");
+      pill.className = "pill";
+      container.appendChild(pill);
+      (doc.body || doc.documentElement).appendChild(container);
+      return container;
+    };
+
+    const showStatus = (text, timeoutMs) => {
+      const container = ensureStatusElement();
+      const pill = container.firstElementChild;
+      if (!pill) {
+        return;
+      }
+
+      pill.textContent = text;
+      container.classList.add("visible");
+
+      if (win.__codexLightSessionStatusTimer__) {
+        win.clearTimeout(win.__codexLightSessionStatusTimer__);
+        win.__codexLightSessionStatusTimer__ = null;
+      }
+
+      if (timeoutMs && timeoutMs > 0) {
+        win.__codexLightSessionStatusTimer__ = win.setTimeout(() => {
+          container.classList.remove("visible");
+          win.__codexLightSessionStatusTimer__ = null;
+        }, timeoutMs);
+      }
+    };
+
+    if (!isChatGPT()) {
+      return;
+    }
+
+    if (
+      win.__codexLightSessionConfig__.enabled &&
+      (!doc.__reynardChatGPTLightSessionStatusShown || (configUpdate && configChanged))
+    ) {
+      doc.__reynardChatGPTLightSessionStatusShown = true;
+      showStatus(
+        "LightSession enabled - limit " + win.__codexLightSessionConfig__.keep,
+        2200
+      );
+    } else if (!win.__codexLightSessionConfig__.enabled && configUpdate && configChanged) {
+      doc.__reynardChatGPTLightSessionStatusShown = false;
+      showStatus("LightSession disabled", 1800);
+    }
+
+    if (doc.__reynardChatGPTLightSessionInstalled) {
       return;
     }
 
@@ -260,10 +399,15 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
         }
       }
 
-      const kept = path.slice(cutIndex).filter(nodeId => {
-        const node = mapping[nodeId];
-        return Boolean(node) && isVisibleMessage(node);
-      });
+      if (visibleTotal <= effectiveLimit) {
+        return {
+          unchanged: true,
+          visibleKept: visibleTotal,
+          visibleTotal,
+        };
+      }
+
+      const kept = path.slice(cutIndex).filter(nodeId => Boolean(mapping[nodeId]));
 
       if (!kept.length) {
         return null;
@@ -276,6 +420,8 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
       );
 
       const newMapping = {};
+      let visibleKept = 0;
+      let previousRole = null;
       if (hasOriginalRoot) {
         newMapping[originalRootId] = Object.assign({}, originalRootNode, {
           parent: null,
@@ -298,10 +444,16 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
           parent: previousId || null,
           children: nextId ? [nextId] : [],
         });
+
+        const role = originalNode.message?.author?.role || "";
+        if (isVisibleMessage(originalNode) && role !== previousRole) {
+          visibleKept += 1;
+          previousRole = role;
+        }
       }
 
       const root = hasOriginalRoot ? originalRootId : kept[0];
-      const current = kept[kept.length - 1];
+      const current = currentNode;
       if (!root || !current) {
         return null;
       }
@@ -310,6 +462,8 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
         mapping: newMapping,
         current_node: current,
         root,
+        visibleKept,
+        visibleTotal,
       };
     };
 
@@ -391,6 +545,26 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
         if (!trimmed) {
           return response;
         }
+
+        if (trimmed.unchanged) {
+          showStatus(
+            "LightSession: kept " + trimmed.visibleKept + "/" + trimmed.visibleTotal +
+              " turn(s) (limit " + config.keep + ")",
+            2600
+          );
+          return response;
+        }
+
+        const removed = Math.max(0, trimmed.visibleTotal - trimmed.visibleKept);
+        const removedPercent = trimmed.visibleTotal > 0
+          ? Math.round((removed / trimmed.visibleTotal) * 100)
+          : 0;
+        showStatus(
+          "LightSession: kept " + trimmed.visibleKept + "/" + trimmed.visibleTotal +
+            " turn(s) (limit " + config.keep + ") - removed " + removed +
+            " (~" + removedPercent + "%)",
+          3400
+        );
 
         return createModifiedResponse(
           response,

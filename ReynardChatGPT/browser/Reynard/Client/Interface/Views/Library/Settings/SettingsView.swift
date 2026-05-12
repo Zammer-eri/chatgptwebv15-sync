@@ -40,8 +40,11 @@ final class SettingsRootViewController: SettingsTableViewController {
         }
         
         hiddenSections.insert(.jit)
+        hiddenSections.insert(.general)
         hiddenSections.insert(.search)
         hiddenSections.insert(.tab)
+        hiddenSections.insert(.compatibility)
+        hiddenSections.insert(.about)
         
         return Section.allCases.filter { !hiddenSections.contains($0) }
     }
@@ -258,7 +261,7 @@ final class SettingsRootViewController: SettingsTableViewController {
         switch visibleSections[section] {
         case .updates, .jit, .general, .search, .tab: return nil
         case .chatgpt:
-            return "Light Session reduces long conversation payloads before ChatGPT renders them. Saving reloads the current page."
+            return "Light Session trims long ChatGPT conversation payloads on conversation loads and shows a small status pill when it runs."
         case .compatibility:
             if preferences.useAndroidUserAgent {
                 return preferences.requestDesktopWebsite

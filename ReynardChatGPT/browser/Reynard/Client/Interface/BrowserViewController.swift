@@ -482,17 +482,7 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
             )
         }
         browserUI.addressBar.setLoadingProgress(selectedTab?.progress ?? 0, isLoading: selectedTab?.isLoading ?? false)
-        addonsController.prepareVisibleAddonIcons()
-        let addonItems = addonsController.visibleMenuItemsForCurrentSite().map { item in
-            AddressBarMenu.AddonItem(menuItem: item, image: addonsController.iconImage(for: item.addon))
-        }
-        browserUI.addressBar.setAddonsMenu(
-            AddressBarMenu.makeMenu(
-                selectedTab: selectedTab,
-                selectedURL: selectedURL,
-                addonItems: addonItems
-            )
-        )
+        browserUI.addressBar.setAddonsMenu(nil)
     }
     
     @objc private func changeWebsiteModeRequested() {
@@ -512,7 +502,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         for tab in tabManager.tabs {
             tab.session.updateLightSession(enabled: settings.enabled, keep: settings.keep)
         }
-        tabManager.selectedTab?.session.reload()
     }
     
     func tabManagerDidChangeTabs(_ tabManager: TabManager) {
@@ -666,7 +655,7 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
             return
         }
         
-        selectedTab.session.reload()
+        reloadTabCleanly(selectedTab)
     }
     
     private func configureChatGPTShellGestures() {
@@ -690,7 +679,8 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
             return
         }
         
-        tabManager.selectedTab?.session.reload()
+        guard let tab = tabManager.selectedTab else { return }
+        reloadTabCleanly(tab)
     }
     
     @objc private func handleShellMenuGesture(_ gesture: UIScreenEdgePanGestureRecognizer) {
@@ -703,6 +693,18 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         }
         
         browserActions.presentMenuSheet()
+    }
+
+    private func reloadTabCleanly(_ tab: Tab) {
+        let target = tab.url?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let url: String
+        if let target, !target.isEmpty {
+            url = target
+        } else {
+            url = "https://chatgpt.com"
+        }
+        tab.session.stop()
+        tabManager.browse(to: url, in: tab)
     }
     
     private func presentNextDownloadConfirmationIfNeeded() {
