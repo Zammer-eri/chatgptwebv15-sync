@@ -399,15 +399,11 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
         }
       }
 
-      if (visibleTotal <= effectiveLimit) {
-        return {
-          unchanged: true,
-          visibleKept: visibleTotal,
-          visibleTotal,
-        };
-      }
-
-      const kept = path.slice(cutIndex).filter(nodeId => Boolean(mapping[nodeId]));
+      const keptRaw = path.slice(cutIndex);
+      const kept = keptRaw.filter(nodeId => {
+        const node = mapping[nodeId];
+        return Boolean(node) && isVisibleMessage(node);
+      });
 
       if (!kept.length) {
         return null;
@@ -453,7 +449,7 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
       }
 
       const root = hasOriginalRoot ? originalRootId : kept[0];
-      const current = currentNode;
+      const current = kept[kept.length - 1];
       if (!root || !current) {
         return null;
       }
@@ -546,7 +542,8 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
           return response;
         }
 
-        if (trimmed.unchanged) {
+        const removed = Math.max(0, trimmed.visibleTotal - trimmed.visibleKept);
+        if (trimmed.visibleKept === trimmed.visibleTotal) {
           showStatus(
             "LightSession: kept " + trimmed.visibleKept + "/" + trimmed.visibleTotal +
               " turn(s) (limit " + config.keep + ")",
@@ -555,7 +552,6 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
           return response;
         }
 
-        const removed = Math.max(0, trimmed.visibleTotal - trimmed.visibleKept);
         const removedPercent = trimmed.visibleTotal > 0
           ? Math.round((removed / trimmed.visibleTotal) * 100)
           : 0;

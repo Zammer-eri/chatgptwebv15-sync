@@ -502,6 +502,9 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         for tab in tabManager.tabs {
             tab.session.updateLightSession(enabled: settings.enabled, keep: settings.keep)
         }
+        if let selectedTab = tabManager.selectedTab {
+            reloadTabCleanly(selectedTab)
+        }
     }
     
     func tabManagerDidChangeTabs(_ tabManager: TabManager) {
