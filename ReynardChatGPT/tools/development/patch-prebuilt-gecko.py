@@ -31,11 +31,11 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
     const emojiPattern =
       /[\u{1f1e6}-\u{1f1ff}\u{1f300}-\u{1faff}\u{2600}-\u{27bf}]/u;
     const skipParentSelector =
-      'script,style,noscript,textarea,input,button,a,code,pre,kbd,samp,select,option,[role="button"],[contenteditable="true"],[data-reynard-emoji]';
+      'script,style,noscript,textarea,input,[contenteditable="true"],[data-reynard-emoji]';
     const segmenter = win.Intl?.Segmenter
       ? new win.Intl.Segmenter(undefined, { granularity: "grapheme" })
       : null;
-    let renderTimer = null;
+    let scheduled = false;
 
     const splitGraphemes = text => {
       if (segmenter) {
@@ -44,20 +44,14 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
       return Array.from(text);
     };
 
-    const emojiCodepoint = (text, keepEmojiPresentation = false) =>
+    const emojiCodepoint = text =>
       Array.from(text)
         .map(char => char.codePointAt(0).toString(16))
-        .filter(codepoint =>
-          codepoint !== "fe0e" && (keepEmojiPresentation || codepoint !== "fe0f")
-        )
+        .filter(codepoint => codepoint !== "fe0f" && codepoint !== "fe0e")
         .join("-");
-
-    const emojiAssetURL = codepoint =>
-      `https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.2/assets/72x72/${codepoint}.png`;
 
     const emojiImage = text => {
       const codepoint = emojiCodepoint(text);
-      const fallbackCodepoint = emojiCodepoint(text, true);
       if (!codepoint) {
         return doc.createTextNode(text);
       }
@@ -66,30 +60,12 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
       image.setAttribute("data-reynard-emoji", "true");
       image.setAttribute("alt", text);
       image.setAttribute("draggable", "false");
-      image.setAttribute("decoding", "async");
-      image.src = emojiAssetURL(codepoint);
+      image.src = `https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/${codepoint}.png`;
       image.style.width = "1.2em";
       image.style.height = "1.2em";
       image.style.margin = "0 .03em";
       image.style.verticalAlign = "-0.2em";
       image.style.display = "inline-block";
-      image.addEventListener(
-        "error",
-        () => {
-          if (fallbackCodepoint && fallbackCodepoint !== codepoint) {
-            image.src = emojiAssetURL(fallbackCodepoint);
-            image.addEventListener(
-              "error",
-              () => image.replaceWith(doc.createTextNode(text)),
-              { once: true }
-            );
-            return;
-          }
-
-          image.replaceWith(doc.createTextNode(text));
-        },
-        { once: true }
-      );
       return image;
     };
 
@@ -120,7 +96,7 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
     };
 
     const renderEmojiText = () => {
-      renderTimer = null;
+      scheduled = false;
       if (!isChatGPT() || !doc.body) {
         return;
       }
@@ -137,7 +113,7 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
       );
 
       const nodes = [];
-      while (nodes.length < 120) {
+      while (nodes.length < 250) {
         const node = walker.nextNode();
         if (!node) {
           break;
@@ -147,16 +123,14 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
       for (const node of nodes) {
         renderTextNode(node);
       }
-      if (nodes.length === 120) {
-        scheduleRender();
-      }
     };
 
     const scheduleRender = () => {
-      if (renderTimer) {
-        win.clearTimeout(renderTimer);
+      if (scheduled) {
+        return;
       }
-      renderTimer = win.setTimeout(renderEmojiText, 160);
+      scheduled = true;
+      win.setTimeout(renderEmojiText, 80);
     };
 
     const style = doc.createElement("style");
@@ -206,14 +180,9 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
       };
     };
 
-    const previousConfig = win.__codexLightSessionConfig__ || null;
-    const nextConfig = sanitizeConfig(configUpdate || previousConfig || DEFAULT_CONFIG);
-    const configChanged = Boolean(
-      previousConfig &&
-        (previousConfig.enabled !== nextConfig.enabled ||
-          previousConfig.keep !== nextConfig.keep)
+    win.__codexLightSessionConfig__ = sanitizeConfig(
+      configUpdate || win.__codexLightSessionConfig__ || DEFAULT_CONFIG
     );
-    win.__codexLightSessionConfig__ = nextConfig;
 
     const isChatGPT = () => {
       const host = win.location?.hostname || "";
@@ -305,18 +274,11 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
       return;
     }
 
-    if (
-      win.__codexLightSessionConfig__.enabled &&
-      (!doc.__reynardChatGPTLightSessionStatusShown || (configUpdate && configChanged))
-    ) {
-      doc.__reynardChatGPTLightSessionStatusShown = true;
+    if (win.__codexLightSessionConfig__.enabled) {
       showStatus(
         "LightSession enabled - limit " + win.__codexLightSessionConfig__.keep,
         2200
       );
-    } else if (!win.__codexLightSessionConfig__.enabled && configUpdate && configChanged) {
-      doc.__reynardChatGPTLightSessionStatusShown = false;
-      showStatus("LightSession disabled", 1800);
     }
 
     if (doc.__reynardChatGPTLightSessionInstalled) {
