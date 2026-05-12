@@ -1,0 +1,17 @@
+{
+  "title": "Malformed conversation",
+  "root": "root",
+  "current_node": "missing",
+  "mapping": {
+    "root": {
+      "id": "root",
+      "message": {
+        "author": {
+          "role": "system"
+        }
+      },
+      "parent": null,
+      "children": []
+    }
+  }
+}

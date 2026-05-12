@@ -14,7 +14,7 @@ protocol GeckoSessionHandlerCommon: GeckoEventListenerInternal {
 }
 
 private func currentChatGPTLightSessionSettings() -> [String: Any] {
-    let defaults: [String: Any] = ["enabled": true, "keep": 20]
+    let defaults: [String: Any] = ["enabled": false, "keep": 20]
     guard
         let data = UserDefaults.standard.data(forKey: "lightSessionSettings"),
         let rawObject = try? JSONSerialization.jsonObject(with: data),
@@ -38,7 +38,7 @@ private func currentChatGPTLightSessionSettings() -> [String: Any] {
     } else if let enabled = object["enabled"] as? NSNumber {
         enabledValue = enabled.boolValue
     } else {
-        enabledValue = true
+        enabledValue = false
     }
 
     return [

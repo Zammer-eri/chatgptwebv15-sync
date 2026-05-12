@@ -262,7 +262,7 @@ final class SettingsRootViewController: SettingsTableViewController {
         switch visibleSections[section] {
         case .updates, .jit, .general, .search, .tab: return nil
         case .chatgpt:
-            return "Light Session trims long ChatGPT conversation payloads on conversation loads and shows a small status pill when it runs."
+            return "Light Session is optional. The selected shell mode decides whether it hides older messages or trims future conversation loads; turning it off stops future Light Session work."
         case .compatibility:
             if preferences.useAndroidUserAgent {
                 return preferences.requestDesktopWebsite

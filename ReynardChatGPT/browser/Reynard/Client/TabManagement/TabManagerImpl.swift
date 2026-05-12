@@ -62,6 +62,19 @@ final class TabManagerImplementation: NSObject, TabManager {
         tab.session.load(url)
     }
 
+    private func diagnosticsURL(from value: String) -> String? {
+        switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "reynard://chatgpt-diagnostics/emoji-matrix", "about:chatgpt-emoji":
+            return Bundle.main.url(
+                forResource: "emoji-matrix",
+                withExtension: "html",
+                subdirectory: "ChatGPTDiagnostics"
+            )?.absoluteString
+        default:
+            return nil
+        }
+    }
+
     private func applyLightSessionSettings(to session: GeckoSession) {
         let settings = LightSessionSettingsStore.shared.settings
         session.updateLightSession(enabled: settings.enabled, keep: settings.keep)
@@ -321,6 +334,11 @@ final class TabManagerImplementation: NSObject, TabManager {
         
         tab.suppressInitialNavigation = false
         tab.pendingDisplayText = trimmedValue
+
+        if let diagnosticsURL = diagnosticsURL(from: trimmedValue) {
+            loadURL(diagnosticsURL, in: tab)
+            return
+        }
         
         let fullRange = NSRange(location: 0, length: (trimmedValue as NSString).length)
         let isURL = isURLLenient.firstMatch(in: trimmedValue, range: fullRange) != nil

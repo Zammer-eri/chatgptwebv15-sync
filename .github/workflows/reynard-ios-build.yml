@@ -16,6 +16,8 @@ jobs:
     runs-on: macos-latest
     permissions:
       contents: write
+    env:
+      REYNARD_CHATGPT_SHIM_MODE: all
 
     steps:
       - name: Checkout
@@ -27,16 +29,24 @@ jobs:
           python3 --version
 
       - name: Install packaging tools
-        run: brew install ldid
+        run: brew install ldid ripgrep
 
       - name: Make Reynard scripts executable
         run: chmod +x ReynardChatGPT/tools/development/*.sh ReynardChatGPT/tools/release/*.sh
+
+      - name: Test ChatGPT shell runtime
+        working-directory: ReynardChatGPT
+        run: node --test tools/development/chatgpt-shell/tests/*.test.mjs
+
+      - name: Check remote emoji assets
+        working-directory: ReynardChatGPT
+        run: sh tools/development/check-no-remote-emoji.sh
 
       - name: Cache prebuilt Gecko engine
         uses: actions/cache@v4
         with:
           path: ReynardChatGPT/engine/prebuilt-gecko
-          key: reynard-prebuilt-gecko-0.3.0-Reynard-ipa-shim-v21
+          key: reynard-prebuilt-gecko-0.3.0-Reynard-ipa-shim-v22-mode-all
 
       - name: Prepare prebuilt Gecko engine
         working-directory: ReynardChatGPT

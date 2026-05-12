@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ChatGPT Emoji Matrix</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font: 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: Canvas;
+      color: CanvasText;
+    }
+    body {
+      margin: 0;
+      padding: 18px;
+    }
+    h1 {
+      font-size: 22px;
+      margin: 0 0 4px;
+    }
+    p {
+      margin: 0 0 16px;
+      color: color-mix(in srgb, CanvasText 70%, transparent);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+    th,
+    td {
+      border-bottom: 1px solid color-mix(in srgb, CanvasText 18%, transparent);
+      padding: 10px 8px;
+      text-align: left;
+      vertical-align: top;
+      overflow-wrap: anywhere;
+    }
+    th {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0;
+      color: color-mix(in srgb, CanvasText 64%, transparent);
+    }
+    .sample {
+      font-size: 28px;
+      line-height: 1.25;
+    }
+    .mixed {
+      font-size: 20px;
+    }
+    code {
+      font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+  </style>
+</head>
+<body>
+  <h1>ChatGPT Emoji Matrix</h1>
+  <p id="build-context">Local diagnostic page. Record build tag, shim mode, device, and iOS version with screenshots.</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Case</th>
+        <th>Sample</th>
+        <th>Codepoints</th>
+        <th>Computed Font</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Simple emoji</td>
+        <td class="sample">😀</td>
+        <td><code>U+1F600</code></td>
+        <td class="font"></td>
+      </tr>
+      <tr>
+        <td>Variation selector 16</td>
+        <td class="sample">♥️</td>
+        <td><code>U+2665 U+FE0F</code></td>
+        <td class="font"></td>
+      </tr>
+      <tr>
+        <td>ZWJ sequence</td>
+        <td class="sample">👨‍👩‍👧‍👦</td>
+        <td><code>U+1F468 U+200D U+1F469 U+200D U+1F467 U+200D U+1F466</code></td>
+        <td class="font"></td>
+      </tr>
+      <tr>
+        <td>Skin tone</td>
+        <td class="sample">👍🏽</td>
+        <td><code>U+1F44D U+1F3FD</code></td>
+        <td class="font"></td>
+      </tr>
+      <tr>
+        <td>Flag / regional indicators</td>
+        <td class="sample">🇺🇸</td>
+        <td><code>U+1F1FA U+1F1F8</code></td>
+        <td class="font"></td>
+      </tr>
+      <tr>
+        <td>Keycap</td>
+        <td class="sample">7️⃣</td>
+        <td><code>U+0037 U+FE0F U+20E3</code></td>
+        <td class="font"></td>
+      </tr>
+      <tr>
+        <td>Tag sequence</td>
+        <td class="sample">&#x1F3F4;&#xE0067;&#xE0062;&#xE0073;&#xE0063;&#xE0074;&#xE007F;</td>
+        <td><code>U+1F3F4 U+E0067 U+E0062 U+E0073 U+E0063 U+E0074 U+E007F</code></td>
+        <td class="font"></td>
+      </tr>
+      <tr>
+        <td>Mixed text</td>
+        <td class="sample mixed">ChatGPT reply: works ✅, family 👨‍👩‍👧‍👦, flag 🇯🇵, heart ♥️.</td>
+        <td><code>Mixed ASCII + emoji cases above</code></td>
+        <td class="font"></td>
+      </tr>
+    </tbody>
+  </table>
+  <script>
+    for (const row of document.querySelectorAll("tbody tr")) {
+      const sample = row.querySelector(".sample");
+      const font = row.querySelector(".font");
+      font.textContent = getComputedStyle(sample).fontFamily;
+    }
+    const diagnostics = window.__reynardChatGPTGetDiagnostics?.();
+    if (diagnostics) {
+      document.getElementById("build-context").textContent +=
+        " Runtime diagnostics: " + JSON.stringify(diagnostics);
+    }
+  </script>
+</body>
+</html>

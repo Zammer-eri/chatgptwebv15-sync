@@ -4,7 +4,7 @@ struct LightSessionSettings: Codable {
     static let defaultKeep = 20
     static let minimumKeep = 1
     static let maximumKeep = 100
-    static let defaults = LightSessionSettings(enabled: true, keep: defaultKeep)
+    static let defaults = LightSessionSettings(enabled: false, keep: defaultKeep)
 
     var enabled: Bool
     var keep: Int
@@ -21,7 +21,7 @@ struct LightSessionSettings: Codable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false
         keep = try container.decodeIfPresent(Int.self, forKey: .keep) ?? Self.defaultKeep
     }
 

@@ -6,16 +6,38 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 ROOT_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)"
 TAG="${REYNARD_RELEASE_TAG:-0.3.0}"
 ASSET="${REYNARD_RELEASE_ASSET:-Reynard.ipa}"
+SHIM_MODE="${REYNARD_CHATGPT_SHIM_MODE:-all}"
 URL="https://github.com/minh-ton/reynard-browser/releases/download/${TAG}/${ASSET}"
 WORK_DIR="$ROOT_DIR/dist/prebuilt-gecko-work"
 DIST_DIR="$ROOT_DIR/engine/prebuilt-gecko/obj-aarch64-apple-ios/dist"
 BIN_DIR="$DIST_DIR/bin"
 INCLUDE_DIR="$DIST_DIR/include/GeckoView"
 MARKER="$ROOT_DIR/engine/prebuilt-gecko/.release"
-SHIM_VERSION="21"
+SHIM_VERSION="22"
+PREFS_APPENDED="true"
 
-if [ -f "$BIN_DIR/XUL" ] && [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "${TAG}/${ASSET}/shim-${SHIM_VERSION}" ]; then
+case "$SHIM_MODE" in
+	baseline|emoji|lightsession-dom|lightsession-fetch|all|legacy-all) ;;
+	*)
+		echo "Unsupported REYNARD_CHATGPT_SHIM_MODE: $SHIM_MODE"
+		echo "Expected: baseline, emoji, lightsession-dom, lightsession-fetch, all, legacy-all"
+		exit 1
+		;;
+esac
+
+MARKER_VALUE="${TAG}/${ASSET}/shim-${SHIM_VERSION}/mode-${SHIM_MODE}"
+
+echo "Reynard ChatGPT prebuilt diagnostics:"
+echo "  release tag: $TAG"
+echo "  asset: $ASSET"
+echo "  shim version: $SHIM_VERSION"
+echo "  shim mode: $SHIM_MODE"
+echo "  prefs appended: $PREFS_APPENDED"
+echo "  ChatGPT runtime hooks requested: $([ "$SHIM_MODE" = baseline ] && echo false || echo true)"
+
+if [ -f "$BIN_DIR/XUL" ] && [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$MARKER_VALUE" ]; then
 	echo "Using cached prebuilt Gecko dist at $DIST_DIR"
+	echo "  ChatGPT runtime hooks patched: cached"
 	exit 0
 fi
 
@@ -42,7 +64,7 @@ cp -f "$GECKOVIEW_FW/XUL" "$BIN_DIR/XUL"
 find "$APP_DIR/Frameworks" -maxdepth 1 -type f -name '*.dylib' -exec cp -f {} "$BIN_DIR/" \;
 cp -R "$GECKOVIEW_FW/Frameworks/." "$BIN_DIR/"
 find "$BIN_DIR" -maxdepth 1 -type f -name 'libswift*.dylib' -delete
-python3 "$SCRIPT_DIR/patch-prebuilt-gecko.py" "$BIN_DIR"
+python3 "$SCRIPT_DIR/patch-prebuilt-gecko.py" "$BIN_DIR" "$SHIM_MODE"
 
 PREF_DIR="$BIN_DIR/defaults/pref"
 mkdir -p "$PREF_DIR"
@@ -135,5 +157,5 @@ MOZ_EXPORT void ReportJITStatusForChild(int32_t pid, bool enabled, bool hasTXM26
 #endif
 EOF
 
-echo "${TAG}/${ASSET}/shim-${SHIM_VERSION}" > "$MARKER"
+echo "$MARKER_VALUE" > "$MARKER"
 echo "Prepared prebuilt Gecko dist at $DIST_DIR"

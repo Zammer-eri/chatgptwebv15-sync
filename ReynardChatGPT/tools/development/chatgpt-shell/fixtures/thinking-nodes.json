@@ -1,0 +1,87 @@
+{
+  "title": "Thinking nodes",
+  "root": "root",
+  "current_node": "a3",
+  "mapping": {
+    "root": {
+      "id": "root",
+      "message": {
+        "author": {
+          "role": "system"
+        }
+      },
+      "parent": null,
+      "children": ["u1"]
+    },
+    "u1": {
+      "id": "u1",
+      "message": {
+        "author": {
+          "role": "user"
+        }
+      },
+      "parent": "root",
+      "children": ["a1"]
+    },
+    "a1": {
+      "id": "a1",
+      "message": {
+        "author": {
+          "role": "assistant"
+        }
+      },
+      "parent": "u1",
+      "children": ["u2"]
+    },
+    "u2": {
+      "id": "u2",
+      "message": {
+        "author": {
+          "role": "user"
+        }
+      },
+      "parent": "a1",
+      "children": ["thinking1"]
+    },
+    "thinking1": {
+      "id": "thinking1",
+      "message": {
+        "author": {
+          "role": "thinking"
+        }
+      },
+      "parent": "u2",
+      "children": ["a2"]
+    },
+    "a2": {
+      "id": "a2",
+      "message": {
+        "author": {
+          "role": "assistant"
+        }
+      },
+      "parent": "thinking1",
+      "children": ["u3"]
+    },
+    "u3": {
+      "id": "u3",
+      "message": {
+        "author": {
+          "role": "user"
+        }
+      },
+      "parent": "a2",
+      "children": ["a3"]
+    },
+    "a3": {
+      "id": "a3",
+      "message": {
+        "author": {
+          "role": "assistant"
+        }
+      },
+      "parent": "u3",
+      "children": []
+    }
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "title": "Branched conversation",
+  "root": "root",
+  "current_node": "a2",
+  "mapping": {
+    "root": {
+      "id": "root",
+      "message": {
+        "author": {
+          "role": "system"
+        }
+      },
+      "parent": null,
+      "children": ["u1", "uAlt"]
+    },
+    "u1": {
+      "id": "u1",
+      "message": {
+        "author": {
+          "role": "user"
+        }
+      },
+      "parent": "root",
+      "children": ["a1"]
+    },
+    "uAlt": {
+      "id": "uAlt",
+      "message": {
+        "author": {
+          "role": "user"
+        }
+      },
+      "parent": "root",
+      "children": []
+    },
+    "a1": {
+      "id": "a1",
+      "message": {
+        "author": {
+          "role": "assistant"
+        }
+      },
+      "parent": "u1",
+      "children": ["u2"]
+    },
+    "u2": {
+      "id": "u2",
+      "message": {
+        "author": {
+          "role": "user"
+        }
+      },
+      "parent": "a1",
+      "children": ["a2"]
+    },
+    "a2": {
+      "id": "a2",
+      "message": {
+        "author": {
+          "role": "assistant"
+        }
+      },
+      "parent": "u2",
+      "children": []
+    }
+  }
+}
