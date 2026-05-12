@@ -31,11 +31,11 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
     const emojiPattern =
       /[\u{1f1e6}-\u{1f1ff}\u{1f300}-\u{1faff}\u{2600}-\u{27bf}]/u;
     const skipParentSelector =
-      'script,style,noscript,textarea,input,button,a,code,pre,kbd,samp,select,option,[role="button"],[contenteditable="true"],[data-reynard-emoji]';
+      'script,style,noscript,textarea,input,[contenteditable="true"],[data-reynard-emoji]';
     const segmenter = win.Intl?.Segmenter
       ? new win.Intl.Segmenter(undefined, { granularity: "grapheme" })
       : null;
-    let renderTimer = null;
+    let scheduled = false;
 
     const splitGraphemes = text => {
       if (segmenter) {
@@ -52,8 +52,21 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
         )
         .join("-");
 
-    const emojiAssetURL = codepoint =>
-      `https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.2/assets/72x72/${codepoint}.png`;
+    const emojiAssetURLs = codepoints => {
+      const urls = [];
+      for (const codepoint of codepoints) {
+        if (!codepoint || urls.some(url => url.includes(`/${codepoint}.png`))) {
+          continue;
+        }
+        urls.push(
+          `https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/${codepoint}.png`
+        );
+        urls.push(
+          `https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.2/assets/72x72/${codepoint}.png`
+        );
+      }
+      return urls;
+    };
 
     const emojiImage = text => {
       const codepoint = emojiCodepoint(text);
@@ -62,34 +75,37 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
         return doc.createTextNode(text);
       }
 
+      const sources = emojiAssetURLs(
+        [codepoint, fallbackCodepoint].filter(
+          (value, index, values) => value && values.indexOf(value) === index
+        )
+      );
+      if (!sources.length) {
+        return doc.createTextNode(text);
+      }
+
       const image = doc.createElement("img");
       image.setAttribute("data-reynard-emoji", "true");
       image.setAttribute("alt", text);
       image.setAttribute("draggable", "false");
       image.setAttribute("decoding", "async");
-      image.src = emojiAssetURL(codepoint);
+      image.setAttribute("referrerpolicy", "no-referrer");
       image.style.width = "1.2em";
       image.style.height = "1.2em";
       image.style.margin = "0 .03em";
       image.style.verticalAlign = "-0.2em";
       image.style.display = "inline-block";
+      let sourceIndex = 0;
       image.addEventListener(
         "error",
         () => {
-          if (fallbackCodepoint && fallbackCodepoint !== codepoint) {
-            image.src = emojiAssetURL(fallbackCodepoint);
-            image.addEventListener(
-              "error",
-              () => image.replaceWith(doc.createTextNode(text)),
-              { once: true }
-            );
-            return;
+          sourceIndex += 1;
+          if (sourceIndex < sources.length) {
+            image.src = sources[sourceIndex];
           }
-
-          image.replaceWith(doc.createTextNode(text));
-        },
-        { once: true }
+        }
       );
+      image.src = sources[sourceIndex];
       return image;
     };
 
@@ -120,7 +136,7 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
     };
 
     const renderEmojiText = () => {
-      renderTimer = null;
+      scheduled = false;
       if (!isChatGPT() || !doc.body) {
         return;
       }
@@ -137,7 +153,7 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
       );
 
       const nodes = [];
-      while (nodes.length < 120) {
+      while (nodes.length < 250) {
         const node = walker.nextNode();
         if (!node) {
           break;
@@ -147,16 +163,17 @@ EMOJI_RENDERER_METHOD = r'''  installChatGPTShellEmojiRenderer() {
       for (const node of nodes) {
         renderTextNode(node);
       }
-      if (nodes.length === 120) {
+      if (nodes.length === 250) {
         scheduleRender();
       }
     };
 
     const scheduleRender = () => {
-      if (renderTimer) {
-        win.clearTimeout(renderTimer);
+      if (scheduled) {
+        return;
       }
-      renderTimer = win.setTimeout(renderEmojiText, 160);
+      scheduled = true;
+      win.setTimeout(renderEmojiText, 80);
     };
 
     const style = doc.createElement("style");
@@ -215,6 +232,9 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
           previousConfig.keep !== nextConfig.keep)
     );
     win.__codexLightSessionConfig__ = nextConfig;
+    if (hasConfigUpdate) {
+      win.__codexLightSessionConfigReceived__ = true;
+    }
 
     const isChatGPT = () => {
       const host = win.location?.hostname || "";
@@ -257,11 +277,6 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
           white-space: normal;
           text-align: center;
           overflow-wrap: anywhere;
-        }
-        #${STATUS_ID}[data-state="idle"] .pill {
-          background: rgba(15, 23, 42, 0.92);
-          border: 1px solid rgba(55, 65, 81, 0.9);
-          color: #e5e7eb;
         }
         #${STATUS_ID}[data-state="disabled"] .pill {
           background: rgba(63, 63, 70, 0.92);
@@ -336,7 +351,7 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
         doc.__reynardChatGPTLightSessionStatusShown = true;
         showStatus(
           "LightSession enabled - limit " + win.__codexLightSessionConfig__.keep,
-          0,
+          2200,
           "active"
         );
       }
@@ -531,6 +546,7 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
     };
 
     const nativeFetch = win.fetch.bind(win);
+    let firstConversationConfigWait = true;
 
     win.fetch = async function(...args) {
       const [input, init] = args;
@@ -551,6 +567,11 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
       const url = new win.URL(urlString, win.location.href);
       if (!isConversationRequest(method, url)) {
         return nativeFetch(...args);
+      }
+
+      if (firstConversationConfigWait && !win.__codexLightSessionConfigReceived__) {
+        firstConversationConfigWait = false;
+        await new Promise(resolve => win.setTimeout(resolve, 100));
       }
 
       const config = sanitizeConfig(win.__codexLightSessionConfig__ || DEFAULT_CONFIG);
@@ -577,10 +598,10 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
         const removed = Math.max(0, trimmed.visibleTotal - trimmed.visibleKept);
         if (trimmed.visibleKept === trimmed.visibleTotal) {
           showStatus(
-            "LightSession: all " + trimmed.visibleTotal +
-              " turn(s) visible (limit " + config.keep + ")",
-            0,
-            "idle"
+            "LightSession: kept " + trimmed.visibleKept + "/" + trimmed.visibleTotal +
+              " turn(s) (limit " + config.keep + ")",
+            2600,
+            "active"
           );
           return response;
         }
@@ -589,10 +610,10 @@ LIGHT_SESSION_METHOD = r'''  installChatGPTShellLightSession(configUpdate = null
           ? Math.round((removed / trimmed.visibleTotal) * 100)
           : 0;
         showStatus(
-          "LightSession: " + removed + " turn(s) hidden - showing " +
-            trimmed.visibleKept + "/" + trimmed.visibleTotal +
-            " (limit " + config.keep + ", ~" + removedPercent + "% hidden)",
-          0,
+          "LightSession: kept " + trimmed.visibleKept + "/" + trimmed.visibleTotal +
+            " turn(s) (limit " + config.keep + ") - removed " + removed +
+            " (~" + removedPercent + "%)",
+          3400,
           "active"
         );
 
@@ -761,6 +782,12 @@ def patch_geckoview_content_module(bin_dir: Path) -> None:
         break;
       case "GeckoView:UpdateInitData":
         this.sendToAllChildren(aEvent, aData);
+        this._updateLightSession(
+          aData?.settings?.chatGPTLightSession ||
+            this.settings?.chatGPTLightSession ||
+            this._chatGPTShellLightSessionConfig ||
+            {}
+        );
         break;
 """
     if switch_anchor not in text:
@@ -770,7 +797,14 @@ def patch_geckoview_content_module(bin_dir: Path) -> None:
     method_anchor = "  async _hasCookieBannerRuleForBrowsingContextTree(aCallback) {\n"
     method_patch = """  async _updateLightSession(aData) {
     try {
-      this.sendToAllChildren("ChatGPTShell:UpdateLightSession", aData || {});
+      const nextConfig =
+        aData && typeof aData === "object"
+          ? aData
+          : this.settings?.chatGPTLightSession ||
+            this._chatGPTShellLightSessionConfig ||
+            {};
+      this._chatGPTShellLightSessionConfig = nextConfig;
+      this.sendToAllChildren("ChatGPTShell:UpdateLightSession", nextConfig);
     } catch (error) {
       debug`Cannot update LightSession config: ${error}`;
     }
