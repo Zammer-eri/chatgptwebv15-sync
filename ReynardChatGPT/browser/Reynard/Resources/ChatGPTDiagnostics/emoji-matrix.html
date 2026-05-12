@@ -7,7 +7,7 @@
   <style>
     :root {
       color-scheme: light dark;
-      font: 16px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font: 16px "Apple Color Emoji", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: Canvas;
       color: CanvasText;
     }
@@ -43,6 +43,7 @@
       color: color-mix(in srgb, CanvasText 64%, transparent);
     }
     .sample {
+      font-family: "Apple Color Emoji", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-size: 28px;
       line-height: 1.25;
     }
@@ -69,58 +70,67 @@
     <tbody>
       <tr>
         <td>Simple emoji</td>
-        <td class="sample">😀</td>
-        <td><code>U+1F600</code></td>
+        <td class="sample">&#x1F600;</td>
+        <td><code class="codepoints"></code></td>
         <td class="font"></td>
       </tr>
       <tr>
         <td>Variation selector 16</td>
-        <td class="sample">♥️</td>
-        <td><code>U+2665 U+FE0F</code></td>
+        <td class="sample">&#x2665;&#xFE0F;</td>
+        <td><code class="codepoints"></code></td>
         <td class="font"></td>
       </tr>
       <tr>
         <td>ZWJ sequence</td>
-        <td class="sample">👨‍👩‍👧‍👦</td>
-        <td><code>U+1F468 U+200D U+1F469 U+200D U+1F467 U+200D U+1F466</code></td>
+        <td class="sample">&#x1F468;&#x200D;&#x1F469;&#x200D;&#x1F467;&#x200D;&#x1F466;</td>
+        <td><code class="codepoints"></code></td>
         <td class="font"></td>
       </tr>
       <tr>
         <td>Skin tone</td>
-        <td class="sample">👍🏽</td>
-        <td><code>U+1F44D U+1F3FD</code></td>
+        <td class="sample">&#x1F44D;&#x1F3FD;</td>
+        <td><code class="codepoints"></code></td>
         <td class="font"></td>
       </tr>
       <tr>
         <td>Flag / regional indicators</td>
-        <td class="sample">🇺🇸</td>
-        <td><code>U+1F1FA U+1F1F8</code></td>
+        <td class="sample">&#x1F1FA;&#x1F1F8;</td>
+        <td><code class="codepoints"></code></td>
         <td class="font"></td>
       </tr>
       <tr>
         <td>Keycap</td>
-        <td class="sample">7️⃣</td>
-        <td><code>U+0037 U+FE0F U+20E3</code></td>
+        <td class="sample">7&#xFE0F;&#x20E3;</td>
+        <td><code class="codepoints"></code></td>
         <td class="font"></td>
       </tr>
       <tr>
         <td>Tag sequence</td>
         <td class="sample">&#x1F3F4;&#xE0067;&#xE0062;&#xE0073;&#xE0063;&#xE0074;&#xE007F;</td>
-        <td><code>U+1F3F4 U+E0067 U+E0062 U+E0073 U+E0063 U+E0074 U+E007F</code></td>
+        <td><code class="codepoints"></code></td>
         <td class="font"></td>
       </tr>
       <tr>
         <td>Mixed text</td>
-        <td class="sample mixed">ChatGPT reply: works ✅, family 👨‍👩‍👧‍👦, flag 🇯🇵, heart ♥️.</td>
+        <td class="sample mixed">ChatGPT reply: works &#x2705;, family &#x1F468;&#x200D;&#x1F469;&#x200D;&#x1F467;&#x200D;&#x1F466;, flag &#x1F1EF;&#x1F1F5;, heart &#x2665;&#xFE0F;.</td>
         <td><code>Mixed ASCII + emoji cases above</code></td>
         <td class="font"></td>
       </tr>
     </tbody>
   </table>
   <script>
+    const toCodepoints = text =>
+      Array.from(text).map(ch =>
+        "U+" + ch.codePointAt(0).toString(16).toUpperCase().padStart(4, "0")
+      ).join(" ");
+
     for (const row of document.querySelectorAll("tbody tr")) {
       const sample = row.querySelector(".sample");
       const font = row.querySelector(".font");
+      const codepoints = row.querySelector(".codepoints");
+      if (codepoints) {
+        codepoints.textContent = toCodepoints(sample.textContent);
+      }
       font.textContent = getComputedStyle(sample).fontFamily;
     }
     const diagnostics = window.__reynardChatGPTGetDiagnostics?.();

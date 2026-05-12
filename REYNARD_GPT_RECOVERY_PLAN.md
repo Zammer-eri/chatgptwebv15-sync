@@ -51,7 +51,8 @@ Settings > ChatGPT must expose:
 
 - `Emoji Matrix`: opens a bundled local Gecko diagnostic page.
 - `Copy Diagnostic Info`: copies version/build, Gecko version, device/iOS, the
-  prebuilt build marker JSON, and LightSession removal status.
+  prebuilt build marker JSON, emoji fallback status, and LightSession removal
+  status.
 
 The user should be able to send only:
 
@@ -99,6 +100,8 @@ Before commit:
 - A mock patcher run proves `baseline` does not inject the runtime.
 - A mock patcher run proves `all` injects the runtime and contains no
   LightSession runtime code.
+- The matrix source uses numeric HTML entities, not literal emoji bytes, so the
+  diagnostic page itself cannot become mojibake from file encoding.
 
 After CI publishes a TIPA:
 

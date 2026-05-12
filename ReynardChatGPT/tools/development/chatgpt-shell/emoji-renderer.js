@@ -13,6 +13,28 @@
       .map(character => character.codePointAt(0).toString(16))
       .join("-");
 
+  const STYLE_ID = "reynard-chatgpt-native-emoji-font";
+
+  const installNativeEmojiFontCSS = doc => {
+    if (!doc?.head || doc.getElementById(STYLE_ID)) {
+      return false;
+    }
+
+    const style = doc.createElement("style");
+    style.id = STYLE_ID;
+    style.textContent = `
+      [data-message-author-role],
+      article[data-testid^="conversation-turn-"],
+      textarea,
+      input,
+      [contenteditable="true"] {
+        font-family: "Apple Color Emoji", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+      }
+    `;
+    doc.head.appendChild(style);
+    return true;
+  };
+
   const collectSamples = doc => {
     const samples = [];
     const selector =
@@ -39,18 +61,24 @@
     const mode = context.mode;
     const doc = context.doc;
 
-    diagnostics?.set(mode, "emojiFallbackInstalled", false);
-    diagnostics?.set(mode, "emojiFallbackReason", "no-local-assets");
-    diagnostics?.event(mode, "emoji-fallback-fail-open", {
-      reason: "no-local-assets",
+    if (!doc?.documentElement) {
+      return;
+    }
+
+    const cssInstalled = installNativeEmojiFontCSS(doc);
+    diagnostics?.set(mode, "emojiFallbackInstalled", true);
+    diagnostics?.set(mode, "emojiFallbackReason", "native-apple-color-emoji-css");
+    diagnostics?.event(mode, "emoji-native-font-css", {
+      installed: cssInstalled,
     });
 
-    if (!doc?.documentElement || doc.__reynardChatGPTEmojiDiagnosticsInstalled) {
+    if (doc.__reynardChatGPTEmojiDiagnosticsInstalled) {
       return;
     }
     doc.__reynardChatGPTEmojiDiagnosticsInstalled = true;
 
     const scan = () => {
+      installNativeEmojiFontCSS(doc);
       const samples = collectSamples(doc);
       if (samples.length) {
         diagnostics?.set(mode, "emojiSamples", samples);

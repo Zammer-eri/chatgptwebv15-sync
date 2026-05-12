@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 
 
-SHIM_VERSION = 23
+SHIM_VERSION = 24
 VALID_MODES = {
     "baseline",
     "emoji",
@@ -232,6 +232,7 @@ def main() -> None:
     print(f"  shim version: {SHIM_VERSION}")
     print(f"  shim mode: {mode}")
     print(f"  ChatGPT runtime hooks requested: {mode in RUNTIME_MODES}")
+    print("  emoji fallback: native-apple-color-emoji-css")
     print(
         "  ChatGPT runtime hooks patched: "
         f"{content_child_changed or startup_changed}"
