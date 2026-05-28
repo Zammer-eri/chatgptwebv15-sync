@@ -19,6 +19,8 @@ class GeckoRuntimeImpl: NSObject, SwiftGeckoViewRuntime {
     
     @objc(childProcessDidStartWithPID:processType:)
     func childProcessDidStart(withPID pid: Int32, processType: String) {
+        GeckoDiagnostics.log("childProcessDidStart pid=\(pid) type=\(processType)")
+
         // Update jetsam limit for the child process
         updateJetsamControl(pid)
 
@@ -30,6 +32,56 @@ class GeckoRuntimeImpl: NSObject, SwiftGeckoViewRuntime {
                 "processType": processType
             ]
         )
+    }
+}
+
+private enum GeckoDiagnostics {
+    private static let queue = DispatchQueue(label: "com.codex.chatgpt.gecko-diagnostics")
+    private static let maxLogBytes: UInt64 = 1_000_000
+
+    static func log(_ message: String) {
+        let line = "[CHATGPT_SHELL_DIAG] \(timestamp()) \(message)"
+        NSLog("%@", line)
+        writeToFile(line)
+    }
+
+    private static func timestamp() -> String {
+        ISO8601DateFormatter().string(from: Date())
+    }
+
+    private static func writeToFile(_ line: String) {
+        queue.async {
+            guard let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
+                  let data = (line + "\n").data(using: .utf8) else {
+                return
+            }
+
+            let fileURL = documentsURL.appendingPathComponent("ChatGPTShellDiagnostics.log", isDirectory: false)
+            rotateLogIfNeeded(at: fileURL)
+
+            if FileManager.default.fileExists(atPath: fileURL.path),
+               let handle = try? FileHandle(forWritingTo: fileURL) {
+                defer { try? handle.close() }
+                try? handle.seekToEnd()
+                try? handle.write(contentsOf: data)
+                return
+            }
+
+            try? data.write(to: fileURL, options: .atomic)
+        }
+    }
+
+    private static func rotateLogIfNeeded(at fileURL: URL) {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+              let fileSize = attributes[.size] as? UInt64,
+              fileSize > maxLogBytes else {
+            return
+        }
+
+        let rotatedURL = fileURL.deletingLastPathComponent()
+            .appendingPathComponent("ChatGPTShellDiagnostics.previous.log", isDirectory: false)
+        try? FileManager.default.removeItem(at: rotatedURL)
+        try? FileManager.default.moveItem(at: fileURL, to: rotatedURL)
     }
 }
 
