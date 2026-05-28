@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 
 
-SHIM_VERSION = 34
+SHIM_VERSION = 36
 VALID_MODES = {
     "baseline",
     "chatgpt",

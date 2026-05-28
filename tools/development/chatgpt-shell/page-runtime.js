@@ -3,10 +3,7 @@
 
   const win = root.window || root;
 
-  const CACHE_REFRESH_MODES = new Set(["chatgpt", "all"]);
   const RETURN_KEY_MODES = new Set(["chatgpt", "all"]);
-  const CACHE_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
-  const CACHE_PURGE_VERSION = "chatgpt-v34";
   const COMPOSER_SELECTOR =
     'textarea,[contenteditable="true"][role="textbox"],[contenteditable="true"]';
   const COMPOSER_ROOT_SELECTOR =
@@ -18,94 +15,6 @@
   const isChatGPT = () => {
     const host = win.location?.hostname || "";
     return host === "chatgpt.com" || host.endsWith(".chatgpt.com");
-  };
-
-  const storageGet = key => {
-    try {
-      return win.sessionStorage?.getItem(key) || "";
-    } catch (_) {
-      return "";
-    }
-  };
-
-  const storageSet = (key, value) => {
-    try {
-      win.sessionStorage?.setItem(key, value);
-    } catch (_) {}
-  };
-
-  const persistentStorageGet = key => {
-    try {
-      return win.localStorage?.getItem(key) || "";
-    } catch (_) {
-      return storageGet(key);
-    }
-  };
-
-  const persistentStorageSet = (key, value) => {
-    try {
-      win.localStorage?.setItem(key, value);
-    } catch (_) {
-      storageSet(key, value);
-    }
-  };
-
-  const refreshChatGPTCaches = () => {
-    const purgeKey = "__reynardChatGPTCachePurgeVersion";
-    if (persistentStorageGet(purgeKey) !== CACHE_PURGE_VERSION) {
-      persistentStorageSet(purgeKey, CACHE_PURGE_VERSION);
-      const cacheDeletion = win.caches
-        ?.keys?.()
-        ?.then(keys => Promise.all(keys.map(cacheName => win.caches.delete(cacheName))))
-        ?.catch(() => {});
-      const serviceWorkerCleanup = win.navigator?.serviceWorker
-        ?.getRegistrations?.()
-        ?.then(registrations =>
-          Promise.all(
-            registrations.map(registration =>
-              registration
-                .unregister()
-                .catch(() => registration.update?.().catch(() => {}))
-            )
-          )
-        )
-        ?.catch(() => {});
-
-      Promise.all([cacheDeletion, serviceWorkerCleanup]).finally(() => {
-        win.setTimeout(() => {
-          try {
-            win.location.replace(win.location.href);
-          } catch (_) {}
-        }, 250);
-      });
-      return;
-    }
-
-    const now = Date.now();
-    const key = "__reynardChatGPTLastCacheRefresh";
-    const lastRefresh = Number(storageGet(key) || 0);
-    if (Number.isFinite(lastRefresh) && now - lastRefresh < CACHE_REFRESH_INTERVAL_MS) {
-      return;
-    }
-    storageSet(key, String(now));
-
-    try {
-      win.navigator?.serviceWorker
-        ?.getRegistrations?.()
-        ?.then(registrations => {
-          for (const registration of registrations) {
-            registration.update?.().catch(() => {});
-          }
-        })
-        ?.catch(() => {});
-    } catch (_) {}
-
-    try {
-      win.caches
-        ?.keys?.()
-        ?.then(keys => Promise.all(keys.map(cacheName => win.caches.delete(cacheName))))
-        ?.catch(() => {});
-    } catch (_) {}
   };
 
   const visible = element => {
@@ -154,6 +63,29 @@
     }
   };
 
+  const insertContentEditableLineBreak = editable => {
+    const selection = doc.getSelection?.();
+    if (!selection || selection.rangeCount === 0) {
+      return false;
+    }
+
+    const range = selection.getRangeAt(0);
+    if (!editable.contains(range.commonAncestorContainer)) {
+      return false;
+    }
+
+    range.deleteContents();
+
+    const br = doc.createElement("br");
+    range.insertNode(br);
+    range.setStartAfter(br);
+    range.setEndAfter(br);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    dispatchInput(editable, "insertLineBreak");
+    return true;
+  };
+
   const insertLineBreak = target => {
     if (insertingLineBreak) {
       return true;
@@ -174,12 +106,20 @@
         return true;
       }
 
+      if (insertContentEditableLineBreak(editable)) {
+        return true;
+      }
+
       if (doc.execCommand?.("insertLineBreak")) {
         dispatchInput(editable, "insertLineBreak");
         return true;
       }
     } catch (_) {
-      return false;
+      try {
+        return insertContentEditableLineBreak(editable);
+      } catch (_) {
+        return false;
+      }
     } finally {
       insertingLineBreak = false;
     }
@@ -221,7 +161,7 @@
 
     const handleBeforeInput = event => {
       if (
-        event.inputType !== "insertParagraph" ||
+        (event.inputType !== "insertParagraph" && event.inputType !== "insertLineBreak") ||
         insertingLineBreak ||
         !isComposerEditable(event.target)
       ) {
@@ -265,10 +205,6 @@
     doc = win.document;
     if (!doc) {
       return;
-    }
-
-    if (CACHE_REFRESH_MODES.has(mode)) {
-      refreshChatGPTCaches();
     }
 
     if (RETURN_KEY_MODES.has(mode)) {
