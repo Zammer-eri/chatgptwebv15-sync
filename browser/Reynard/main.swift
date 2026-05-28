@@ -9,5 +9,4 @@ import Foundation
 import GeckoView
 import UIKit
 
-JITController.shared.start()
 GeckoRuntime.main(argc: CommandLine.argc, argv: CommandLine.unsafeArgv)
