@@ -17,6 +17,7 @@ final class JITController {
     private var attachedPIDs: Set<Int32> = []
     private var preflightWatchdogs: [Int32: DispatchWorkItem] = [:]
     private var hasHandledFailure = false
+    private var hasStarted = false
     private(set) var isJITLessModeActive = false
     private var pendingFailureAction: (() -> Void)?
     private let preflightTimeoutSeconds: Int = 5
@@ -29,9 +30,10 @@ final class JITController {
     }
 
     func start() {
-        guard usePtraceJIT() else {
+        guard !hasStarted else {
             return
         }
+        hasStarted = true
 
         NotificationCenter.default.addObserver(
             self,
@@ -39,6 +41,10 @@ final class JITController {
             name: NSNotification.Name("GeckoRuntimeChildProcessDidStart"),
             object: nil
         )
+
+        guard usePtraceJIT() else {
+            return
+        }
 
         NotificationCenter.default.addObserver(
             self,
