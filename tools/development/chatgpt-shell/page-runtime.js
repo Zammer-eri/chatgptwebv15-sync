@@ -5,7 +5,10 @@
 
   const CACHE_REFRESH_MODES = new Set(["all"]);
   const COMPOSER_MODES = new Set(["all"]);
+  const PLUS_MENU_MODES = new Set(["plus-menu", "all"]);
   const CACHE_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+  const PLUS_MENU_SUPPRESSION_MS = 450;
+  const PLUS_MENU_SUPPRESSION_RADIUS = 72;
   const COMPOSER_SELECTOR =
     'textarea,[contenteditable="true"][role="textbox"],[contenteditable="true"]';
   const COMPOSER_ROOT_SELECTOR =
@@ -13,6 +16,7 @@
   let doc = null;
   let insertingLineBreak = false;
   let selectionStabilizationTimer = 0;
+  let plusMenuGuard = null;
 
   const isChatGPT = () => {
     const host = win.location?.hostname || "";
@@ -90,6 +94,150 @@
     return Array.from(doc.querySelectorAll(COMPOSER_SELECTOR))
       .filter(element => isComposerEditable(element) && visible(element))
       .at(-1) || null;
+  };
+
+  const blurComposer = () => {
+    const editable = activeComposerEditable();
+    editable?.blur?.();
+    if (doc.activeElement && isComposerEditable(doc.activeElement)) {
+      doc.activeElement.blur?.();
+    }
+  };
+
+  const buttonElement = target => {
+    const element =
+      target instanceof win.Element ? target : target?.parentElement || null;
+    return element?.closest?.('button,[role="button"]') || null;
+  };
+
+  const elementLabel = element =>
+    [
+      element?.getAttribute?.("aria-label"),
+      element?.getAttribute?.("title"),
+      element?.textContent,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .trim()
+      .toLowerCase();
+
+  const isLikelyComposerPlusButton = target => {
+    const button = buttonElement(target);
+    if (!button || !visible(button) || button.closest("nav,aside")) {
+      return null;
+    }
+
+    const label = elementLabel(button);
+    if (/\b(attach|attachment|upload|add|plus|tools|more)\b/.test(label)) {
+      return button;
+    }
+
+    const composer = activeComposerEditable();
+    const root = composer?.closest?.(COMPOSER_ROOT_SELECTOR);
+    if (!root || !root.contains(button) || button.contains(composer)) {
+      return null;
+    }
+
+    const buttonRect = button.getBoundingClientRect();
+    const composerRect = composer.getBoundingClientRect();
+    const squareish =
+      buttonRect.width >= 24 &&
+      buttonRect.width <= 64 &&
+      buttonRect.height >= 24 &&
+      buttonRect.height <= 64 &&
+      Math.abs(buttonRect.width - buttonRect.height) <= 18;
+    const nearComposer =
+      buttonRect.right <= composerRect.left + 96 ||
+      buttonRect.left <= composerRect.left + 48;
+
+    return squareish && nearComposer ? button : null;
+  };
+
+  const eventPoint = event => {
+    const touch = event.changedTouches?.[0] || event.touches?.[0];
+    return {
+      x: Number.isFinite(event.clientX) ? event.clientX : touch?.clientX ?? 0,
+      y: Number.isFinite(event.clientY) ? event.clientY : touch?.clientY ?? 0,
+    };
+  };
+
+  const armPlusMenuGuard = (event, button) => {
+    const point = eventPoint(event);
+    plusMenuGuard = {
+      button,
+      x: point.x,
+      y: point.y,
+      expiresAt: win.performance.now() + PLUS_MENU_SUPPRESSION_MS,
+      didSuppress: false,
+    };
+
+    win.setTimeout(blurComposer, 0);
+    win.setTimeout(blurComposer, 80);
+  };
+
+  const shouldSuppressAfterPlusMenu = event => {
+    if (!plusMenuGuard || plusMenuGuard.didSuppress) {
+      return false;
+    }
+
+    if (win.performance.now() > plusMenuGuard.expiresAt) {
+      plusMenuGuard = null;
+      return false;
+    }
+
+    if (plusMenuGuard.button?.contains?.(event.target)) {
+      return false;
+    }
+
+    const point = eventPoint(event);
+    const distance = Math.hypot(point.x - plusMenuGuard.x, point.y - plusMenuGuard.y);
+    const target = event.target instanceof win.Element ? event.target : null;
+    const actionable = !!target?.closest?.('button,[role="button"],[role="menuitem"],a');
+    return actionable && distance <= PLUS_MENU_SUPPRESSION_RADIUS;
+  };
+
+  const suppressEvent = event => {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    plusMenuGuard.didSuppress = true;
+    win.setTimeout(() => {
+      plusMenuGuard = null;
+      blurComposer();
+    }, 0);
+  };
+
+  const installPlusMenuGuard = () => {
+    if (doc.__reynardChatGPTPlusMenuGuardInstalled) {
+      return;
+    }
+    doc.__reynardChatGPTPlusMenuGuardInstalled = true;
+
+    const handlePointerStart = event => {
+      const button = isLikelyComposerPlusButton(event.target);
+      if (button) {
+        armPlusMenuGuard(event, button);
+      }
+    };
+
+    const handlePossibleReplay = event => {
+      if (shouldSuppressAfterPlusMenu(event)) {
+        suppressEvent(event);
+      }
+    };
+
+    const handleFocusIn = event => {
+      if (plusMenuGuard && isComposerEditable(event.target)) {
+        win.setTimeout(blurComposer, 0);
+      }
+    };
+
+    doc.addEventListener("pointerdown", handlePointerStart, true);
+    doc.addEventListener("touchstart", handlePointerStart, true);
+    doc.addEventListener("pointerup", handlePossibleReplay, true);
+    doc.addEventListener("touchend", handlePossibleReplay, true);
+    doc.addEventListener("mouseup", handlePossibleReplay, true);
+    doc.addEventListener("click", handlePossibleReplay, true);
+    doc.addEventListener("focusin", handleFocusIn, true);
   };
 
   const dispatchInput = (element, inputType) => {
@@ -302,6 +450,10 @@
 
     if (CACHE_REFRESH_MODES.has(mode)) {
       refreshChatGPTCaches();
+    }
+
+    if (PLUS_MENU_MODES.has(mode)) {
+      installPlusMenuGuard();
     }
 
     if (COMPOSER_MODES.has(mode)) {

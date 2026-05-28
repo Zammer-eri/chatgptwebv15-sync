@@ -6,9 +6,10 @@ from pathlib import Path
 import sys
 
 
-SHIM_VERSION = 29
+SHIM_VERSION = 30
 VALID_MODES = {
     "baseline",
+    "plus-menu",
     "all",
 }
 RUNTIME_MODES = VALID_MODES - {"baseline"}
@@ -216,7 +217,7 @@ def patch_geckoview_startup(bin_dir: Path, mode: str) -> bool:
 
 def main() -> None:
     if len(sys.argv) not in (2, 3):
-        raise SystemExit("usage: patch-prebuilt-gecko.py <dist-bin-dir> [baseline|all]")
+        raise SystemExit("usage: patch-prebuilt-gecko.py <dist-bin-dir> [baseline|plus-menu|all]")
 
     mode = normalize_mode(
         sys.argv[2] if len(sys.argv) == 3 else os.environ.get("REYNARD_CHATGPT_SHIM_MODE")
