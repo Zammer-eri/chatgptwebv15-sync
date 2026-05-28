@@ -394,6 +394,31 @@ final class TabManagerImplementation: NSObject, TabManager {
     private func cancelLoadWatchdog(for tab: Tab) {
         loadWatchdogs.removeValue(forKey: tab.id)?.cancel()
     }
+
+    private func scheduleDiagnosticsSnapshots(for tab: Tab, reason: String) {
+        for delay in [1.0, 5.0, 15.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self, weak session = tab.session] in
+                guard let self,
+                      let session,
+                      self.tabs.contains(where: { $0.id == tab.id && $0.session === session }) else {
+                    return
+                }
+
+                self.captureDiagnosticsSnapshot(tabID: tab.id, session: session, reason: "\(reason)+\(Int(delay))s")
+            }
+        }
+    }
+
+    private func captureDiagnosticsSnapshot(tabID: UUID, session: GeckoSession, reason: String) {
+        Task {
+            do {
+                let snapshot = try await session.chatGPTDiagnosticsSnapshot()
+                ShellDiagnostics.log("domSnapshot reason=\(reason) tab=\(tabID.uuidString) session=\(session.diagnosticID ?? "nil") data=\(ShellDiagnostics.serialize(snapshot))")
+            } catch {
+                ShellDiagnostics.log("domSnapshotFailed reason=\(reason) tab=\(tabID.uuidString) session=\(session.diagnosticID ?? "nil") error=\(error)")
+            }
+        }
+    }
 }
 
 extension TabManagerImplementation: ContentDelegate {
@@ -540,6 +565,9 @@ extension TabManagerImplementation: NavigationDelegate {
         tabs[index].pendingDisplayText = nil
         tabs[index].favicon = nil
         ShellDiagnostics.log("locationChange tab=\(tabs[index].id.uuidString) session=\(session.diagnosticID ?? "nil") url=\(url ?? "nil") permissions=\(permissions.count)")
+        if isChatGPTURL(url) {
+            scheduleDiagnosticsSnapshots(for: tabs[index], reason: "locationChange")
+        }
         delegate?.tabManager(self, didUpdateTabAt: index, reason: .location)
         scheduleFaviconUpdate(forTabAt: index)
         persistState()
@@ -658,6 +686,9 @@ extension TabManagerImplementation: ProgressDelegate {
         tabs[index].isLoading = false
         cancelLoadWatchdog(for: tabs[index])
         ShellDiagnostics.log("pageStop tab=\(tabs[index].id.uuidString) session=\(session.diagnosticID ?? "nil") success=\(success) progress=\(tabs[index].progress) url=\(tabs[index].url ?? "nil")")
+        if isChatGPTURL(tabs[index].url) {
+            scheduleDiagnosticsSnapshots(for: tabs[index], reason: "pageStop")
+        }
         delegate?.tabManager(self, didUpdateTabAt: index, reason: .loading)
         delegate?.tabManager(self, didUpdateTabAt: index, reason: .thumbnail)
     }
@@ -684,6 +715,20 @@ enum ShellDiagnostics {
         let line = "[CHATGPT_SHELL_DIAG] \(timestamp()) \(message)"
         NSLog("%@", line)
         writeToFile(line)
+    }
+
+    static func serialize(_ value: Any?) -> String {
+        guard let value else {
+            return "nil"
+        }
+
+        if JSONSerialization.isValidJSONObject(value),
+           let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
+           let string = String(data: data, encoding: .utf8) {
+            return string
+        }
+
+        return String(describing: value)
     }
 
     private static func timestamp() -> String {

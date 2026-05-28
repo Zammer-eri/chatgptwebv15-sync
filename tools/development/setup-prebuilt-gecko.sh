@@ -12,7 +12,7 @@ DIST_DIR="$ROOT_DIR/engine/prebuilt-gecko/obj-aarch64-apple-ios/dist"
 BIN_DIR="$DIST_DIR/bin"
 INCLUDE_DIR="$DIST_DIR/include/GeckoView"
 MARKER="$ROOT_DIR/engine/prebuilt-gecko/.release"
-RUNTIME_PATCH_VERSION="41"
+RUNTIME_PATCH_VERSION="42"
 EXTENSION_PREF_OVERRIDES="true"
 DEFAULT_RELEASE_SHA256=""
 
