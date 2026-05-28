@@ -192,10 +192,6 @@ public class GeckoSession {
             ])
     }
 
-    public func chatGPTDiagnosticsSnapshot() async throws -> Any? {
-        try await dispatcher.query(type: "GeckoView:GetChatGPTDiagnostics")
-    }
-
     public func stop() {
         dispatcher.dispatch(type: "GeckoView:Stop")
     }
