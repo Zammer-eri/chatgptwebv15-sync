@@ -607,7 +607,7 @@ extension TabManagerImplementation: NavigationDelegate {
             return .deny
         }
 
-        .allow
+        return .allow
     }
 
     func onSubframeLoadRequest(session: GeckoSession, request: LoadRequest) async -> AllowOrDeny {

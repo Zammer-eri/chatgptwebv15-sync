@@ -861,7 +861,8 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
 
         let preview = SFSafariViewController(url: url)
         preview.modalPresentationStyle = .pageSheet
-        if let sheet = preview.sheetPresentationController {
+        if #available(iOS 15.0, *),
+           let sheet = preview.sheetPresentationController {
             sheet.detents = [.medium(), .large()]
             sheet.prefersGrabberVisible = true
             sheet.preferredCornerRadius = 18
