@@ -52,7 +52,7 @@ final class FaviconStore {
     
     private struct IconCandidate {
         let url: URL
-        let score: Int
+        let allowsOriginScope: Bool
     }
     
     private struct RemoteImage {
@@ -183,6 +183,11 @@ final class FaviconStore {
         imageKeysBySourceURL = state.images.reduce(into: [:]) { result, image in
             image.sourceURLs.forEach { result[$0] = image.imageKey }
         }
+
+        if removeBroadCrossOriginAssociationsLocked() {
+            removeUnreferencedImagesLocked()
+            persistStateLocked()
+        }
     }
     
     private func persistStateLocked() {
@@ -223,28 +228,33 @@ final class FaviconStore {
     }
     
     private func fetchAndCacheFavicon(for pageURL: URL) async -> UIImage? {
-        var candidates: [URL] = []
+        var candidates: [IconCandidate] = []
         
         if let document = await fetchHTMLDocument(for: pageURL, redirectDepth: 0) {
-            candidates.append(contentsOf: iconURLs(in: document.html, baseURL: document.url))
+            candidates.append(
+                contentsOf: iconURLs(in: document.html, baseURL: document.url).map {
+                    IconCandidate(url: $0, allowsOriginScope: false)
+                }
+            )
         }
         
         if let fallbackURL = fallbackFaviconURL(for: pageURL) {
-            candidates.append(fallbackURL)
+            candidates.append(IconCandidate(url: fallbackURL, allowsOriginScope: true))
         }
         
         var seenCandidateURLs = Set<String>()
-        for candidateURL in candidates {
+        for candidate in candidates {
             guard !Task.isCancelled else {
                 return nil
             }
             
+            let candidateURL = candidate.url
             let normalizedCandidateURL = candidateURL.absoluteString.lowercased()
             guard seenCandidateURLs.insert(normalizedCandidateURL).inserted else {
                 continue
             }
             
-            if let cachedImage = associateExistingIconIfPresent(candidateURL, with: pageURL) {
+            if let cachedImage = associateExistingIconIfPresent(candidate, with: pageURL) {
                 return cachedImage
             }
             
@@ -253,7 +263,7 @@ final class FaviconStore {
             }
             
             stateQueue.sync {
-                storeLocked(remoteImage: remoteImage, for: pageURL, now: Date())
+                storeLocked(remoteImage: remoteImage, candidate: candidate, for: pageURL, now: Date())
             }
             return remoteImage.image
         }
@@ -261,21 +271,25 @@ final class FaviconStore {
         return nil
     }
     
-    private func associateExistingIconIfPresent(_ iconURL: URL, with pageURL: URL) -> UIImage? {
+    private func associateExistingIconIfPresent(_ candidate: IconCandidate, with pageURL: URL) -> UIImage? {
         stateQueue.sync {
             let now = Date()
             pruneExpiredEntriesLocked(now: now)
             
-            guard let imageKey = imageKeysBySourceURL[iconURL.absoluteString],
+            guard let imageKey = imageKeysBySourceURL[candidate.url.absoluteString],
                   let image = loadImageLocked(for: imageKey) else {
                 return nil
             }
             
-            let scopeKey = scopeKey(for: pageURL, iconURL: iconURL)
+            let scopeKey = scopeKey(
+                for: pageURL,
+                iconURL: candidate.url,
+                allowsOriginScope: candidate.allowsOriginScope
+            )
             associationsByScopeKey[scopeKey] = SiteAssociation(
                 scopeKey: scopeKey,
                 imageKey: imageKey,
-                iconURL: iconURL.absoluteString,
+                iconURL: candidate.url.absoluteString,
                 updatedAt: now
             )
             imagesByKey[imageKey]?.updatedAt = now
@@ -284,7 +298,7 @@ final class FaviconStore {
         }
     }
     
-    private func storeLocked(remoteImage: RemoteImage, for pageURL: URL, now: Date) {
+    private func storeLocked(remoteImage: RemoteImage, candidate: IconCandidate, for pageURL: URL, now: Date) {
         let imageKey = Self.sha256(remoteImage.data)
         let imageURL = imageFileURL(for: imageKey)
         
@@ -292,7 +306,11 @@ final class FaviconStore {
             try? remoteImage.data.write(to: imageURL, options: .atomic)
         }
         
-        let scopeKey = scopeKey(for: pageURL, iconURL: remoteImage.url)
+        let scopeKey = scopeKey(
+            for: pageURL,
+            iconURL: remoteImage.url,
+            allowsOriginScope: candidate.allowsOriginScope
+        )
         imagesByKey[imageKey] = CachedImage(
             imageKey: imageKey,
             sourceURLs: mergedSourceURLs(for: imageKey, adding: remoteImage.url.absoluteString),
@@ -328,6 +346,27 @@ final class FaviconStore {
         removeUnreferencedImagesLocked()
     }
     
+    private func removeBroadCrossOriginAssociationsLocked() -> Bool {
+        let poisonedScopeKeys = associationsByScopeKey.compactMap { entry -> String? in
+            guard let scopeURL = URL(string: entry.value.scopeKey),
+                  let scopeHost = scopeURL.host?.lowercased(),
+                  let iconURL = URL(string: entry.value.iconURL),
+                  let iconHost = iconURL.host?.lowercased(),
+                  iconHost != scopeHost else {
+                return nil
+            }
+
+            let scopePath = scopeURL.path
+            return scopePath.isEmpty || scopePath == "/" ? entry.key : nil
+        }
+
+        for scopeKey in poisonedScopeKeys {
+            associationsByScopeKey.removeValue(forKey: scopeKey)
+        }
+
+        return !poisonedScopeKeys.isEmpty
+    }
+
     private func removeUnreferencedImagesLocked() {
         let referencedImageKeys = Set(associationsByScopeKey.values.map(\.imageKey))
         let unreferencedImageKeys = imagesByKey.keys.filter { !referencedImageKeys.contains($0) }
@@ -418,15 +457,29 @@ final class FaviconStore {
         return keys
     }
     
-    private func scopeKey(for pageURL: URL, iconURL: URL) -> String {
+    private func pageScopeKey(for pageURL: URL) -> String {
         guard let scheme = pageURL.scheme?.lowercased(),
               let host = pageURL.host?.lowercased() else {
             return pageURL.absoluteString
         }
         
         let base = scheme + "://" + host
-        guard iconURL.host?.lowercased() == host else {
+        let pagePathComponents = normalizedPathComponents(for: pageURL.path)
+        guard !pagePathComponents.isEmpty else {
             return base
+        }
+        return base + "/" + pagePathComponents.joined(separator: "/")
+    }
+
+    private func scopeKey(for pageURL: URL, iconURL: URL, allowsOriginScope: Bool) -> String {
+        guard let scheme = pageURL.scheme?.lowercased(),
+              let host = pageURL.host?.lowercased() else {
+            return pageURL.absoluteString
+        }
+
+        let base = scheme + "://" + host
+        guard iconURL.host?.lowercased() == host else {
+            return allowsOriginScope ? base : pageScopeKey(for: pageURL)
         }
         
         let pagePathComponents = normalizedPathComponents(for: pageURL.path)
@@ -441,7 +494,7 @@ final class FaviconStore {
         }
         
         guard !sharedComponents.isEmpty else {
-            return base
+            return allowsOriginScope ? base : pageScopeKey(for: pageURL)
         }
         return base + "/" + sharedComponents.joined(separator: "/")
     }

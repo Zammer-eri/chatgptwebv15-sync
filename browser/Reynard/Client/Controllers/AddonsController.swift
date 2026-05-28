@@ -21,7 +21,7 @@ final class AddonsController: NSObject, AddonEmbedderDelegate {
     private var sessionPageActions: [ObjectIdentifier: [String: AddonAction]] = [:]
     private let iconCache = NSCache<NSString, UIImage>()
     private let iconLoadingQueue = DispatchQueue(label: "me.minh-ton.AddonsController.IconLoading", qos: .utility)
-    private var iconPrefetchIDs = Set<String>()
+    private var iconPrefetchKeys = Set<String>()
 
     init(controller: BrowserViewController) {
         self.controller = controller
@@ -132,10 +132,13 @@ final class AddonsController: NSObject, AddonEmbedderDelegate {
     }
 
     func addonsController(_ controller: AddonsRuntimeController, didUpdate addon: Addon) {
-        _ = addon
-        if addon.metaData.enabled == false || AddonsRuntimeController.shared.installedAddons.contains(where: { $0.id == addon.id }) == false {
-            clearCachedActions(for: addon.id)
+        clearCachedActions(for: addon.id)
+
+        if addon.metaData.enabled &&
+            AddonsRuntimeController.shared.installedAddons.contains(where: { $0.id == addon.id }) {
+            prefetchIconIfNeeded(for: addon)
         }
+
         self.controller?.refreshAddressBar()
     }
 
@@ -397,22 +400,22 @@ final class AddonsController: NSObject, AddonEmbedderDelegate {
     }
 
     func iconImage(for addon: Addon) -> UIImage? {
-        let cacheKey = addon.id as NSString
-        if let cached = iconCache.object(forKey: cacheKey) {
+        let cacheKey = iconCacheKey(for: addon)
+        if let cached = iconCache.object(forKey: cacheKey as NSString) {
             return cached
         }
         return UIImage(systemName: "puzzlepiece.extension")
     }
 
     private func prefetchIconIfNeeded(for addon: Addon) {
-        let cacheKey = addon.id as NSString
-        guard iconCache.object(forKey: cacheKey) == nil,
-              iconPrefetchIDs.contains(addon.id) == false,
+        let cacheKey = iconCacheKey(for: addon)
+        guard iconCache.object(forKey: cacheKey as NSString) == nil,
+              iconPrefetchKeys.contains(cacheKey) == false,
               addon.metaData.iconURL != nil else {
             return
         }
 
-        iconPrefetchIDs.insert(addon.id)
+        iconPrefetchKeys.insert(cacheKey)
         let iconURL = addon.metaData.iconURL
         iconLoadingQueue.async { [weak self] in
             guard let self else {
@@ -420,13 +423,17 @@ final class AddonsController: NSObject, AddonEmbedderDelegate {
             }
             let image = AddonIconLoader.loadImage(from: iconURL, targetSize: CGSize(width: 18, height: 18))
             DispatchQueue.main.async {
-                self.iconPrefetchIDs.remove(addon.id)
+                self.iconPrefetchKeys.remove(cacheKey)
                 if let image {
-                    self.iconCache.setObject(image, forKey: cacheKey)
+                    self.iconCache.setObject(image, forKey: cacheKey as NSString)
                 }
                 self.controller?.refreshAddressBar()
             }
         }
+    }
+
+    private func iconCacheKey(for addon: Addon) -> String {
+        "\(addon.id)|\(addon.metaData.iconURL ?? "")"
     }
 
     private func presentedViewControllerForDismissal() -> UIViewController? {

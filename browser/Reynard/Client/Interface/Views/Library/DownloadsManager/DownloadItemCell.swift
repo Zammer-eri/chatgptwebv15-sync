@@ -174,8 +174,11 @@ final class DownloadItemCell: UITableViewCell {
                 return
             }
             
+            let expectedItemID = item.id
             Self.iconProvider.icon(for: fileURL, size: CGSize(width: 56, height: 56)) { [weak self] image in
-                guard let self, self.representedFileURL == fileURL else {
+                guard let self,
+                      self.representedFileURL == fileURL,
+                      self.representedItemID == expectedItemID else {
                     return
                 }
                 
@@ -212,7 +215,7 @@ private final class DownloadFileIconProvider {
     static let shared = DownloadFileIconProvider()
     
     private let generator = QLThumbnailGenerator.shared
-    private let cache = NSCache<NSURL, UIImage>()
+    private let cache = NSCache<NSString, UIImage>()
     private let genericCache = NSCache<NSString, UIImage>()
     private let fileManager = FileManager.default
     
@@ -255,14 +258,15 @@ private final class DownloadFileIconProvider {
     }
     
     func icon(for fileURL: URL, size: CGSize, completion: @escaping (UIImage?) -> Void) {
-        if let cachedImage = cache.object(forKey: fileURL as NSURL) {
+        let cacheKey = thumbnailCacheKey(for: fileURL)
+        if let cachedImage = cache.object(forKey: cacheKey) {
             completion(cachedImage)
             return
         }
         
         generateIcon(for: fileURL, size: size, contentType: nil) { [weak self] image in
             if let image {
-                self?.cache.setObject(image, forKey: fileURL as NSURL)
+                self?.cache.setObject(image, forKey: cacheKey)
                 completion(image)
                 return
             }
@@ -272,7 +276,14 @@ private final class DownloadFileIconProvider {
     }
     
     func cachedIcon(for fileURL: URL) -> UIImage? {
-        cache.object(forKey: fileURL as NSURL)
+        cache.object(forKey: thumbnailCacheKey(for: fileURL))
+    }
+
+    private func thumbnailCacheKey(for fileURL: URL) -> NSString {
+        let values = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
+        let modifiedAt = values?.contentModificationDate?.timeIntervalSince1970 ?? 0
+        let fileSize = values?.fileSize ?? -1
+        return "\(fileURL.standardizedFileURL.path)|\(fileSize)|\(modifiedAt)" as NSString
     }
     
     private func generateIcon(

@@ -124,7 +124,7 @@ final class AddonsSettingsViewController: SettingsTableViewController {
             let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
             cell.textLabel?.text = addon.metaData.name ?? addon.id
             cell.accessoryType = .disclosureIndicator
-            cell.imageView?.image = Self.sharedIconCache.object(forKey: addon.id as NSString) ?? UIImage(systemName: "puzzlepiece.extension")
+            cell.imageView?.image = Self.sharedIconCache.object(forKey: Self.iconCacheKey(for: addon) as NSString) ?? UIImage(systemName: "puzzlepiece.extension")
             loadIconIfNeeded(for: addon)
             return cell
         case .more:
@@ -184,14 +184,17 @@ final class AddonsSettingsViewController: SettingsTableViewController {
     
     private func reloadAddonsFromRuntime() async {
         let refreshedAddons: [Addon]
+        let didLoadFromRuntime: Bool
         do {
             refreshedAddons = try await AddonsRuntimeController.shared.list()
+            didLoadFromRuntime = true
         } catch {
             refreshedAddons = AddonsRuntimeController.shared.installedAddons
+            didLoadFromRuntime = false
         }
         
         await MainActor.run {
-            Self.hasLoadedInstalledAddons = true
+            Self.hasLoadedInstalledAddons = didLoadFromRuntime
             self.addons = refreshedAddons
             self.isLoadingAddons = false
             self.tableView.reloadData()
@@ -208,14 +211,14 @@ final class AddonsSettingsViewController: SettingsTableViewController {
     }
     
     private func loadIconIfNeeded(for addon: Addon) {
-        let cacheKey = addon.id as NSString
-        guard Self.sharedIconCache.object(forKey: cacheKey) == nil,
-              iconLoadingIDs.contains(addon.id) == false,
+        let cacheKey = Self.iconCacheKey(for: addon)
+        guard Self.sharedIconCache.object(forKey: cacheKey as NSString) == nil,
+              iconLoadingIDs.contains(cacheKey) == false,
               addon.metaData.iconURL != nil else {
             return
         }
         
-        iconLoadingIDs.insert(addon.id)
+        iconLoadingIDs.insert(cacheKey)
         let iconURL = addon.metaData.iconURL
         iconLoadingQueue.async { [weak self] in
             guard let self else {
@@ -224,9 +227,9 @@ final class AddonsSettingsViewController: SettingsTableViewController {
             
             let image = AddonIconLoader.loadImage(from: iconURL, targetSize: CGSize(width: 24, height: 24))
             DispatchQueue.main.async {
-                self.iconLoadingIDs.remove(addon.id)
+                self.iconLoadingIDs.remove(cacheKey)
                 if let image {
-                    Self.sharedIconCache.setObject(image, forKey: cacheKey)
+                    Self.sharedIconCache.setObject(image, forKey: cacheKey as NSString)
                 }
                 
                 guard let currentRow = self.addons.firstIndex(where: { $0.id == addon.id }) else {
@@ -242,6 +245,10 @@ final class AddonsSettingsViewController: SettingsTableViewController {
                 cell.setNeedsLayout()
             }
         }
+    }
+
+    private static func iconCacheKey(for addon: Addon) -> String {
+        "\(addon.id)|\(addon.metaData.iconURL ?? "")"
     }
 }
 
