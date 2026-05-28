@@ -264,7 +264,7 @@ final class TabManagerImplementation: NSObject, TabManager {
     func createInitialTab() {
         let index = addTab(selecting: true, windowId: nil, at: nil)
         if let tab = tabs[safe: index] {
-            load(Self.shellHomeURL, in: tab, flags: cleanReloadFlags)
+            load(Self.shellHomeURL, in: tab)
         }
     }
 
@@ -323,7 +323,7 @@ final class TabManagerImplementation: NSObject, TabManager {
             delegate?.tabManagerDidChangeTabs(self)
             let replacementIndex = addTab(selecting: true, windowId: nil, at: nil)
             if let replacementTab = tabs[safe: replacementIndex] {
-                load(Self.shellHomeURL, in: replacementTab, flags: cleanReloadFlags)
+                load(Self.shellHomeURL, in: replacementTab)
             }
             closeSession(removedTab.session)
             return
@@ -360,7 +360,7 @@ final class TabManagerImplementation: NSObject, TabManager {
         delegate?.tabManagerDidChangeTabs(self)
         let replacementIndex = addTab(selecting: true, windowId: nil)
         if let replacementTab = tabs[safe: replacementIndex] {
-            load(Self.shellHomeURL, in: replacementTab, flags: cleanReloadFlags)
+            load(Self.shellHomeURL, in: replacementTab)
         }
 
         removedTabs.forEach { closeSession($0.session) }
@@ -672,7 +672,7 @@ extension TabManagerImplementation: ProgressDelegate {
            (desiredSettings.userAgentOverride != session.userAgentOverride ||
             desiredSettings.userAgentMode != session.userAgentMode ||
             desiredSettings.viewportMode != session.viewportMode) {
-            loadURL(url, in: tabs[index], flags: cleanReloadFlags)
+            loadURL(url, in: tabs[index])
         }
 
         tabs[index].isLoading = true
