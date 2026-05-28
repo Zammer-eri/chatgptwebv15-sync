@@ -13,6 +13,8 @@ final class BrowserLayout {
     private static let shellMinimumInputSurroundingClearance: CGFloat = 120
     private static let shellMaximumInputSurroundingClearance: CGFloat = 190
     private static let shellInputSurroundingClearanceRatio: CGFloat = 0.42
+    private static let keyboardAccessorySpacing: CGFloat = 8
+    private static let keyboardAvoidancePadding: CGFloat = 12
     private unowned let controller: BrowserViewController
     private var keyboardHeight: CGFloat = 0
     private var keyboardFrame: CGRect = .zero
@@ -98,7 +100,9 @@ final class BrowserLayout {
         ui.keyboardDismissButton.widthConstraint = ui.keyboardDismissButton.button.widthAnchor.constraint(equalToConstant: 42)
         ui.keyboardDismissButton.heightConstraint = ui.keyboardDismissButton.button.heightAnchor.constraint(equalToConstant: 42)
         ui.keyboardAccessoryBottomConstraint = ui.keyboardAccessoryBar.view.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
-        ui.keyboardAccessoryHeightConstraint = ui.keyboardAccessoryBar.view.heightAnchor.constraint(equalToConstant: 44)
+        ui.keyboardAccessoryTrailingConstraint = ui.keyboardAccessoryBar.view.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12)
+        ui.keyboardAccessoryHeightConstraint = ui.keyboardAccessoryBar.view.heightAnchor.constraint(equalToConstant: 36)
+        ui.keyboardAccessoryWidthConstraint = ui.keyboardAccessoryBar.view.widthAnchor.constraint(equalToConstant: 78)
         
         ui.topBar.heightConstraint = ui.topBar.barView.heightAnchor.constraint(equalToConstant: 52)
         ui.topBar.topConstraint = ui.topBar.barView.topAnchor.constraint(equalTo: view.topAnchor)
@@ -147,10 +151,10 @@ final class BrowserLayout {
             ui.keyboardDismissButton.centerYConstraint,
             ui.keyboardDismissButton.widthConstraint,
             ui.keyboardDismissButton.heightConstraint,
-            ui.keyboardAccessoryBar.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            ui.keyboardAccessoryBar.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            ui.keyboardAccessoryTrailingConstraint,
             ui.keyboardAccessoryBottomConstraint,
             ui.keyboardAccessoryHeightConstraint,
+            ui.keyboardAccessoryWidthConstraint,
             
             ui.toolbarView.leadingAnchor.constraint(equalTo: ui.chromeContainer.containerView.leadingAnchor, constant: 24),
             ui.toolbarView.trailingAnchor.constraint(equalTo: ui.chromeContainer.containerView.trailingAnchor, constant: -24),
@@ -464,7 +468,7 @@ final class BrowserLayout {
         && !controller.tabOverviewPresentation.isVisible
         && keyboardHeight > 0
         ui.phoneChromeBottomConstraint.constant = shouldDockChromeToKeyboard ? -keyboardHeight : 0
-        ui.keyboardAccessoryBottomConstraint.constant = -keyboardHeight
+        ui.keyboardAccessoryBottomConstraint.constant = -(keyboardHeight + Self.keyboardAccessorySpacing)
         updateKeyboardAccessoryVisibility(keyboardVisible: keyboardHeight > 0)
         updateChromeLayoutState()
         
@@ -495,9 +499,7 @@ final class BrowserLayout {
     
     private func updateKeyboardAccessoryVisibility(keyboardVisible: Bool) {
         let bar = controller.browserUI.keyboardAccessoryBar.view
-        let shouldShow = keyboardVisible
-            && !controller.isSearchFocused
-            && !controller.tabOverviewPresentation.isVisible
+        let shouldShow = keyboardVisible && shouldAvoidKeyboardAccessory
         if shouldShow {
             bar.isHidden = false
         }
@@ -609,7 +611,7 @@ final class BrowserLayout {
         if Self.chatGPTShellMode {
             surroundingClearance = min(
                 Self.shellMaximumInputSurroundingClearance,
-                max(Self.shellMinimumInputSurroundingClearance, keyboardHeight * Self.shellInputSurroundingClearanceRatio)
+                max(Self.shellMinimumInputSurroundingClearance, effectiveKeyboardAvoidanceHeight * Self.shellInputSurroundingClearanceRatio)
             )
         } else {
             surroundingClearance = 0
@@ -666,14 +668,36 @@ final class BrowserLayout {
         
         let currentGeckoShift = max(0, unshiftedGeckoMinY - geckoFrame.minY)
         let unshiftedGeckoMaxY = geckoFrame.maxY + currentGeckoShift
-        let keyboardOverlap = max(0, unshiftedGeckoMaxY - keyboardFrame.minY)
+        let keyboardOverlap = max(0, unshiftedGeckoMaxY - effectiveKeyboardObstructionMinY)
         guard keyboardOverlap > 0 else {
             return 0
         }
         
         let focusBottom = geckoFrame.height * bottomRatio
-        let visibleBottom = max(0, geckoFrame.height - keyboardOverlap - 12)
+        let visibleBottom = max(0, geckoFrame.height - keyboardOverlap - Self.keyboardAvoidancePadding)
         return min(keyboardOverlap, max(0, focusBottom - visibleBottom))
+    }
+
+    private var shouldAvoidKeyboardAccessory: Bool {
+        keyboardHeight > 0
+            && !controller.isSearchFocused
+            && !controller.tabOverviewPresentation.isVisible
+    }
+
+    private var keyboardAccessoryAvoidanceHeight: CGFloat {
+        guard shouldAvoidKeyboardAccessory else {
+            return 0
+        }
+
+        return controller.browserUI.keyboardAccessoryHeightConstraint.constant + Self.keyboardAccessorySpacing
+    }
+
+    private var effectiveKeyboardAvoidanceHeight: CGFloat {
+        keyboardHeight + keyboardAccessoryAvoidanceHeight
+    }
+
+    private var effectiveKeyboardObstructionMinY: CGFloat {
+        keyboardFrame.minY - keyboardAccessoryAvoidanceHeight
     }
 }
 

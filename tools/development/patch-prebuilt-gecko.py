@@ -6,10 +6,9 @@ from pathlib import Path
 import sys
 
 
-SHIM_VERSION = 25
+SHIM_VERSION = 28
 VALID_MODES = {
     "baseline",
-    "emoji",
     "all",
 }
 RUNTIME_MODES = VALID_MODES - {"baseline"}
@@ -17,7 +16,6 @@ SHELL_RUNTIME_MARKER = "installChatGPTShellRuntime"
 SCRIPT_DIR = Path(__file__).resolve().parent
 SHELL_DIR = SCRIPT_DIR / "chatgpt-shell"
 PAGE_RUNTIME_FILES = [
-    "emoji-renderer.js",
     "page-runtime.js",
 ]
 
@@ -218,7 +216,7 @@ def patch_geckoview_startup(bin_dir: Path, mode: str) -> bool:
 
 def main() -> None:
     if len(sys.argv) not in (2, 3):
-        raise SystemExit("usage: patch-prebuilt-gecko.py <dist-bin-dir> [baseline|emoji|all]")
+        raise SystemExit("usage: patch-prebuilt-gecko.py <dist-bin-dir> [baseline|all]")
 
     mode = normalize_mode(
         sys.argv[2] if len(sys.argv) == 3 else os.environ.get("REYNARD_CHATGPT_SHIM_MODE")
@@ -231,7 +229,6 @@ def main() -> None:
     print(f"  shim version: {SHIM_VERSION}")
     print(f"  shim mode: {mode}")
     print(f"  ChatGPT runtime hooks requested: {mode in RUNTIME_MODES}")
-    print("  emoji fallback: twemoji-cdn")
     print(
         "  ChatGPT runtime hooks patched: "
         f"{content_child_changed or startup_changed}"

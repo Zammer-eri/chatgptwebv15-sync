@@ -74,6 +74,8 @@ final class BrowserUI {
     var addressBarPadHeightConstraint: NSLayoutConstraint!
     var keyboardAccessoryBottomConstraint: NSLayoutConstraint!
     var keyboardAccessoryHeightConstraint: NSLayoutConstraint!
+    var keyboardAccessoryTrailingConstraint: NSLayoutConstraint!
+    var keyboardAccessoryWidthConstraint: NSLayoutConstraint!
     
     private unowned let controller: BrowserViewController
     private let tabCollectionHandler: TabCollectionHandler

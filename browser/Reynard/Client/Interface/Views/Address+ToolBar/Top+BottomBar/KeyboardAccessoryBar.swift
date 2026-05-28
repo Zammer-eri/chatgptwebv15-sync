@@ -12,6 +12,9 @@ final class KeyboardAccessoryBar {
         view.translatesAutoresizingMaskIntoConstraints = false
         view.alpha = 0
         view.isHidden = true
+        view.layer.cornerCurve = .continuous
+        view.layer.cornerRadius = 18
+        view.clipsToBounds = true
         return view
     }()
 
@@ -26,9 +29,12 @@ final class KeyboardAccessoryBar {
 
     init() {
         view.contentView.addSubview(doneButton)
+
         NSLayoutConstraint.activate([
-            doneButton.trailingAnchor.constraint(equalTo: view.contentView.layoutMarginsGuide.trailingAnchor, constant: -4),
-            doneButton.centerYAnchor.constraint(equalTo: view.contentView.centerYAnchor),
+            doneButton.leadingAnchor.constraint(equalTo: view.contentView.leadingAnchor, constant: 14),
+            doneButton.trailingAnchor.constraint(equalTo: view.contentView.trailingAnchor, constant: -14),
+            doneButton.topAnchor.constraint(equalTo: view.contentView.topAnchor),
+            doneButton.bottomAnchor.constraint(equalTo: view.contentView.bottomAnchor),
         ])
     }
 }

@@ -12,17 +12,60 @@ enum AddressBarMenu {
         let menuItem: AddonMenuItem
         let image: UIImage?
     }
-    
+
     private static let rootIdentifier = UIMenu.Identifier("me.minh-ton.reynard.address-bar-menu")
-    private static let manageAddonsIdentifier = UIMenu.Identifier("me.minh-ton.reynard.address-bar-menu.manage-addons")
     static let presentAddonSettingsNotification = Notification.Name("me.minh-ton.reynard.address-bar-menu.present-addon-settings")
     static let changeWebsiteModeNotification = Notification.Name("me.minh-ton.reynard.address-bar-menu.toggle-website-mode")
-    
+
     static func makeMenu(
         selectedTab: Tab?,
         selectedURL: String?,
         addonItems: [AddonItem]
     ) -> UIMenu? {
-        return nil
+        guard selectedURL?.isEmpty == false || !addonItems.isEmpty else {
+            return nil
+        }
+
+        var children: [UIMenuElement] = []
+
+        if !addonItems.isEmpty {
+            let addonActions = addonItems.map { item in
+                UIAction(
+                    title: item.menuItem.title,
+                    image: item.image
+                ) { _ in
+                    NotificationCenter.default.post(
+                        name: presentAddonSettingsNotification,
+                        object: nil,
+                        userInfo: ["addonItem": item.menuItem]
+                    )
+                }
+            }
+            children.append(UIMenu(title: "Add-ons", options: .displayInline, children: addonActions))
+        }
+
+        children.append(
+            UIMenu(
+                title: "",
+                options: .displayInline,
+                children: [
+                    UIAction(title: "Manage Add-ons", image: UIImage(systemName: "puzzlepiece.extension")) { _ in
+                        NotificationCenter.default.post(
+                            name: presentAddonSettingsNotification,
+                            object: nil,
+                            userInfo: [:]
+                        )
+                    },
+                    UIAction(title: "Request Desktop Website", image: UIImage(systemName: "desktopcomputer")) { _ in
+                        NotificationCenter.default.post(
+                            name: changeWebsiteModeNotification,
+                            object: nil
+                        )
+                    },
+                ]
+            )
+        )
+
+        return UIMenu(title: "", identifier: rootIdentifier, children: children)
     }
 }

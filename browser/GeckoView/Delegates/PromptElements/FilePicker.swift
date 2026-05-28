@@ -15,32 +15,32 @@ final class FilePicker: NSObject {
         case multiple
         case folder
     }
-    
+
     private enum Capture: Int {
         case none = 0
         case any = 1
         case user = 2
         case environment = 3
     }
-    
+
     private enum PickerAction {
         case photoLibrary
         case camera
         case chooseFile
     }
-    
+
     private struct AcceptedTypes: Sendable {
         let documentTypes: [UTType]
         let mediaTypes: [String]
     }
-    
+
     private struct FolderEntry: Sendable {
         let filePath: String
         let relativePath: String
         let name: String
         let type: String
         let lastModified: Double
-        
+
         var dictionary: [String: Any] {
             [
                 "filePath": filePath,
@@ -51,11 +51,11 @@ final class FilePicker: NSObject {
             ]
         }
     }
-    
+
     private struct SelectionResult: Sendable {
         let files: [String]
         let filesInWebKitDirectory: [FolderEntry]
-        
+
         var promptResult: [String: Any] {
             var result: [String: Any] = ["files": files]
             if !filesInWebKitDirectory.isEmpty {
@@ -64,21 +64,19 @@ final class FilePicker: NSObject {
             return result
         }
     }
-    
+
     private let promptId: String
     private let mode: Mode
     private let capture: Capture
-    private let anchorRect: CGRect
     private weak var geckoView: UIView?
-    
+
     private let acceptedTypes: AcceptedTypes
     private let stagingDirectoryURL: URL
-    
+
     private var continuation: CheckedContinuation<[String: Any]?, Never>?
-    private var anchorButton: FileMenuAnchorButton?
     private weak var presentedController: UIViewController?
-    private var launchedFollowupPicker = false
-    
+    private weak var interactionShield: UIControl?
+
     init(
         promptId: String,
         mode: String,
@@ -90,7 +88,7 @@ final class FilePicker: NSObject {
         self.promptId = promptId
         self.mode = Mode(rawValue: mode) ?? .single
         self.capture = Capture(rawValue: capture) ?? .none
-        self.anchorRect = anchorRect
+        _ = anchorRect
         self.geckoView = geckoView
         self.acceptedTypes = Self.resolveAcceptedTypes(from: mimeTypes)
         self.stagingDirectoryURL = FileManager.default.temporaryDirectory
@@ -98,10 +96,12 @@ final class FilePicker: NSObject {
             .appendingPathComponent(promptId, isDirectory: true)
         super.init()
     }
-    
+
     func present() async -> [String: Any]? {
         await withCheckedContinuation { continuation in
             self.continuation = continuation
+            dismissPageKeyboard()
+            installInteractionShield()
             let actions = availableActions
             if actions.count == 1, let action = actions.first {
                 DispatchQueue.main.async { [weak self] in
@@ -112,105 +112,35 @@ final class FilePicker: NSObject {
             }
         }
     }
-    
+
     func cancelAndDismiss() {
-        anchorButton?.removeFromSuperview()
-        anchorButton = nil
+        removeInteractionShield()
         presentedController?.dismiss(animated: false)
         presentedController = nil
         finish(with: nil)
     }
-    
+
     private func showMenu() {
         guard let geckoView = geckoView else {
             finish(with: nil)
             return
         }
-        
-        if anchorRect.isEmpty {
-            showActionSheet(in: geckoView)
-            return
-        }
-        
-        let button = FileMenuAnchorButton(frame: anchorRect)
-        button.backgroundColor = .clear
-        button.menu = buildMenu()
-        button.showsMenuAsPrimaryAction = true
-        button.onMenuDismissed = { [weak self] in
-            self?.handleMenuDismissed()
-        }
-        
-        geckoView.addSubview(button)
-        anchorButton = button
-        
-        DispatchQueue.main.async { [weak self] in
-            guard let button = self?.anchorButton else { return }
-            let interaction = button.interactions.compactMap { $0 as? UIContextMenuInteraction }.first
-            guard let interaction else {
-                self?.handleMenuDismissed()
-                return
-            }
-            
-            let selector = NSSelectorFromString("_presentMenuAtLocation:")
-            if interaction.responds(to: selector) {
-                let center = CGPoint(x: button.bounds.midX, y: button.bounds.midY)
-                let imp = interaction.method(for: selector)
-                typealias PresentFunc = @convention(c) (AnyObject, Selector, CGPoint) -> Void
-                let present = unsafeBitCast(imp, to: PresentFunc.self)
-                present(interaction, selector, center)
-            } else {
-                self?.handleMenuDismissed()
-            }
-        }
+
+        showActionSheet(in: geckoView)
     }
-    
-    private func buildMenu() -> UIMenu {
-        let photoAction = UIAction(
-            title: "Photo Library",
-            image: UIImage(systemName: "photo.on.rectangle"),
-            attributes: canUsePhotoLibrary ? [] : .disabled
-        ) { [weak self] _ in
-            self?.launchFollowupPicker {
-                self?.performAction(.photoLibrary)
-            }
-        }
-        
-        let cameraAction = UIAction(
-            title: "Take Photo",
-            image: UIImage(systemName: "camera"),
-            attributes: canUseCamera ? [] : .disabled
-        ) { [weak self] _ in
-            self?.launchFollowupPicker {
-                self?.performAction(.camera)
-            }
-        }
-        
-        let chooserTitle = mode == .folder ? "Choose Folder" : "Choose File"
-        let chooserAction = UIAction(
-            title: chooserTitle,
-            image: UIImage(systemName: "doc"),
-            attributes: []
-        ) { [weak self] _ in
-            self?.launchFollowupPicker {
-                self?.performAction(.chooseFile)
-            }
-        }
-        
-        return UIMenu(children: [photoAction, cameraAction, chooserAction])
-    }
-    
+
     private var canUsePhotoLibrary: Bool {
         !acceptedTypes.mediaTypes.isEmpty &&
         UIImagePickerController.isSourceTypeAvailable(.photoLibrary) &&
         !resolvedAvailableMediaTypes(for: .photoLibrary).isEmpty
     }
-    
+
     private var canUseCamera: Bool {
         !acceptedTypes.mediaTypes.isEmpty &&
         UIImagePickerController.isSourceTypeAvailable(.camera) &&
         !resolvedAvailableMediaTypes(for: .camera).isEmpty
     }
-    
+
     private var availableActions: [PickerAction] {
         var actions: [PickerAction] = []
         if canUsePhotoLibrary {
@@ -222,21 +152,20 @@ final class FilePicker: NSObject {
         actions.append(.chooseFile)
         return actions
     }
-    
+
     private func launchFollowupPicker(_ action: @escaping @MainActor () -> Void) {
-        launchedFollowupPicker = true
         DispatchQueue.main.async(execute: action)
     }
-    
+
     private func showActionSheet(in geckoView: UIView) {
         guard let presentingVC = geckoView.nearestViewController() else {
             finish(with: nil)
             return
         }
-        
+
         let chooserTitle = mode == .folder ? "Choose Folder" : "Choose File"
         let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
-        
+
         if canUsePhotoLibrary {
             alert.addAction(UIAlertAction(title: "Photo Library", style: .default) { [weak self] _ in
                 self?.launchFollowupPicker {
@@ -244,7 +173,7 @@ final class FilePicker: NSObject {
                 }
             })
         }
-        
+
         if canUseCamera {
             alert.addAction(UIAlertAction(title: "Take Photo", style: .default) { [weak self] _ in
                 self?.launchFollowupPicker {
@@ -252,28 +181,31 @@ final class FilePicker: NSObject {
                 }
             })
         }
-        
+
         alert.addAction(UIAlertAction(title: chooserTitle, style: .default) { [weak self] _ in
             self?.launchFollowupPicker {
                 self?.performAction(.chooseFile)
             }
         })
-        
+
         alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in
             self?.finish(with: nil)
         })
-        
+
         if let popover = alert.popoverPresentationController {
             popover.sourceView = geckoView
             popover.sourceRect = CGRect(x: geckoView.bounds.midX, y: geckoView.bounds.midY, width: 0, height: 0)
             popover.permittedArrowDirections = []
         }
-        
-        presentingVC.present(alert, animated: true)
+
+        presentingVC.present(alert, animated: true) { [weak self] in
+            self?.removeInteractionShield()
+        }
         presentedController = alert
     }
-    
+
     private func performAction(_ action: PickerAction) {
+        dismissPageKeyboard()
         switch action {
         case .photoLibrary:
             presentMediaPicker(sourceType: .photoLibrary)
@@ -283,23 +215,14 @@ final class FilePicker: NSObject {
             presentDocumentPicker()
         }
     }
-    
-    private func handleMenuDismissed() {
-        anchorButton?.removeFromSuperview()
-        anchorButton = nil
-        if launchedFollowupPicker {
-            return
-        }
-        finish(with: nil)
-    }
-    
+
     private func presentDocumentPicker() {
         guard let geckoView = geckoView,
               let presentingVC = geckoView.nearestViewController() else {
             finish(with: nil)
             return
         }
-        
+
         let picker: UIDocumentPickerViewController
         if mode == .folder {
             picker = UIDocumentPickerViewController(
@@ -314,23 +237,25 @@ final class FilePicker: NSObject {
         picker.delegate = self
         picker.presentationController?.delegate = self
         picker.allowsMultipleSelection = mode == .multiple
-        presentingVC.present(picker, animated: true)
+        presentingVC.present(picker, animated: true) { [weak self] in
+            self?.removeInteractionShield()
+        }
         presentedController = picker
     }
-    
+
     private func presentMediaPicker(sourceType: UIImagePickerController.SourceType) {
         guard let geckoView = geckoView,
               let presentingVC = geckoView.nearestViewController() else {
             finish(with: nil)
             return
         }
-        
+
         let mediaTypes = resolvedAvailableMediaTypes(for: sourceType)
         guard !mediaTypes.isEmpty else {
             finish(with: nil)
             return
         }
-        
+
         let picker = UIImagePickerController()
         picker.delegate = self
         picker.sourceType = sourceType
@@ -340,7 +265,7 @@ final class FilePicker: NSObject {
             picker.isModalInPresentation = true
         }
         picker.presentationController?.delegate = self
-        
+
         if sourceType == .camera {
             let preferredDevice = resolvedCameraDevice()
             if UIImagePickerController.isCameraDeviceAvailable(preferredDevice) {
@@ -350,18 +275,20 @@ final class FilePicker: NSObject {
                 picker.cameraCaptureMode = .video
             }
         }
-        
-        presentingVC.present(picker, animated: true)
+
+        presentingVC.present(picker, animated: true) { [weak self] in
+            self?.removeInteractionShield()
+        }
         presentedController = picker
     }
-    
+
     private func resolvedAvailableMediaTypes(
         for sourceType: UIImagePickerController.SourceType
     ) -> [String] {
         let availableTypes = Set(UIImagePickerController.availableMediaTypes(for: sourceType) ?? [])
         return acceptedTypes.mediaTypes.filter { availableTypes.contains($0) }
     }
-    
+
     private func resolvedCameraDevice() -> UIImagePickerController.CameraDevice {
         switch capture {
         case .user:
@@ -370,28 +297,54 @@ final class FilePicker: NSObject {
             return .rear
         }
     }
-    
+
+    private func dismissPageKeyboard() {
+        geckoView?.endEditing(true)
+        geckoView?.window?.endEditing(true)
+    }
+
+    private func installInteractionShield() {
+        guard interactionShield == nil,
+              let hostView = geckoView?.nearestViewController()?.view else {
+            return
+        }
+
+        let shield = UIControl(frame: hostView.bounds)
+        shield.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        shield.backgroundColor = .clear
+        shield.isAccessibilityElement = false
+        shield.accessibilityElementsHidden = true
+        hostView.addSubview(shield)
+        interactionShield = shield
+    }
+
+    private func removeInteractionShield() {
+        interactionShield?.removeFromSuperview()
+        interactionShield = nil
+    }
+
     private func finish(with result: [String: Any]?) {
+        removeInteractionShield()
         guard let continuation else { return }
         self.continuation = nil
         continuation.resume(returning: result)
     }
-    
+
     private static func resolveAcceptedTypes(from mimeTypes: [String]) -> AcceptedTypes {
         let filters = mimeTypes
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
             .filter { !$0.isEmpty }
-        
+
         if filters.isEmpty || filters.contains("*/*") {
             return AcceptedTypes(
                 documentTypes: [UTType.item],
                 mediaTypes: [UTType.image.identifier, UTType.movie.identifier]
             )
         }
-        
+
         var documentTypes: [UTType] = []
         var mediaTypes: Set<String> = []
-        
+
         for filter in filters {
             switch filter {
             case "image/*":
@@ -408,7 +361,7 @@ final class FilePicker: NSObject {
             default:
                 break
             }
-            
+
             let resolvedType: UTType?
             if filter.hasPrefix(".") {
                 resolvedType = UTType(filenameExtension: String(filter.dropFirst()))
@@ -417,11 +370,11 @@ final class FilePicker: NSObject {
             } else {
                 resolvedType = UTType(filenameExtension: filter)
             }
-            
+
             guard let resolvedType else {
                 continue
             }
-            
+
             documentTypes.append(resolvedType)
             if resolvedType.conforms(to: .image) {
                 mediaTypes.insert(UTType.image.identifier)
@@ -430,22 +383,22 @@ final class FilePicker: NSObject {
                 mediaTypes.insert(UTType.movie.identifier)
             }
         }
-        
+
         if documentTypes.isEmpty {
             documentTypes = [UTType.item]
         }
-        
+
         return AcceptedTypes(
             documentTypes: Array(Set(documentTypes)).sorted { $0.identifier < $1.identifier },
             mediaTypes: Array(mediaTypes).sorted()
         )
     }
-    
+
     private func prepareDocumentResult(from urls: [URL]) async -> SelectionResult? {
         let selectedURLs = mode == .multiple ? urls : Array(urls.prefix(1))
         let mode = self.mode
         let stagingDirectoryURL = self.stagingDirectoryURL
-        
+
         return await Task.detached(priority: .userInitiated) {
             switch mode {
             case .folder:
@@ -456,14 +409,14 @@ final class FilePicker: NSObject {
             }
         }.value
     }
-    
+
     private func prepareMediaResult(
         mediaURL: URL?,
         imageURL: URL?,
         imageData: Data?
     ) async -> SelectionResult? {
         let stagingDirectoryURL = self.stagingDirectoryURL
-        
+
         return await Task.detached(priority: .userInitiated) {
             if let mediaURL {
                 return try? Self.stageFiles(from: [mediaURL], in: stagingDirectoryURL)
@@ -477,46 +430,46 @@ final class FilePicker: NSObject {
             return nil
         }.value
     }
-    
+
     nonisolated private static func stageFiles(from urls: [URL], in directory: URL) throws -> SelectionResult {
         try prepareDirectory(directory)
         let copiedURLs = try urls.map { try copyItem(at: $0, into: directory, preferredName: nil) }
         return SelectionResult(files: copiedURLs.map(\.path), filesInWebKitDirectory: [])
     }
-    
+
     nonisolated private static func stageImageData(_ imageData: Data, in directory: URL) throws -> SelectionResult {
         try prepareDirectory(directory)
         let destinationURL = uniqueDestinationURL(in: directory, preferredName: "photo.jpg")
         try imageData.write(to: destinationURL, options: .atomic)
         return SelectionResult(files: [destinationURL.path], filesInWebKitDirectory: [])
     }
-    
+
     nonisolated private static func stageFolder(from url: URL, in directory: URL) throws -> SelectionResult {
         try prepareDirectory(directory)
-        
+
         let rootName = sanitizeFileName(url.lastPathComponent.isEmpty ? "Folder" : url.lastPathComponent)
         let destinationURL = directory.appendingPathComponent(rootName, isDirectory: true)
-        
+
         try withSecurityScopedAccess(to: url) {
             if FileManager.default.fileExists(atPath: destinationURL.path) {
                 try FileManager.default.removeItem(at: destinationURL)
             }
             try FileManager.default.copyItem(at: url, to: destinationURL)
         }
-        
+
         let enumerator = FileManager.default.enumerator(
             at: destinationURL,
             includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles]
         )
-        
+
         var entries: [FolderEntry] = []
         while let fileURL = enumerator?.nextObject() as? URL {
             let resourceValues = try fileURL.resourceValues(forKeys: [.isRegularFileKey, .contentModificationDateKey])
             guard resourceValues.isRegularFile == true else {
                 continue
             }
-            
+
             let relativeComponent = fileURL.path.replacingOccurrences(of: destinationURL.path + "/", with: "")
             let relativePath = rootName + "/" + relativeComponent
             entries.append(
@@ -529,10 +482,10 @@ final class FilePicker: NSObject {
                 )
             )
         }
-        
+
         return SelectionResult(files: [destinationURL.path], filesInWebKitDirectory: entries)
     }
-    
+
     nonisolated private static func prepareDirectory(_ directory: URL) throws {
         let fileManager = FileManager.default
         if fileManager.fileExists(atPath: directory.path) {
@@ -540,7 +493,7 @@ final class FilePicker: NSObject {
         }
         try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
     }
-    
+
     nonisolated private static func copyItem(at sourceURL: URL, into directory: URL, preferredName: String?) throws -> URL {
         try withSecurityScopedAccess(to: sourceURL) {
             let fileManager = FileManager.default
@@ -555,7 +508,7 @@ final class FilePicker: NSObject {
             return destinationURL
         }
     }
-    
+
     nonisolated private static func withSecurityScopedAccess<T>(to url: URL, _ body: () throws -> T) throws -> T {
         let accessed = url.startAccessingSecurityScopedResource()
         defer {
@@ -565,7 +518,7 @@ final class FilePicker: NSObject {
         }
         return try body()
     }
-    
+
     nonisolated private static func uniqueDestinationURL(in directory: URL, preferredName: String) -> URL {
         let fileManager = FileManager.default
         let sanitizedName = sanitizeFileName(preferredName.isEmpty ? "File" : preferredName)
@@ -573,7 +526,7 @@ final class FilePicker: NSObject {
         let baseName = extensionPart.isEmpty
         ? sanitizedName
         : String(sanitizedName.dropLast(extensionPart.count + 1))
-        
+
         var candidate = directory.appendingPathComponent(sanitizedName, isDirectory: false)
         var index = 1
         while fileManager.fileExists(atPath: candidate.path) {
@@ -584,14 +537,14 @@ final class FilePicker: NSObject {
         }
         return candidate
     }
-    
+
     nonisolated private static func sanitizeFileName(_ name: String) -> String {
         let invalidCharacters = CharacterSet(charactersIn: "/:\n")
         let pieces = name.components(separatedBy: invalidCharacters)
         let sanitized = pieces.joined(separator: "-").trimmingCharacters(in: .whitespacesAndNewlines)
         return sanitized.isEmpty ? "File" : sanitized
     }
-    
+
     nonisolated private static func mimeType(for url: URL) -> String {
         guard let contentType = UTType(filenameExtension: url.pathExtension) else {
             return "application/octet-stream"
@@ -609,7 +562,7 @@ extension FilePicker: UIDocumentPickerDelegate {
             finish(with: result?.promptResult)
         }
     }
-    
+
     nonisolated func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -628,7 +581,7 @@ extension FilePicker: UIImagePickerControllerDelegate, UINavigationControllerDel
             finish(with: nil)
         }
     }
-    
+
     nonisolated func imagePickerController(
         _ picker: UIImagePickerController,
         didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]
@@ -636,7 +589,7 @@ extension FilePicker: UIImagePickerControllerDelegate, UINavigationControllerDel
         let mediaURL = info[.mediaURL] as? URL
         let imageURL = info[.imageURL] as? URL
         let imageData = (info[.originalImage] as? UIImage)?.jpegData(compressionQuality: 0.92)
-        
+
         Task { @MainActor [weak self] in
             guard let self else { return }
             picker.dismiss(animated: true)
@@ -654,18 +607,5 @@ extension FilePicker: UIAdaptivePresentationControllerDelegate {
             presentedController = nil
             finish(with: nil)
         }
-    }
-}
-
-private final class FileMenuAnchorButton: UIButton {
-    var onMenuDismissed: (() -> Void)?
-    
-    override func contextMenuInteraction(
-        _ interaction: UIContextMenuInteraction,
-        willEndFor configuration: UIContextMenuConfiguration,
-        animator: UIContextMenuInteractionAnimating?
-    ) {
-        super.contextMenuInteraction(interaction, willEndFor: configuration, animator: animator)
-        onMenuDismissed?()
     }
 }
