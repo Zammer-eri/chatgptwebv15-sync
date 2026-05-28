@@ -577,7 +577,7 @@ extension TabManagerImplementation: NavigationDelegate {
 
     func onSubframeLoadRequest(session: GeckoSession, request: LoadRequest) async -> AllowOrDeny {
         ShellDiagnostics.log("subframeLoadRequest allow session=\(session.diagnosticID ?? "nil") uri=\(request.uri)")
-        .allow
+        return .allow
     }
 
     func onNewSession(session: GeckoSession, uri: String, windowId: String) async -> GeckoSession? {
