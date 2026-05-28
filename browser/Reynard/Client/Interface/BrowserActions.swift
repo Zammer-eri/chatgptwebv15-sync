@@ -51,7 +51,7 @@ final class BrowserActions {
     func createNewTab() {
         let index = controller.createTab(selecting: true)
         if let tab = controller.tabManager.tabs[safe: index] {
-            controller.tabManager.load(Self.shellHomeURL, in: tab)
+            controller.tabManager.load(Self.shellHomeURL, in: tab, flags: GeckoSessionLoadFlags.none)
         }
         controller.setTabOverviewVisible(false, animated: true)
     }
