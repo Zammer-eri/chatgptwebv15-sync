@@ -489,7 +489,7 @@ extension TabManagerImplementation: ContentDelegate {
         guard let index = tabIndex(for: session),
               let linkUri = element.linkUri,
               shouldOpenExternallyFromChatGPT(targetURLString: linkUri, sourceURLString: tabs[index].url),
-              let url = URL(string: linkUri) else {
+              let url = remoteURL(from: linkUri) else {
             return
         }
 

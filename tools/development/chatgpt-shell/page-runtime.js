@@ -12,6 +12,7 @@
     'form,[data-testid*="composer"],[class*="composer"],main';
   let doc = null;
   let insertingLineBreak = false;
+  let selectionStabilizationTimer = 0;
 
   const isChatGPT = () => {
     const host = win.location?.hostname || "";
@@ -139,6 +140,91 @@
     return false;
   };
 
+  const nodeInside = (node, ancestor) => {
+    if (!node || !ancestor) {
+      return false;
+    }
+    const element =
+      node.nodeType === win.Node.ELEMENT_NODE ? node : node.parentElement;
+    return element === ancestor || !!ancestor.contains?.(element);
+  };
+
+  const selectionInside = editable => {
+    const selection = doc.getSelection?.();
+    if (!selection || selection.rangeCount === 0) {
+      return false;
+    }
+    return nodeInside(selection.anchorNode, editable) && nodeInside(selection.focusNode, editable);
+  };
+
+  const composerSelectionSnapshot = editable => {
+    if (!editable || !isComposerEditable(editable)) {
+      return null;
+    }
+
+    if (editable instanceof win.HTMLTextAreaElement) {
+      return {
+        editable,
+        kind: "textarea",
+        start: editable.selectionStart ?? 0,
+        end: editable.selectionEnd ?? editable.value.length,
+        direction: editable.selectionDirection || "none",
+      };
+    }
+
+    const selection = doc.getSelection?.();
+    if (!selection || selection.rangeCount === 0 || !selectionInside(editable)) {
+      return null;
+    }
+
+    return {
+      editable,
+      kind: "contenteditable",
+      range: selection.getRangeAt(0).cloneRange(),
+    };
+  };
+
+  const restoreComposerSelectionIfLost = snapshot => {
+    if (!snapshot?.editable?.isConnected || !isComposerEditable(snapshot.editable)) {
+      return;
+    }
+
+    if (snapshot.kind === "textarea") {
+      if (doc.activeElement !== snapshot.editable) {
+        return;
+      }
+      try {
+        snapshot.editable.setSelectionRange(snapshot.start, snapshot.end, snapshot.direction);
+      } catch (_) {}
+      return;
+    }
+
+    if (selectionInside(snapshot.editable)) {
+      return;
+    }
+
+    try {
+      const selection = doc.getSelection?.();
+      selection?.removeAllRanges();
+      selection?.addRange(snapshot.range);
+    } catch (_) {}
+  };
+
+  const scheduleSelectionStabilization = target => {
+    const editable = editableElement(target) || activeComposerEditable();
+    const snapshot = composerSelectionSnapshot(editable);
+    if (!snapshot) {
+      return;
+    }
+
+    win.clearTimeout(selectionStabilizationTimer);
+    win.requestAnimationFrame?.(() => restoreComposerSelectionIfLost(snapshot));
+    selectionStabilizationTimer = win.setTimeout(
+      () => restoreComposerSelectionIfLost(snapshot),
+      80
+    );
+  };
+
   const installComposerControls = () => {
     if (doc.__reynardChatGPTComposerControlsInstalled) {
       return;
@@ -183,8 +269,19 @@
       insertLineBreak(event.target);
     };
 
+    const handleSelectionEvent = event => {
+      scheduleSelectionStabilization(event.target);
+    };
+
     doc.addEventListener("keydown", handleReturn, true);
     doc.addEventListener("beforeinput", handleBeforeInput, true);
+    doc.addEventListener("selectionchange", handleSelectionEvent, true);
+    doc.addEventListener("select", handleSelectionEvent, true);
+    doc.addEventListener("paste", handleSelectionEvent, true);
+    doc.addEventListener("input", handleSelectionEvent, true);
+    doc.addEventListener("keyup", handleSelectionEvent, true);
+    doc.addEventListener("pointerup", handleSelectionEvent, true);
+    doc.addEventListener("touchend", handleSelectionEvent, true);
     new win.MutationObserver(syncReturnHint).observe(doc.documentElement, {
       childList: true,
       subtree: true,

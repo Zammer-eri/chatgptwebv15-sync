@@ -13,7 +13,7 @@ DIST_DIR="$ROOT_DIR/engine/prebuilt-gecko/obj-aarch64-apple-ios/dist"
 BIN_DIR="$DIST_DIR/bin"
 INCLUDE_DIR="$DIST_DIR/include/GeckoView"
 MARKER="$ROOT_DIR/engine/prebuilt-gecko/.release"
-SHIM_VERSION="28"
+SHIM_VERSION="29"
 PREFS_APPENDED="false"
 DEFAULT_RELEASE_SHA256=""
 

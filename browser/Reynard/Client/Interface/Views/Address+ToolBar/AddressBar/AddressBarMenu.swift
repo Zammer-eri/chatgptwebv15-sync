@@ -18,7 +18,6 @@ enum AddressBarMenu {
     static let changeWebsiteModeNotification = Notification.Name("me.minh-ton.reynard.address-bar-menu.toggle-website-mode")
 
     static func makeMenu(
-        selectedTab: Tab?,
         selectedURL: String?,
         addonItems: [AddonItem]
     ) -> UIMenu? {

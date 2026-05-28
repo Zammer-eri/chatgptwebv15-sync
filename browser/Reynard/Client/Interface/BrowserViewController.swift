@@ -491,7 +491,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         }
         browserUI.addressBar.setAddonsMenu(
             AddressBarMenu.makeMenu(
-                selectedTab: selectedTab,
                 selectedURL: selectedURL,
                 addonItems: addonItems
             )
