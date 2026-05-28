@@ -490,6 +490,36 @@ extension TabManagerImplementation: ContentDelegate {
         ShellDiagnostics.log("webAppManifest session=\(session.diagnosticID ?? "nil")")
     }
 
+    func onChatGPTHealth(session: GeckoSession, health: [String: Any?]) {
+        let orderedKeys = [
+            "seq", "reason", "href", "readyState", "title", "bodyTextLength", "visibleTextLength",
+            "composerCount", "textareaCount", "buttonCount", "testIdCount", "articleCount",
+            "mainCount", "navCount", "localStorageLength", "indexedDBCount", "errorCount",
+            "lastError", "rejectionCount", "lastRejection",
+        ]
+        let details = orderedKeys.compactMap { key -> String? in
+            guard let value = health[key] ?? nil else {
+                return nil
+            }
+            return "\(key)=\(Self.logValue(value))"
+        }.joined(separator: " ")
+        ShellDiagnostics.log("chatGPTHealth session=\(session.diagnosticID ?? "nil") \(details)")
+    }
+
+    private static func logValue(_ value: Any) -> String {
+        let raw: String
+        if let string = value as? String {
+            raw = string
+        } else {
+            raw = "\(value)"
+        }
+        return raw
+            .replacingOccurrences(of: "\n", with: "\\n")
+            .replacingOccurrences(of: "\r", with: "\\r")
+            .prefix(500)
+            .description
+    }
+
     func onSlowScript(session: GeckoSession, scriptFileName: String) async -> SlowScriptResponse {
         guard let index = tabIndex(for: session) else {
             ShellDiagnostics.log("slowScript unknownSession=\(session.diagnosticID ?? "nil") file=\(scriptFileName) action=halt")
@@ -574,7 +604,6 @@ extension TabManagerImplementation: NavigationDelegate {
         }
 
         tabs[index].canGoBack = canGoBack
-        ShellDiagnostics.log("canGoBack tab=\(tabs[index].id.uuidString) value=\(canGoBack)")
         delegate?.tabManager(self, didUpdateTabAt: index, reason: .navigationState)
     }
 
@@ -584,7 +613,6 @@ extension TabManagerImplementation: NavigationDelegate {
         }
 
         tabs[index].canGoForward = canGoForward
-        ShellDiagnostics.log("canGoForward tab=\(tabs[index].id.uuidString) value=\(canGoForward)")
         delegate?.tabManager(self, didUpdateTabAt: index, reason: .navigationState)
     }
 
@@ -599,7 +627,6 @@ extension TabManagerImplementation: NavigationDelegate {
     }
 
     func onSubframeLoadRequest(session: GeckoSession, request: LoadRequest) async -> AllowOrDeny {
-        ShellDiagnostics.log("subframeLoadRequest allow session=\(session.diagnosticID ?? "nil") uri=\(request.uri)")
         return .allow
     }
 
@@ -692,7 +719,7 @@ extension TabManagerImplementation: ProgressDelegate {
         }
 
         tabs[index].progress = Float(progress) / 100
-        if progress == 0 || progress == 100 || progress % 25 == 0 {
+        if progress == 100 {
             ShellDiagnostics.log("progress tab=\(tabs[index].id.uuidString) session=\(session.diagnosticID ?? "nil") progress=\(progress) url=\(tabs[index].url ?? "nil")")
         }
         delegate?.tabManager(self, didUpdateTabAt: index, reason: .loading)

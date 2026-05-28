@@ -12,7 +12,7 @@ DIST_DIR="$ROOT_DIR/engine/prebuilt-gecko/obj-aarch64-apple-ios/dist"
 BIN_DIR="$DIST_DIR/bin"
 INCLUDE_DIR="$DIST_DIR/include/GeckoView"
 MARKER="$ROOT_DIR/engine/prebuilt-gecko/.release"
-RUNTIME_PATCH_VERSION="43"
+RUNTIME_PATCH_VERSION="44"
 EXTENSION_PREF_OVERRIDES="true"
 DEFAULT_RELEASE_SHA256=""
 
@@ -60,10 +60,12 @@ echo "  runtime patch fingerprint: $RUNTIME_PATCH_FINGERPRINT"
 echo "  release sha256: ${RELEASE_SHA256:-unverified}"
 echo "  extension prefs override: $EXTENSION_PREF_OVERRIDES"
 echo "  ChatGPT runtime hooks: disabled"
+echo "  ChatGPT health beacon: enabled"
 
 if [ -f "$BIN_DIR/XUL" ] && [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$MARKER_VALUE" ]; then
 	echo "Using cached prebuilt Gecko dist at $DIST_DIR"
 	echo "  ChatGPT runtime hooks: disabled"
+	echo "  ChatGPT health beacon: enabled"
 	exit 0
 fi
 
