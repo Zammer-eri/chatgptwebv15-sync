@@ -29,6 +29,7 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
 
     var isSearchFocused = false
     private var pendingSelectionAnimation = false
+    private var visualProbeSequence = 0
 
     override var shouldAutorotate: Bool {
         false
@@ -454,6 +455,7 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
             if index == tabManager.selectedTabIndex {
                 refreshAddressBar()
                 updateNavigationButtons()
+                scheduleVisualProbeIfNeeded(reason: "location")
             }
 
         case .favicon:
@@ -469,6 +471,9 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
             if index == tabManager.selectedTabIndex {
                 let tab = tabManager.tabs[index]
                 syncAddressBarLoadingState(progress: tab.progress, isLoading: tab.isLoading)
+                if tab.progress >= 1 {
+                    scheduleVisualProbeIfNeeded(reason: "progress100")
+                }
             }
 
         case .thumbnail:
@@ -482,6 +487,127 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
 
     func tabManager(_ tabManager: TabManager, didRequestExternalOpen url: URL) {
         openExternalLinkInSafari(url)
+    }
+
+    private func scheduleVisualProbeIfNeeded(reason: String) {
+        guard let tab = tabManager.selectedTab,
+              let url = tab.url,
+              isChatConversationURL(url) else {
+            return
+        }
+
+        visualProbeSequence += 1
+        let sequence = visualProbeSequence
+        ShellDiagnostics.log("visualProbe schedule seq=\(sequence) reason=\(reason) url=\(url)")
+        scheduleVisualProbe(sequence: sequence, reason: reason, url: url, delay: 0.8)
+        scheduleVisualProbe(sequence: sequence, reason: reason, url: url, delay: 3.0)
+    }
+
+    private func scheduleVisualProbe(sequence: Int, reason: String, url: String, delay: TimeInterval) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self else { return }
+            self.logVisualProbe(sequence: sequence, reason: reason, url: url, delay: delay)
+        }
+    }
+
+    private func logVisualProbe(sequence: Int, reason: String, url: String, delay: TimeInterval) {
+        let geckoView = browserUI.geckoView
+        let frame = geckoView.frame
+        let bounds = geckoView.bounds
+        let hasWindow = geckoView.window != nil
+        let visible = hasWindow && !geckoView.isHidden && geckoView.alpha > 0.01 && bounds.width > 1 && bounds.height > 1
+
+        guard visible, let stats = captureVisualStats(from: geckoView) else {
+            ShellDiagnostics.log(
+                "visualProbe seq=\(sequence) delay=\(delay) reason=\(reason) visible=\(visible) window=\(hasWindow) hidden=\(geckoView.isHidden) alpha=\(geckoView.alpha) frame=\(formatRect(frame)) bounds=\(formatRect(bounds)) url=\(url) status=unavailable"
+            )
+            return
+        }
+
+        ShellDiagnostics.log(
+            "visualProbe seq=\(sequence) delay=\(delay) reason=\(reason) visible=\(visible) frame=\(formatRect(frame)) avg=\(stats.averageLuma) darkPct=\(stats.darkPercent) lightPct=\(stats.lightPercent) transparentPct=\(stats.transparentPercent) hash=\(stats.hash) url=\(url)"
+        )
+    }
+
+    private struct VisualStats {
+        let averageLuma: Int
+        let darkPercent: Int
+        let lightPercent: Int
+        let transparentPercent: Int
+        let hash: UInt64
+    }
+
+    private func captureVisualStats(from sourceView: UIView) -> VisualStats? {
+        let sampleSize = CGSize(width: 48, height: 96)
+        let bounds = sourceView.bounds
+        guard bounds.width > 1, bounds.height > 1 else {
+            return nil
+        }
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        let image = UIGraphicsImageRenderer(size: sampleSize, format: format).image { context in
+            UIColor.black.setFill()
+            context.fill(CGRect(origin: .zero, size: sampleSize))
+            context.cgContext.scaleBy(x: sampleSize.width / bounds.width, y: sampleSize.height / bounds.height)
+            sourceView.drawHierarchy(in: bounds, afterScreenUpdates: false)
+        }
+
+        guard let cgImage = image.cgImage,
+              let providerData = cgImage.dataProvider?.data,
+              let bytes = CFDataGetBytePtr(providerData) else {
+            return nil
+        }
+
+        let bytesPerPixel = max(cgImage.bitsPerPixel / 8, 1)
+        let pixelCount = cgImage.width * cgImage.height
+        guard pixelCount > 0, bytesPerPixel >= 4 else {
+            return nil
+        }
+
+        var lumaTotal = 0
+        var darkCount = 0
+        var lightCount = 0
+        var transparentCount = 0
+        var hash: UInt64 = 14_695_981_039_346_656_037
+
+        for index in 0..<pixelCount {
+            let offset = index * bytesPerPixel
+            let red = Int(bytes[offset])
+            let green = Int(bytes[offset + 1])
+            let blue = Int(bytes[offset + 2])
+            let alpha = Int(bytes[offset + 3])
+            let luma = (red * 299 + green * 587 + blue * 114) / 1000
+            lumaTotal += luma
+            if luma < 30 { darkCount += 1 }
+            if luma > 225 { lightCount += 1 }
+            if alpha < 10 { transparentCount += 1 }
+            hash ^= UInt64((red << 16) | (green << 8) | blue)
+            hash &*= 1_099_511_628_211
+        }
+
+        return VisualStats(
+            averageLuma: lumaTotal / pixelCount,
+            darkPercent: (darkCount * 100) / pixelCount,
+            lightPercent: (lightCount * 100) / pixelCount,
+            transparentPercent: (transparentCount * 100) / pixelCount,
+            hash: hash
+        )
+    }
+
+    private func isChatConversationURL(_ value: String) -> Bool {
+        guard let url = URL(string: value),
+              let host = url.host?.lowercased() else {
+            return false
+        }
+
+        return (host == "chatgpt.com" || host.hasSuffix(".chatgpt.com")) &&
+            url.path.hasPrefix("/c/")
+    }
+
+    private func formatRect(_ rect: CGRect) -> String {
+        "\(Int(rect.origin.x)),\(Int(rect.origin.y)),\(Int(rect.width))x\(Int(rect.height))"
     }
 
     func tabManager(_ tabManager: TabManager, shouldHandleExternalResponse response: ExternalResponseInfo, for session: GeckoSession) -> Bool {
