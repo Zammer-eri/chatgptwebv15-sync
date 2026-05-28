@@ -13,8 +13,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     let overviewSpacing: CGFloat = 16
     private let actsAsRootContainer: Bool
     private var embeddedSplitController: BrowserSplitViewController?
-    private var pendingDownloadConfirmations: [DownloadStore.PendingDownload] = []
-    private var isPresentingDownloadConfirmation = false
 
     lazy var tabCollectionCoordinator = TabCollectionCoordinator(controller: self)
 
@@ -26,15 +24,11 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     )
 
     lazy var tabManager: TabManager = TabManagerImplementation(delegate: self)
-    lazy var browserActions = BrowserActions(controller: self)
     lazy var browserLayout = BrowserLayout(controller: self)
-    lazy var addressBarGestures = AddressBarGestures(controller: self)
     lazy var tabOverviewPresentation = TabOverviewPresentation(controller: self)
 
     var isSearchFocused = false
     private var pendingSelectionAnimation = false
-
-    let downloadHaptic = UINotificationFeedbackGenerator()
 
     override var shouldAutorotate: Bool {
         false
@@ -102,7 +96,7 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     }
 
     private var usesEmbeddedSplitRoot: Bool {
-        actsAsRootContainer && traitCollection.userInterfaceIdiom == .pad
+        false
     }
 
     override func viewDidLoad() {
@@ -114,9 +108,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
             configureEmbeddedSplitRoot()
             return
         }
-
-        observeDownloadState()
-        syncDownloadButtonState()
 
         NotificationCenter.default.addObserver(
             self,
@@ -130,37 +121,15 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
             name: Notification.Name("landscapeTabBarChanged"),
             object: nil
         )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(changeWebsiteModeRequested),
-            name: AddressBarMenu.changeWebsiteModeNotification,
-            object: nil
-        )
         browserLayout.configureLayout()
         syncBrowserNavigationChrome(animated: false)
         syncPadSidebarButtonItem()
-        addressBarGestures.configureGestures()
         configureChatGPTShellGestures()
         browserLayout.observeKeyboard()
-
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(applyUpdateMenuButtonBadge),
-            name: AppUpdates.updateAvailableNotification,
-            object: nil
-        )
-        if AppUpdates.shared.hasUpdate {
-            applyUpdateMenuButtonBadge()
-        }
 
         tabManager.createInitialTab()
         refreshAddressBar()
         browserLayout.applyChromeLayout(animated: false)
-    }
-
-    @objc private func applyUpdateMenuButtonBadge() {
-        browserUI.toolbarView.setMenuButtonIndicatesUpdate(true)
-        browserUI.padTopBarButtons.setMenuButtonIndicatesUpdate(true)
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -186,7 +155,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         }
         syncBrowserNavigationChrome(animated: false)
         syncPadSidebarButtonItem()
-        syncDownloadButtonState()
         browserLayout.applyChromeLayout(animated: false)
     }
 
@@ -220,7 +188,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
             self.syncBrowserNavigationChrome(animated: false)
             self.syncPadSidebarButtonItem()
             self.browserUI.geckoView.transform = .identity
-            self.addressBarGestures.resetHorizontalTransition()
             self.tabOverviewPresentation.refreshForCurrentOrientation()
             DispatchQueue.main.async {
                 guard self.isViewLoaded, self.view.window != nil else {
@@ -312,40 +279,12 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         browserUI.padTopBarButtons.forwardButton.isEnabled = tab.canGoForward
     }
 
-    private func observeDownloadState() {
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleDownloadStoreDidChange),
-            name: .downloadStoreDidChange,
-            object: nil
-        )
-    }
-
-    @objc private func handleDownloadStoreDidChange() {
-        syncDownloadButtonState()
-    }
-
     @objc private func addressBarPositionDidChange() {
         browserLayout.applyChromeLayout(animated: true)
     }
 
     @objc private func landscapeTabBarDidChange() {
         browserLayout.applyChromeLayout(animated: true)
-    }
-
-    private func syncDownloadButtonState() {
-        let previousPadShowsDownloads = browserUI.padTopBarButtons.downloadButton.isShowingDownloads
-        let summary = DownloadStore.shared.snapshot().summary
-        browserUI.toolbarView.updateDownloadButton(summary: summary)
-        browserUI.padTopBarButtons.updateDownloadButton(summary: summary)
-        let showsPadDownloads = browserUI.padTopBarButtons.downloadButton.isShowingDownloads
-
-        if !usesEmbeddedSplitRoot,
-           isPadLayout,
-           !usesCompactPadChromeMode,
-           previousPadShowsDownloads != showsPadDownloads {
-            browserLayout.applyChromeLayout(animated: false)
-        }
     }
 
     private func syncPadSidebarButtonItem() {
@@ -420,24 +359,7 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     }
 
     func captureThumbnail(for index: Int) {
-        guard !browserUI.geckoView.isHidden,
-              let tab = tabManager.tabs[safe: index],
-              browserUI.geckoView.session === tab.session else {
-            return
-        }
-
-        let bounds = browserUI.geckoView.bounds
-        guard bounds.width > 1, bounds.height > 1 else {
-            return
-        }
-
-        browserUI.geckoView.layoutIfNeeded()
-
-        let renderer = UIGraphicsImageRenderer(size: bounds.size)
-        let image = renderer.image { context in
-            browserUI.geckoView.layer.render(in: context.cgContext)
-        }
-        tabManager.updateThumbnail(image, forTabAt: index)
+        tabManager.updateThumbnail(nil, forTabAt: index)
     }
 
     func dismissalContentFrame() -> CGRect {
@@ -476,11 +398,7 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
             )
         }
         browserUI.addressBar.setLoadingProgress(selectedTab?.progress ?? 0, isLoading: selectedTab?.isLoading ?? false)
-        browserUI.addressBar.setLocationMenu(AddressBarMenu.makeMenu(selectedURL: selectedURL))
-    }
-
-    @objc private func changeWebsiteModeRequested() {
-        browserActions.changeWebsiteMode()
+        browserUI.addressBar.setLocationMenu(nil)
     }
 
     func tabManagerDidChangeTabs(_ tabManager: TabManager) {
@@ -554,27 +472,12 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
             }
 
         case .thumbnail:
-            if index == tabManager.selectedTabIndex {
-                captureThumbnail(for: index)
-            }
             browserUI.tabOverviewCollection.collectionView.reloadData()
         }
     }
 
     func tabManager(_ tabManager: TabManager, animateNewTabSelectionAt index: Int, completion: @escaping () -> Void) {
-        guard tabManager.tabs.indices.contains(index) else {
-            completion()
-            return
-        }
-
-        addressBarGestures.animateAutomaticNewTabTransition(to: tabManager.tabs[index], completion: completion)
-    }
-
-    func tabManager(_ tabManager: TabManager, didRequestDownload download: DownloadStore.PendingDownload) {
-        DispatchQueue.main.async { [weak self] in
-            self?.pendingDownloadConfirmations.append(download)
-            self?.presentNextDownloadConfirmationIfNeeded()
-        }
+        completion()
     }
 
     func tabManager(_ tabManager: TabManager, didRequestExternalOpen url: URL) {
@@ -586,27 +489,21 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     }
 
     func backButtonClicked() {
-        browserActions.goBack()
     }
 
     func forwardButtonClicked() {
-        browserActions.goForward()
     }
 
     func shareButtonClicked() {
-        browserActions.presentShareSheet()
     }
 
     func menuButtonClicked() {
-        browserActions.presentMenuSheet()
     }
 
     func downloadsButtonClicked() {
-        presentDownloadsFromToolbar()
     }
 
     func tabsButtonClicked() {
-        browserActions.showTabOverview()
     }
 
     func addressBarDidSubmit(_ searchTerm: String) {
@@ -644,11 +541,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         reloadGesture.edges = .right
         reloadGesture.cancelsTouchesInView = false
         view.addGestureRecognizer(reloadGesture)
-
-        let libraryGesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleShellLibraryGesture(_:)))
-        libraryGesture.edges = .left
-        libraryGesture.cancelsTouchesInView = false
-        view.addGestureRecognizer(libraryGesture)
     }
 
     @objc private func handleShellReloadGesture(_ gesture: UIScreenEdgePanGestureRecognizer) {
@@ -664,105 +556,23 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         reloadTab(tab)
     }
 
-    @objc private func handleShellLibraryGesture(_ gesture: UIScreenEdgePanGestureRecognizer) {
-        guard gesture.state == .ended || gesture.state == .recognized else {
-            return
-        }
-
-        guard gesture.translation(in: view).x > 24 else {
-            return
-        }
-
-        presentLibraryFromShell(initialSection: .downloads)
-    }
-
-    private func presentLibraryFromShell(initialSection: LibrarySection) {
-        if isPadLayout,
-           !usesCompactPadChromeMode,
-           let splitViewController = splitViewController as? BrowserSplitViewController {
-            splitViewController.showLibrarySection(initialSection)
-            return
-        }
-
-        browserActions.presentMenuSheet(initialSection: initialSection)
-    }
-
     private func reloadTab(_ tab: Tab) {
         tabManager.reload(tab)
     }
 
-    private func presentNextDownloadConfirmationIfNeeded() {
-        downloadHaptic.prepare()
-        guard !isPresentingDownloadConfirmation,
-              let download = pendingDownloadConfirmations.first,
-              let presenter = topPresentedViewController else {
-            return
-        }
-
-        isPresentingDownloadConfirmation = true
-
-        let alert = UIAlertController(
-            title: "Do you want to download \"\(download.fileName)\"?",
-            message: nil,
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { [weak self] _ in
-            self?.finishDownloadConfirmation(startDownload: false)
-        })
-        alert.addAction(UIAlertAction(title: "Download", style: .default) { [weak self] _ in
-            self?.downloadHaptic.notificationOccurred(.success)
-            self?.finishDownloadConfirmation(startDownload: true)
-        })
-
-        presenter.present(alert, animated: true)
-    }
-
-    private func finishDownloadConfirmation(startDownload: Bool) {
-        guard !pendingDownloadConfirmations.isEmpty else {
-            isPresentingDownloadConfirmation = false
-            return
-        }
-
-        let download = pendingDownloadConfirmations.removeFirst()
-        isPresentingDownloadConfirmation = false
-
-        if startDownload {
-            DownloadStore.shared.startDownload(download)
-        }
-
-        DispatchQueue.main.async { [weak self] in
-            self?.presentNextDownloadConfirmationIfNeeded()
-        }
-    }
-
-    private var topPresentedViewController: UIViewController? {
-        var controller: UIViewController? = self
-
-        while let presentedViewController = controller?.presentedViewController {
-            controller = presentedViewController
-        }
-
-        return controller
-    }
-
     @objc func tabsTapped() {
-        browserActions.showTabOverview()
     }
 
     @objc func doneTapped() {
-        browserActions.hideTabOverview()
     }
 
     @objc func newTabTapped() {
-        browserActions.createNewTab()
     }
 
     @objc func clearAllTabsTapped() {
-        browserActions.clearAllTabs()
     }
 
     @objc func shareTapped() {
-        browserActions.presentShareSheet()
     }
 
     @objc func librarySidebarTapped() {
@@ -770,35 +580,19 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     }
 
     @objc func padBackTapped() {
-        browserActions.goBack()
     }
 
     @objc func padForwardTapped() {
-        browserActions.goForward()
     }
 
     @objc func topBarMenuTapped() {
-        browserActions.presentMenuSheet()
     }
 
     @objc func topBarDownloadsTapped() {
-        presentDownloadsFromToolbar()
     }
 
     @objc func dismissKeyboardTapped() {
-        browserActions.dismissKeyboard()
-    }
-
-    private func presentDownloadsFromToolbar() {
-        DownloadStore.shared.markCompletedDownloadsViewed()
-        if isPadLayout,
-           !usesCompactPadChromeMode,
-           let splitViewController = splitViewController as? BrowserSplitViewController {
-            splitViewController.showLibrarySection(.downloads)
-            return
-        }
-
-        browserActions.presentMenuSheet(initialSection: .downloads)
+        view.endEditing(true)
     }
 
     private func openExternalLinkInSafari(_ url: URL) {
@@ -812,7 +606,7 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
 final class BrowserSplitViewController: UISplitViewController, UISplitViewControllerDelegate {
     private let browserViewController: BrowserViewController
     private var sidebarVisible = false
-    private lazy var libraryViewController = LibrarySidebarViewController()
+    private lazy var libraryViewController = UIViewController()
 
     override var shouldAutorotate: Bool {
         false
@@ -916,8 +710,6 @@ final class BrowserSplitViewController: UISplitViewController, UISplitViewContro
     }
 
     func showLibrarySection(_ section: LibrarySection) {
-        setLibrarySidebarVisible(true)
-        libraryViewController.showSection(section, animated: false)
     }
 
     var isLibrarySidebarVisible: Bool {

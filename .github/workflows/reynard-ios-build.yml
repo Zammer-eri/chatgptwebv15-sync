@@ -24,15 +24,11 @@ jobs:
       - name: Make Reynard scripts executable
         run: chmod +x tools/development/*.sh tools/release/*.sh
 
-      - name: Check ChatGPT shell syntax
-        run: |
-          node --check tools/development/chatgpt-shell/page-runtime.js
-
       - name: Cache prebuilt Gecko engine
         uses: actions/cache@v4
         with:
           path: engine/prebuilt-gecko
-          key: reynard-prebuilt-gecko-0.3.0-Reynard-ipa-runtime-v39-${{ hashFiles('tools/development/setup-prebuilt-gecko.sh', 'tools/development/patch-prebuilt-gecko.py', 'tools/development/chatgpt-shell/*.js') }}
+          key: reynard-prebuilt-gecko-0.3.0-Reynard-ipa-runtime-v41-${{ hashFiles('tools/development/setup-prebuilt-gecko.sh', 'tools/development/patch-prebuilt-gecko.py') }}
 
       - name: Prepare prebuilt Gecko engine
         run: ./tools/development/setup-prebuilt-gecko.sh

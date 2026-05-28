@@ -93,11 +93,6 @@ public class GeckoSession {
         return handler
     }()
 
-    lazy var mediaSessionHandler = newMediaSessionHandler(self)
-    public var mediaSessionDelegate: MediaSessionDelegate? {
-        get { mediaSessionHandler.delegate(as: MediaSessionDelegate.self) }
-        set { mediaSessionHandler.setDelegate(newValue) }
-    }
     public lazy var mediaSession = MediaSession(session: self)
 
     lazy var sessionHandlers: [GeckoSessionHandlerCommon] = [
@@ -106,7 +101,6 @@ public class GeckoSession {
         navigationHandler,
         progressHandler,
         promptHandler,
-        mediaSessionHandler,
     ]
 
     public init() {

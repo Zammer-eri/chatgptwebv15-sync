@@ -34,26 +34,14 @@ final class TabManagerImplementation: NSObject, TabManager {
     }
 
     private weak var delegate: TabManagerDelegate?
-    private let store: TabManagementStore
-    private let faviconStore: FaviconStore
-    private let historyStore: HistoryStore
-    private var faviconTasks: [UUID: Task<Void, Never>] = [:]
 
     private lazy var isURLLenient: NSRegularExpression = {
         let pattern = "^\\s*(\\w+-+)*[\\w\\[]+(://[/]*|:|\\.)(\\w+-+)*[\\w\\[:]+([\\S&&[^\\w-]]\\S*)?\\s*$"
         return try! NSRegularExpression(pattern: pattern)
     }()
 
-    init(
-        delegate: TabManagerDelegate?,
-        store: TabManagementStore = .shared,
-        faviconStore: FaviconStore = .shared,
-        historyStore: HistoryStore = .shared
-    ) {
+    init(delegate: TabManagerDelegate?) {
         self.delegate = delegate
-        self.store = store
-        self.faviconStore = faviconStore
-        self.historyStore = historyStore
     }
 
     private func closeSession(_ session: GeckoSession) {
@@ -63,16 +51,10 @@ final class TabManagerImplementation: NSObject, TabManager {
         session.close()
     }
 
-    private func cancelFaviconTask(for tabID: UUID) {
-        faviconTasks.removeValue(forKey: tabID)?.cancel()
-    }
-
-    private func persistState() {
-        store.saveTabs(tabs, selectedTabID: selectedTab?.id)
-    }
+    private func persistState() {}
 
     private var reloadFlags: Int {
-        GeckoSessionLoadFlags.bypassCache | GeckoSessionLoadFlags.replaceHistory
+        GeckoSessionLoadFlags.none
     }
 
     private func loadURL(_ url: String, in tab: Tab, flags: Int = GeckoSessionLoadFlags.none) {
@@ -81,11 +63,7 @@ final class TabManagerImplementation: NSObject, TabManager {
     }
 
     private func makeTab(windowId: String?) -> Tab {
-        let tab = Tab(session: createSession(windowId: windowId))
-        let controller = NowPlayingController(session: tab.session)
-        tab.session.mediaSessionDelegate = controller
-        tab.nowPlayingController = controller
-        return tab
+        Tab(session: createSession(windowId: windowId))
     }
 
     private func restoredURL(from value: String?) -> String? {
@@ -109,14 +87,6 @@ final class TabManagerImplementation: NSObject, TabManager {
         }
 
         return url
-    }
-
-    private func cachedFavicon(for value: String?) -> UIImage? {
-        guard let url = remoteURL(from: value) else {
-            return nil
-        }
-
-        return faviconStore.cachedImage(for: url)
     }
 
     private func shouldOpenLoadRequestExternally(session: GeckoSession, request: LoadRequest) -> Bool {
@@ -182,89 +152,9 @@ final class TabManagerImplementation: NSObject, TabManager {
     }
 
     private func scheduleFaviconUpdate(forTabAt index: Int) {
-        guard tabs.indices.contains(index) else {
-            return
-        }
-
-        let tab = tabs[index]
-        cancelFaviconTask(for: tab.id)
-
-        let cachedImage = cachedFavicon(for: tab.url)
-        tab.favicon = cachedImage
+        guard tabs.indices.contains(index) else { return }
+        tabs[index].favicon = nil
         delegate?.tabManager(self, didUpdateTabAt: index, reason: .favicon)
-
-        guard cachedImage == nil,
-              let url = remoteURL(from: tab.url) else {
-            return
-        }
-
-        let tabID = tab.id
-        let expectedURL = url.absoluteString
-        faviconTasks[tabID] = Task { [weak self] in
-            guard let self else {
-                return
-            }
-
-            let image = await self.faviconStore.resolveFavicon(for: url)
-            guard !Task.isCancelled else {
-                return
-            }
-
-            await MainActor.run {
-                self.applyResolvedFavicon(image, toTabWithID: tabID, expectedURL: expectedURL)
-            }
-        }
-    }
-
-    @MainActor
-    private func applyResolvedFavicon(_ image: UIImage?, toTabWithID tabID: UUID, expectedURL: String) {
-        defer {
-            faviconTasks.removeValue(forKey: tabID)
-        }
-
-        guard let index = tabs.firstIndex(where: { $0.id == tabID }),
-              tabs[index].url == expectedURL else {
-            return
-        }
-
-        tabs[index].favicon = image
-        delegate?.tabManager(self, didUpdateTabAt: index, reason: .favicon)
-    }
-
-    private func restoreTabsIfNeeded() -> Bool {
-        guard tabs.isEmpty else {
-            return true
-        }
-
-        let snapshot = store.loadSnapshot()
-        guard !snapshot.tabs.isEmpty else {
-            return false
-        }
-
-        tabs = snapshot.tabs.map { snapshot in
-            let tab = Tab(
-                id: snapshot.id,
-                session: createSession(windowId: nil),
-                title: snapshot.title,
-                url: snapshot.url,
-                favicon: cachedFavicon(for: snapshot.url),
-                thumbnail: snapshot.thumbnail
-            )
-            tab.pendingRestoreURL = restoredURL(from: snapshot.url)
-            let controller = NowPlayingController(session: tab.session)
-            tab.session.mediaSessionDelegate = controller
-            tab.nowPlayingController = controller
-            return tab
-        }
-        selectedTabIndex = -1
-
-        delegate?.tabManagerDidChangeTabs(self)
-
-        let selectedIndex = snapshot.selectedTabID.flatMap { selectedTabID in
-            tabs.firstIndex(where: { $0.id == selectedTabID })
-        } ?? 0
-        selectTab(at: selectedIndex)
-        return true
     }
 
     private func loadRestoredURLIfNeeded(for index: Int) {
@@ -336,7 +226,6 @@ final class TabManagerImplementation: NSObject, TabManager {
 
         let wasSelected = index == selectedTabIndex
         let removedTab = tabs.remove(at: index)
-        cancelFaviconTask(for: removedTab.id)
         UserAgentController.shared.clearOverrides(forTabID: removedTab.id)
 
         if tabs.isEmpty {
@@ -375,7 +264,6 @@ final class TabManagerImplementation: NSObject, TabManager {
 
         let removedTabs = tabs
         tabs.removeAll(keepingCapacity: true)
-        removedTabs.forEach { cancelFaviconTask(for: $0.id) }
         removedTabs.forEach { UserAgentController.shared.clearOverrides(forTabID: $0.id) }
         selectedTabIndex = -1
         delegate?.tabManagerDidChangeTabs(self)
@@ -452,14 +340,9 @@ final class TabManagerImplementation: NSObject, TabManager {
         return url
     }
 
-    func updateThumbnail(_ image: UIImage?, forTabAt index: Int) {
-        guard tabs.indices.contains(index) else {
-            return
-        }
-
-        let tab = tabs[index]
-        tab.thumbnail = image
-        store.saveThumbnail(image, for: tab.id)
+    func updateThumbnail(_ _: UIImage?, forTabAt index: Int) {
+        guard tabs.indices.contains(index) else { return }
+        tabs[index].thumbnail = nil
     }
 
     private func createSession(windowId: String?) -> GeckoSession {
@@ -479,9 +362,6 @@ extension TabManagerImplementation: ContentDelegate {
         }
 
         tabs[index].title = title
-        if let url = remoteURL(from: tabs[index].url) {
-            historyStore.updateTitle(for: url, title: title)
-        }
         delegate?.tabManager(self, didUpdateTabAt: index, reason: .title)
         persistState()
     }
@@ -554,22 +434,9 @@ extension TabManagerImplementation: ContentDelegate {
     func onCookieBannerHandled(session: GeckoSession) {}
 
     func onExternalResponse(session: GeckoSession, response: ExternalResponseInfo) {
-        if delegate?.tabManager(self, shouldHandleExternalResponse: response, for: session) == true {
-            return
-        }
-        guard let download = DownloadStore.shared.prepareDownload(from: response) else {
-            return
-        }
-
-        delegate?.tabManager(self, didRequestDownload: download)
     }
 
     func onSavePdf(session: GeckoSession, request: SavePdfInfo) {
-        guard let download = DownloadStore.shared.prepareDownload(from: request) else {
-            return
-        }
-
-        delegate?.tabManager(self, didRequestDownload: download)
     }
 }
 
@@ -601,12 +468,6 @@ extension TabManagerImplementation: NavigationDelegate {
         delegate?.tabManager(self, didUpdateTabAt: index, reason: .location)
         scheduleFaviconUpdate(forTabAt: index)
         persistState()
-
-        guard let url = remoteURL(from: tabs[index].url) else {
-            return
-        }
-
-        historyStore.recordVisit(url: url, title: tabs[index].title)
     }
 
     func onCanGoBack(session: GeckoSession, canGoBack: Bool) {
@@ -653,11 +514,8 @@ extension TabManagerImplementation: NavigationDelegate {
 
         let newTab = Tab(session: newSession)
         newSession.updateSettings(UserAgentController.shared.sessionSettings(for: uri, tabID: newTab.id))
-        let controller = NowPlayingController(session: newSession)
-        newSession.mediaSessionDelegate = controller
-        newTab.nowPlayingController = controller
         newTab.url = uri
-        newTab.favicon = cachedFavicon(for: uri)
+        newTab.favicon = nil
 
         let insertionIndex = tabIndex(for: session).map { $0 + 1 }
         let index = min(max(insertionIndex ?? tabs.count, 0), tabs.count)
