@@ -82,7 +82,7 @@ final class BrowserActions {
             return
         }
 
-        let reloadFlags = GeckoSessionLoadFlags.bypassCache | GeckoSessionLoadFlags.replaceHistory
+        let reloadFlags = GeckoSessionLoadFlags.replaceHistory
         switch action {
         case .load(let overrideURL):
             controller.tabManager.load(overrideURL, in: tab, flags: reloadFlags)

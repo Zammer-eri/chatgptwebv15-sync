@@ -641,7 +641,7 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
             return
         }
 
-        reloadTabCleanly(selectedTab)
+        reloadTab(selectedTab)
     }
 
     private func configureChatGPTShellGestures() {
@@ -666,7 +666,7 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         }
 
         guard let tab = tabManager.selectedTab else { return }
-        reloadTabCleanly(tab)
+        reloadTab(tab)
     }
 
     @objc private func handleShellLibraryGesture(_ gesture: UIScreenEdgePanGestureRecognizer) {
@@ -692,8 +692,8 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         browserActions.presentMenuSheet(initialSection: initialSection)
     }
 
-    private func reloadTabCleanly(_ tab: Tab) {
-        tabManager.reloadIgnoringCache(tab)
+    private func reloadTab(_ tab: Tab) {
+        tabManager.reload(tab)
     }
 
     private func presentNextDownloadConfirmationIfNeeded() {

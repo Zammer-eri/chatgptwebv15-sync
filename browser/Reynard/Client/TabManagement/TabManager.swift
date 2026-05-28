@@ -23,7 +23,7 @@ protocol TabManager: AnyObject {
     func browse(to term: String)
     func browse(to term: String, in tab: Tab)
     func load(_ url: String, in tab: Tab, flags: Int)
-    func reloadIgnoringCache(_ tab: Tab)
+    func reload(_ tab: Tab)
     func tabIndex(for session: GeckoSession) -> Int?
     func shareableURL(for tab: Tab) -> URL?
     func updateThumbnail(_ image: UIImage?, forTabAt index: Int)

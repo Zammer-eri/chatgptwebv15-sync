@@ -71,8 +71,8 @@ final class TabManagerImplementation: NSObject, TabManager {
         store.saveTabs(tabs, selectedTabID: selectedTab?.id)
     }
 
-    private var cleanReloadFlags: Int {
-        GeckoSessionLoadFlags.bypassCache | GeckoSessionLoadFlags.replaceHistory
+    private var reloadFlags: Int {
+        GeckoSessionLoadFlags.replaceHistory
     }
 
     private func loadURL(_ url: String, in tab: Tab, flags: Int = GeckoSessionLoadFlags.none) {
@@ -426,10 +426,14 @@ final class TabManagerImplementation: NSObject, TabManager {
         loadURL(trimmedValue, in: tab, flags: flags)
     }
 
-    func reloadIgnoringCache(_ tab: Tab) {
-        let target = restoredURL(from: tab.url) ?? Self.shellHomeURL
-        tab.session.stop()
-        load(target, in: tab, flags: cleanReloadFlags)
+    func reload(_ tab: Tab) {
+        guard let target = restoredURL(from: tab.url) else {
+            load(Self.shellHomeURL, in: tab, flags: reloadFlags)
+            return
+        }
+
+        tab.session.updateSettings(UserAgentController.shared.sessionSettings(for: target, tabID: tab.id))
+        tab.session.reload(flags: reloadFlags)
     }
 
     func tabIndex(for session: GeckoSession) -> Int? {
