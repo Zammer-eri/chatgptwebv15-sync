@@ -517,7 +517,7 @@ final class FilePicker: NSObject {
     ) async throws -> URL {
         let provider = result.itemProvider
         let typeIdentifier = preferredPhotoLibraryTypeIdentifier(for: provider)
-        let sourceURL = try await withCheckedThrowingContinuation { continuation in
+        let sourceURL: URL = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<URL, Error>) in
             provider.loadFileRepresentation(forTypeIdentifier: typeIdentifier) { url, error in
                 if let error {
                     continuation.resume(throwing: error)
