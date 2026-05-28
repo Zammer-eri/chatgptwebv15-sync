@@ -129,8 +129,6 @@ final class LibrarySidebarViewController: UIViewController, UICollectionViewDele
             contentViewController = LibrarySidebarHostedSectionViewController(hostedView: HistoryManagerView())
         case .downloads:
             contentViewController = LibrarySidebarHostedSectionViewController(hostedView: DownloadsManagerView())
-        case .addons:
-            contentViewController = LibrarySidebarHostedSectionViewController(hostedView: BookmarksManagerView())
         }
         
         return LibrarySidebarDetailViewController(

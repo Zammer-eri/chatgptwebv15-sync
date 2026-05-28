@@ -72,7 +72,7 @@ final class TabManagerImplementation: NSObject, TabManager {
     }
 
     private var reloadFlags: Int {
-        GeckoSessionLoadFlags.replaceHistory
+        GeckoSessionLoadFlags.bypassCache | GeckoSessionLoadFlags.replaceHistory
     }
 
     private func loadURL(_ url: String, in tab: Tab, flags: Int = GeckoSessionLoadFlags.none) {

@@ -47,14 +47,6 @@ index 21af964202b1..cc7e3679dd6c 100644
    value: true
  #else
    value: false
-@@ -6313,7 +6313,7 @@
- # or the parent/main process (false)
- - name: extensions.webextensions.remote
-   type: RelaxedAtomicBool
--  value: false
-+  value: true
-   mirror: always
- 
  # Whether to expose the MockExtensionAPI test interface in tests.
 @@ -6921,6 +6921,8 @@
    type: bool

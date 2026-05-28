@@ -35,8 +35,6 @@ public class GeckoSession {
     let dispatcher: GeckoEventDispatcherWrapper = GeckoEventDispatcherWrapper()
     var window: GeckoViewWindow?
     var id: String?
-    public var isAddonPopup = false
-    lazy var addonSessionListener = AddonSessionListener(session: self)
     public var userAgentOverride: String?
     public var userAgentMode = 0
     public var viewportMode = 0
@@ -117,8 +115,6 @@ public class GeckoSession {
                 dispatcher.addListener(type: type, listener: sessionHandler)
             }
         }
-
-        // Add-on runtime is disabled while isolating launch failures.
     }
 
     public func open(windowId: String? = nil) {
@@ -140,7 +136,7 @@ public class GeckoSession {
             "suspendMediaWhenInactive": false,
             "allowJavascript": true,
             "fullAccessibilityTree": false,
-            "isExtensionPopup": isAddonPopup,
+            "isExtensionPopup": false,
             "sessionContextId": NSNull(),
             "unsafeSessionContextId": NSNull(),
         ]

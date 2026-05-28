@@ -52,25 +52,6 @@ final class UserAgentController {
         } ?? prefs.requestDesktopWebsite
         let requestedMode = requestDesktopWebsite ? SessionMode.desktop : SessionMode.mobile
 
-        // Always use the Android mobile user agent for AMO to
-        // allow addons installation.
-        if host == "addons.mozilla.org" {
-            return GeckoSessionSettings(
-                userAgentOverride: androidMobileUserAgent,
-                userAgentMode: SessionMode.mobile,
-                viewportMode: SessionMode.mobile
-            )
-        }
-
-        // Addon setting pages also require the Android user agent to work properly.
-        if urlString.starts(with: "moz-extension://") {
-            return GeckoSessionSettings(
-                userAgentOverride: androidMobileUserAgent,
-                userAgentMode: SessionMode.mobile,
-                viewportMode: SessionMode.mobile
-            )
-        }
-
         // I have so many people reporting broken UI issues, login
         // issues, etc on Google services, so this is a compatibility
         // hack stolen from the Google Search Fixer extension.
@@ -111,8 +92,7 @@ final class UserAgentController {
 
     func isDesktopMode(for urlString: String, tabID: UUID) -> Bool? {
         guard let host = extractHost(from: urlString),
-              urlString.starts(with: "moz-extension://") == false,
-              host != "addons.mozilla.org" else {
+              urlString.starts(with: "moz-extension://") == false else {
             return nil
         }
 

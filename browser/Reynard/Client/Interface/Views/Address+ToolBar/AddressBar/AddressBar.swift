@@ -25,7 +25,7 @@ final class AddressBar: UIView {
     private var currentLocationTitle: String?
     private var canShowBarMenu = false
     private var isLoading = false
-    private var addonsMenu: UIMenu?
+    private var locationMenu: UIMenu?
     private var urlFieldLeadingToIconConstraint: NSLayoutConstraint!
     private var urlFieldLeadingToBarConstraint: NSLayoutConstraint!
     private var urlFieldTrailingToButtonConstraint: NSLayoutConstraint!
@@ -140,8 +140,8 @@ final class AddressBar: UIView {
         updateDisplayState()
     }
     
-    func setAddonsMenu(_ menu: UIMenu?) {
-        addonsMenu = menu
+    func setLocationMenu(_ menu: UIMenu?) {
+        locationMenu = menu
         updateDisplayState()
     }
     
@@ -327,8 +327,8 @@ final class AddressBar: UIView {
         
         leadingButton.tintColor = leadingButtonShowsMenu ? .label : .secondaryLabel
         leadingButton.setImage(UIImage(systemName: "list.bullet.below.rectangle"), for: .normal)
-        leadingButton.setMenuPreservingPresentation(leadingButtonShowsMenu ? addonsMenu : nil)
-        leadingButton.isUserInteractionEnabled = leadingButtonShowsMenu && addonsMenu != nil
+        leadingButton.setMenuPreservingPresentation(leadingButtonShowsMenu ? locationMenu : nil)
+        leadingButton.isUserInteractionEnabled = leadingButtonShowsMenu && locationMenu != nil
     }
     
     private func updateTrailingButton(trailingButtonVisible: Bool, isLoading: Bool) {

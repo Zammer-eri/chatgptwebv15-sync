@@ -12,8 +12,8 @@ DIST_DIR="$ROOT_DIR/engine/prebuilt-gecko/obj-aarch64-apple-ios/dist"
 BIN_DIR="$DIST_DIR/bin"
 INCLUDE_DIR="$DIST_DIR/include/GeckoView"
 MARKER="$ROOT_DIR/engine/prebuilt-gecko/.release"
-RUNTIME_PATCH_VERSION="38"
-PREFS_APPENDED="false"
+RUNTIME_PATCH_VERSION="39"
+EXTENSION_PREF_OVERRIDES="true"
 DEFAULT_RELEASE_SHA256=""
 
 if [ "$TAG" = "0.4.0" ] && [ "$ASSET" = "Reynard.ipa" ]; then
@@ -59,7 +59,7 @@ echo "  asset: $ASSET"
 echo "  runtime patch version: $RUNTIME_PATCH_VERSION"
 echo "  runtime patch fingerprint: $RUNTIME_PATCH_FINGERPRINT"
 echo "  release sha256: ${RELEASE_SHA256:-unverified}"
-echo "  prefs appended: $PREFS_APPENDED"
+echo "  extension prefs override: $EXTENSION_PREF_OVERRIDES"
 echo "  ChatGPT runtime hooks: enabled"
 
 if [ -f "$BIN_DIR/XUL" ] && [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$MARKER_VALUE" ]; then

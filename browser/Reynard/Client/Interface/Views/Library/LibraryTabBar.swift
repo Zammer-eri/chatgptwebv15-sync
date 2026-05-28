@@ -11,7 +11,6 @@ enum LibrarySection: Int, CaseIterable {
     case bookmarks
     case history
     case downloads
-    case addons
 
     static var allCases: [LibrarySection] {
         [.bookmarks, .history, .downloads]
@@ -25,8 +24,6 @@ enum LibrarySection: Int, CaseIterable {
             return "History"
         case .downloads:
             return "Downloads"
-        case .addons:
-            return "Add-ons"
         }
     }
     
@@ -38,8 +35,6 @@ enum LibrarySection: Int, CaseIterable {
             return "clock"
         case .downloads:
             return "arrow.down.circle"
-        case .addons:
-            return "puzzlepiece.extension"
         }
     }
     
@@ -51,8 +46,6 @@ enum LibrarySection: Int, CaseIterable {
             return "clock.fill"
         case .downloads:
             return "arrow.down.circle.fill"
-        case .addons:
-            return "puzzlepiece.extension.fill"
         }
     }
     

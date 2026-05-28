@@ -476,12 +476,7 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
             )
         }
         browserUI.addressBar.setLoadingProgress(selectedTab?.progress ?? 0, isLoading: selectedTab?.isLoading ?? false)
-        browserUI.addressBar.setAddonsMenu(
-            AddressBarMenu.makeMenu(
-                selectedURL: selectedURL,
-                addonItems: []
-            )
-        )
+        browserUI.addressBar.setLocationMenu(AddressBarMenu.makeMenu(selectedURL: selectedURL))
     }
 
     @objc private func changeWebsiteModeRequested() {
