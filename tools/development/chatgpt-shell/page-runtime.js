@@ -3,7 +3,6 @@
 
   const win = root.window || root;
 
-  const RETURN_KEY_MODES = new Set(["chatgpt", "all"]);
   const COMPOSER_SELECTOR =
     'textarea,[contenteditable="true"][role="textbox"],[contenteditable="true"]';
   const COMPOSER_ROOT_SELECTOR =
@@ -196,20 +195,17 @@
     syncReturnHint();
   };
 
-  const install = options => {
+  const install = () => {
     if (!isChatGPT()) {
       return;
     }
 
-    const mode = options?.mode || root.__REYNARD_CHATGPT_SHIM_MODE__ || "all";
     doc = win.document;
     if (!doc) {
       return;
     }
 
-    if (RETURN_KEY_MODES.has(mode)) {
-      installReturnKeyControls();
-    }
+    installReturnKeyControls();
   };
 
   win.ReynardChatGPTShellRuntime = {

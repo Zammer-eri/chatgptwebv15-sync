@@ -6,14 +6,13 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 ROOT_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)"
 TAG="${REYNARD_RELEASE_TAG:-0.3.0}"
 ASSET="${REYNARD_RELEASE_ASSET:-Reynard.ipa}"
-SHIM_MODE="${REYNARD_CHATGPT_SHIM_MODE:-baseline}"
 URL="https://github.com/minh-ton/reynard-browser/releases/download/${TAG}/${ASSET}"
 WORK_DIR="$ROOT_DIR/dist/prebuilt-gecko-work"
 DIST_DIR="$ROOT_DIR/engine/prebuilt-gecko/obj-aarch64-apple-ios/dist"
 BIN_DIR="$DIST_DIR/bin"
 INCLUDE_DIR="$DIST_DIR/include/GeckoView"
 MARKER="$ROOT_DIR/engine/prebuilt-gecko/.release"
-SHIM_VERSION="37"
+RUNTIME_PATCH_VERSION="38"
 PREFS_APPENDED="false"
 DEFAULT_RELEASE_SHA256=""
 
@@ -43,35 +42,25 @@ hash_stdin() {
 	fi
 }
 
-case "$SHIM_MODE" in
-	baseline|chatgpt|all) ;;
-	*)
-		echo "Unsupported REYNARD_CHATGPT_SHIM_MODE: $SHIM_MODE"
-		echo "Expected: baseline, chatgpt, all"
-		exit 1
-		;;
-esac
-
-SHIM_FINGERPRINT="$(
+RUNTIME_PATCH_FINGERPRINT="$(
 	{
-		printf '%s\n' "$SHIM_VERSION" "$SHIM_MODE"
+		printf '%s\n' "$RUNTIME_PATCH_VERSION"
 		hash_file "$SCRIPT_DIR/setup-prebuilt-gecko.sh"
 		hash_file "$SCRIPT_DIR/patch-prebuilt-gecko.py"
 		hash_file "$SCRIPT_DIR/chatgpt-shell/page-runtime.js"
 	} | hash_stdin
 )"
 MARKER_SHA="${RELEASE_SHA256:-unverified}"
-MARKER_VALUE="${TAG}/${ASSET}/asset-${MARKER_SHA}/shim-${SHIM_VERSION}-${SHIM_FINGERPRINT}/mode-${SHIM_MODE}"
+MARKER_VALUE="${TAG}/${ASSET}/asset-${MARKER_SHA}/runtime-${RUNTIME_PATCH_VERSION}-${RUNTIME_PATCH_FINGERPRINT}"
 
 echo "Reynard ChatGPT prebuilt setup:"
 echo "  release tag: $TAG"
 echo "  asset: $ASSET"
-echo "  shim version: $SHIM_VERSION"
-echo "  shim fingerprint: $SHIM_FINGERPRINT"
-echo "  shim mode: $SHIM_MODE"
+echo "  runtime patch version: $RUNTIME_PATCH_VERSION"
+echo "  runtime patch fingerprint: $RUNTIME_PATCH_FINGERPRINT"
 echo "  release sha256: ${RELEASE_SHA256:-unverified}"
 echo "  prefs appended: $PREFS_APPENDED"
-echo "  ChatGPT runtime hooks requested: $([ "$SHIM_MODE" = baseline ] && echo false || echo true)"
+echo "  ChatGPT runtime hooks: enabled"
 
 if [ -f "$BIN_DIR/XUL" ] && [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$MARKER_VALUE" ]; then
 	echo "Using cached prebuilt Gecko dist at $DIST_DIR"
@@ -111,7 +100,7 @@ cp -f "$GECKOVIEW_FW/XUL" "$BIN_DIR/XUL"
 find "$APP_DIR/Frameworks" -maxdepth 1 -type f -name '*.dylib' -exec cp -f {} "$BIN_DIR/" \;
 cp -R "$GECKOVIEW_FW/Frameworks/." "$BIN_DIR/"
 find "$BIN_DIR" -maxdepth 1 -type f -name 'libswift*.dylib' -delete
-python3 "$SCRIPT_DIR/patch-prebuilt-gecko.py" "$BIN_DIR" "$SHIM_MODE"
+python3 "$SCRIPT_DIR/patch-prebuilt-gecko.py" "$BIN_DIR"
 
 cat > "$INCLUDE_DIR/GeckoViewSwiftSupport.h" <<'EOF'
 #import <Foundation/Foundation.h>

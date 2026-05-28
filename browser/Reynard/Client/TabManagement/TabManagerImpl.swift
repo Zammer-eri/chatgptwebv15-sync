@@ -11,6 +11,21 @@ import UIKit
 
 final class TabManagerImplementation: NSObject, TabManager {
     private static let shellHomeURL = "https://chatgpt.com"
+    // Keep login/challenge handoffs in Gecko; route normal content links out.
+    private static let embeddedChatGPTFlowHosts: Set<String> = [
+        "account.live.com",
+        "accounts.google.com",
+        "accounts.openai.com",
+        "appleid.apple.com",
+        "auth.openai.com",
+        "auth0.openai.com",
+        "challenges.cloudflare.com",
+        "idmsa.apple.com",
+        "login.live.com",
+        "login.microsoftonline.com",
+        "login.openai.com",
+        "openid.apple.com",
+    ]
     private(set) var tabs: [Tab] = []
     private(set) var selectedTabIndex = -1
 
@@ -105,8 +120,7 @@ final class TabManagerImplementation: NSObject, TabManager {
     }
 
     private func shouldOpenLoadRequestExternally(session: GeckoSession, request: LoadRequest) -> Bool {
-        guard request.hasUserGesture,
-              !request.isRedirect,
+        guard (request.hasUserGesture || request.isRedirect),
               let index = tabIndex(for: session),
               shouldOpenExternallyFromChatGPT(
                 targetURLString: request.uri,
@@ -115,14 +129,13 @@ final class TabManagerImplementation: NSObject, TabManager {
             return false
         }
 
-        return openExternalURL(request.uri)
+        return requestExternalOpen(request.uri)
     }
 
     private func shouldOpenExternallyFromChatGPT(targetURLString: String, sourceURLString: String?) -> Bool {
         guard let targetURL = remoteURL(from: targetURLString),
               isChatGPTURL(sourceURLString),
-              !isChatGPTURL(targetURL.absoluteString),
-              !isChatGPTAuthenticationURL(targetURL.absoluteString) else {
+              !shouldKeepEmbeddedForChatGPT(targetURL) else {
             return false
         }
 
@@ -135,28 +148,36 @@ final class TabManagerImplementation: NSObject, TabManager {
             return false
         }
 
-        return host == "chatgpt.com" || host.hasSuffix(".chatgpt.com")
+        return host == "chatgpt.com" ||
+            host.hasSuffix(".chatgpt.com") ||
+            host == "chat.openai.com"
     }
 
-    private func isChatGPTAuthenticationURL(_ value: String?) -> Bool {
-        guard let url = remoteURL(from: value),
-              let host = url.host?.lowercased() else {
+    private func shouldKeepEmbeddedForChatGPT(_ url: URL) -> Bool {
+        guard let host = url.host?.lowercased() else {
             return false
         }
 
-        return host == "auth.openai.com" ||
-            host == "auth0.openai.com" ||
-            host == "accounts.openai.com" ||
-            host == "login.openai.com"
+        return isChatGPTURL(url.absoluteString) ||
+            Self.embeddedChatGPTFlowHosts.contains { hostMatches(host, domain: $0) }
+    }
+
+    private func hostMatches(_ host: String, domain: String) -> Bool {
+        host == domain || host.hasSuffix("." + domain)
     }
 
     @discardableResult
-    private func openExternalURL(_ value: String) -> Bool {
+    private func requestExternalOpen(_ value: String) -> Bool {
         guard let url = remoteURL(from: value) else {
             return false
         }
 
-        UIApplication.shared.open(url)
+        DispatchQueue.main.async { [weak self] in
+            guard let self else {
+                return
+            }
+            self.delegate?.tabManager(self, didRequestExternalOpen: url)
+        }
         return true
     }
 
@@ -485,17 +506,6 @@ extension TabManagerImplementation: ContentDelegate {
 
     func onProductUrl(session: GeckoSession) {}
 
-    func onContextMenu(session: GeckoSession, screenX: Int, screenY: Int, element: ContextElement) {
-        guard let index = tabIndex(for: session),
-              let linkUri = element.linkUri,
-              shouldOpenExternallyFromChatGPT(targetURLString: linkUri, sourceURLString: tabs[index].url),
-              let url = remoteURL(from: linkUri) else {
-            return
-        }
-
-        delegate?.tabManager(self, didRequestExternalLinkPreview: url, title: element.title)
-    }
-
     func onCrash(session: GeckoSession) {
         guard let index = tabIndex(for: session) else {
             return
@@ -519,7 +529,18 @@ extension TabManagerImplementation: ContentDelegate {
     func onWebAppManifest(session: GeckoSession, manifest: Any) {}
 
     func onSlowScript(session: GeckoSession, scriptFileName: String) async -> SlowScriptResponse {
-        .halt
+        guard let index = tabIndex(for: session) else {
+            return .halt
+        }
+
+        let tab = tabs[index]
+        if isChatGPTURL(tab.url) ||
+            isChatGPTURL(tab.pendingDisplayText) ||
+            isChatGPTURL(tab.pendingRestoreURL) {
+            return .resume
+        }
+
+        return .halt
     }
 
     func onShowDynamicToolbar(session: GeckoSession) {}
@@ -617,7 +638,7 @@ extension TabManagerImplementation: NavigationDelegate {
     func onNewSession(session: GeckoSession, uri: String, windowId: String) async -> GeckoSession? {
         if let index = tabIndex(for: session),
            shouldOpenExternallyFromChatGPT(targetURLString: uri, sourceURLString: tabs[index].url),
-           openExternalURL(uri) {
+           requestExternalOpen(uri) {
             return nil
         }
 

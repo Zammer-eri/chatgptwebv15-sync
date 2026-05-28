@@ -1,18 +1,11 @@
 #!/usr/bin/env python3
 
 import json
-import os
 from pathlib import Path
 import sys
 
 
-SHIM_VERSION = 37
-VALID_MODES = {
-    "baseline",
-    "chatgpt",
-    "all",
-}
-RUNTIME_MODES = VALID_MODES - {"baseline"}
+RUNTIME_PATCH_VERSION = 38
 SHELL_RUNTIME_MARKER = "installChatGPTShellRuntime"
 SCRIPT_DIR = Path(__file__).resolve().parent
 SHELL_DIR = SCRIPT_DIR / "chatgpt-shell"
@@ -21,34 +14,19 @@ PAGE_RUNTIME_FILES = [
 ]
 
 
-def normalize_mode(value: str | None) -> str:
-    mode = (value or "all").strip()
-    if mode not in VALID_MODES:
-        raise SystemExit(
-            "Unsupported REYNARD_CHATGPT_SHIM_MODE "
-            f"{mode!r}; expected one of: {', '.join(sorted(VALID_MODES))}"
-        )
-    return mode
-
-
-def read_page_runtime(mode: str) -> str:
+def read_page_runtime() -> str:
     sources = []
     for filename in PAGE_RUNTIME_FILES:
         path = SHELL_DIR / filename
         sources.append(f"\n/* {filename} */\n")
         sources.append(path.read_text(encoding="utf-8"))
 
-    bootstrap = (
-        "\n;window.ReynardChatGPTShellRuntime.install({"
-        f"mode: {json.dumps(mode)}"
-        "});\n"
-    )
+    bootstrap = "\n;window.ReynardChatGPTShellRuntime.install();\n"
     return "(() => {\n  \"use strict\";\n" + "\n".join(sources) + bootstrap + "\n})();"
 
 
-def shell_runtime_method(mode: str) -> str:
-    page_script = json.dumps(read_page_runtime(mode))
-    mode_json = json.dumps(mode)
+def shell_runtime_method() -> str:
+    page_script = json.dumps(read_page_runtime())
     return f'''  installChatGPTShellRuntime() {{
     const run = () => {{
       const win = this.contentWindow;
@@ -70,7 +48,6 @@ def shell_runtime_method(mode: str) -> str:
           originAttributes: doc.nodePrincipal.originAttributes,
           wantXrays: false,
         }});
-        sandbox.__REYNARD_CHATGPT_SHIM_MODE__ = {mode_json};
         Cu.evalInSandbox(
           {page_script},
           sandbox,
@@ -105,10 +82,7 @@ def shell_runtime_method(mode: str) -> str:
 '''
 
 
-def patch_geckoview_content_child(bin_dir: Path, mode: str) -> bool:
-    if mode not in RUNTIME_MODES:
-        return False
-
+def patch_geckoview_content_child(bin_dir: Path) -> bool:
     path = bin_dir / "actors" / "GeckoViewContentChild.sys.mjs"
     text = path.read_text(encoding="utf-8")
     original_text = text
@@ -161,7 +135,7 @@ def patch_geckoview_content_child(bin_dir: Path, mode: str) -> bool:
         marker = "  collectSessionState() {\n"
         if marker not in text:
             raise RuntimeError(f"Cannot find collectSessionState hook in {path}")
-        text = text.replace(marker, shell_runtime_method(mode) + marker, 1)
+        text = text.replace(marker, shell_runtime_method() + marker, 1)
 
     original_pageshow = """      case "pageshow": {
         this.receivedPageShow();
@@ -189,10 +163,7 @@ def patch_geckoview_content_child(bin_dir: Path, mode: str) -> bool:
     return False
 
 
-def patch_geckoview_startup(bin_dir: Path, mode: str) -> bool:
-    if mode not in RUNTIME_MODES:
-        return False
-
+def patch_geckoview_startup(bin_dir: Path) -> bool:
     path = bin_dir / "chrome" / "geckoview" / "content" / "geckoview.js"
     text = path.read_text(encoding="utf-8")
     if "DOMContentLoaded: { capture: true, mozSystemGroup: true }" in text:
@@ -216,20 +187,15 @@ def patch_geckoview_startup(bin_dir: Path, mode: str) -> bool:
 
 
 def main() -> None:
-    if len(sys.argv) not in (2, 3):
-        raise SystemExit("usage: patch-prebuilt-gecko.py <dist-bin-dir> [baseline|chatgpt|all]")
+    if len(sys.argv) != 2:
+        raise SystemExit("usage: patch-prebuilt-gecko.py <dist-bin-dir>")
 
-    mode = normalize_mode(
-        sys.argv[2] if len(sys.argv) == 3 else os.environ.get("REYNARD_CHATGPT_SHIM_MODE")
-    )
     bin_dir = Path(sys.argv[1])
-    content_child_changed = patch_geckoview_content_child(bin_dir, mode)
-    startup_changed = patch_geckoview_startup(bin_dir, mode)
+    content_child_changed = patch_geckoview_content_child(bin_dir)
+    startup_changed = patch_geckoview_startup(bin_dir)
 
-    print("Reynard ChatGPT shim patch:")
-    print(f"  shim version: {SHIM_VERSION}")
-    print(f"  shim mode: {mode}")
-    print(f"  ChatGPT runtime hooks requested: {mode in RUNTIME_MODES}")
+    print("Reynard ChatGPT runtime patch:")
+    print(f"  runtime patch version: {RUNTIME_PATCH_VERSION}")
     print(
         "  ChatGPT runtime hooks patched: "
         f"{content_child_changed or startup_changed}"

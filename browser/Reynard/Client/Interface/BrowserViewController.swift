@@ -6,7 +6,6 @@
 //
 
 import GeckoView
-import SafariServices
 import UIKit
 
 final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneToolbarDelegate, TabManagerDelegate {
@@ -583,8 +582,8 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         }
     }
 
-    func tabManager(_ tabManager: TabManager, didRequestExternalLinkPreview url: URL, title: String?) {
-        presentExternalLinkPreview(url: url)
+    func tabManager(_ tabManager: TabManager, didRequestExternalOpen url: URL) {
+        openExternalLinkInSafari(url)
     }
 
     func tabManager(_ tabManager: TabManager, shouldHandleExternalResponse response: ExternalResponseInfo, for session: GeckoSession) -> Bool {
@@ -807,21 +806,10 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         browserActions.presentMenuSheet(initialSection: .downloads)
     }
 
-    private func presentExternalLinkPreview(url: URL) {
-        guard let presenter = topPresentedViewController,
-              presenter === self else {
-            return
+    private func openExternalLinkInSafari(_ url: URL) {
+        DispatchQueue.main.async {
+            UIApplication.shared.open(url, options: [:], completionHandler: nil)
         }
-
-        let preview = SFSafariViewController(url: url)
-        preview.modalPresentationStyle = .pageSheet
-        if #available(iOS 15.0, *),
-           let sheet = preview.sheetPresentationController {
-            sheet.detents = [.medium(), .large()]
-            sheet.prefersGrabberVisible = true
-            sheet.preferredCornerRadius = 18
-        }
-        presenter.present(preview, animated: true)
     }
 
 }
