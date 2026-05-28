@@ -142,6 +142,10 @@ final class FilePicker: NSObject {
     }
 
     private var availableActions: [PickerAction] {
+        if capture != .none && canUseCamera {
+            return [.camera]
+        }
+
         var actions: [PickerAction] = []
         if canUsePhotoLibrary {
             actions.append(.photoLibrary)

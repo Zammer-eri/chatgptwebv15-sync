@@ -3,12 +3,13 @@
 
   const win = root.window || root;
 
-  const CACHE_REFRESH_MODES = new Set(["all"]);
+  const CACHE_REFRESH_MODES = new Set(["plus-menu", "all"]);
   const COMPOSER_MODES = new Set(["all"]);
   const PLUS_MENU_MODES = new Set(["plus-menu", "all"]);
   const CACHE_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
-  const PLUS_MENU_SUPPRESSION_MS = 450;
-  const PLUS_MENU_SUPPRESSION_RADIUS = 72;
+  const CACHE_PURGE_VERSION = "plus-menu-v32";
+  const PLUS_MENU_SUPPRESSION_MS = 700;
+  const PLUS_MENU_SUPPRESSION_RADIUS = 96;
   const COMPOSER_SELECTOR =
     'textarea,[contenteditable="true"][role="textbox"],[contenteditable="true"]';
   const COMPOSER_ROOT_SELECTOR =
@@ -37,7 +38,53 @@
     } catch (_) {}
   };
 
+  const persistentStorageGet = key => {
+    try {
+      return win.localStorage?.getItem(key) || "";
+    } catch (_) {
+      return storageGet(key);
+    }
+  };
+
+  const persistentStorageSet = (key, value) => {
+    try {
+      win.localStorage?.setItem(key, value);
+    } catch (_) {
+      storageSet(key, value);
+    }
+  };
+
   const refreshChatGPTCaches = () => {
+    const purgeKey = "__reynardChatGPTCachePurgeVersion";
+    if (persistentStorageGet(purgeKey) !== CACHE_PURGE_VERSION) {
+      persistentStorageSet(purgeKey, CACHE_PURGE_VERSION);
+      const cacheDeletion = win.caches
+        ?.keys?.()
+        ?.then(keys => Promise.all(keys.map(cacheName => win.caches.delete(cacheName))))
+        ?.catch(() => {});
+      const serviceWorkerCleanup = win.navigator?.serviceWorker
+        ?.getRegistrations?.()
+        ?.then(registrations =>
+          Promise.all(
+            registrations.map(registration =>
+              registration
+                .unregister()
+                .catch(() => registration.update?.().catch(() => {}))
+            )
+          )
+        )
+        ?.catch(() => {});
+
+      Promise.all([cacheDeletion, serviceWorkerCleanup]).finally(() => {
+        win.setTimeout(() => {
+          try {
+            win.location.replace(win.location.href);
+          } catch (_) {}
+        }, 250);
+      });
+      return;
+    }
+
     const now = Date.now();
     const key = "__reynardChatGPTLastCacheRefresh";
     const lastRefresh = Number(storageGet(key) || 0);
@@ -168,19 +215,21 @@
       x: point.x,
       y: point.y,
       expiresAt: win.performance.now() + PLUS_MENU_SUPPRESSION_MS,
-      didSuppress: false,
+      clearTimer: 0,
     };
 
-    win.setTimeout(blurComposer, 0);
-    win.setTimeout(blurComposer, 80);
+    plusMenuGuard.clearTimer = win.setTimeout(() => {
+      plusMenuGuard = null;
+    }, PLUS_MENU_SUPPRESSION_MS);
   };
 
   const shouldSuppressAfterPlusMenu = event => {
-    if (!plusMenuGuard || plusMenuGuard.didSuppress) {
+    if (!plusMenuGuard) {
       return false;
     }
 
     if (win.performance.now() > plusMenuGuard.expiresAt) {
+      win.clearTimeout(plusMenuGuard.clearTimer);
       plusMenuGuard = null;
       return false;
     }
@@ -192,18 +241,17 @@
     const point = eventPoint(event);
     const distance = Math.hypot(point.x - plusMenuGuard.x, point.y - plusMenuGuard.y);
     const target = event.target instanceof win.Element ? event.target : null;
-    const actionable = !!target?.closest?.('button,[role="button"],[role="menuitem"],a');
-    return actionable && distance <= PLUS_MENU_SUPPRESSION_RADIUS;
+    const actionable = !!target?.closest?.('button,[role="button"],[role="menuitem"],a,input,textarea,[contenteditable="true"]');
+    const composerFocus = isComposerEditable(target);
+    return (actionable || composerFocus) && distance <= PLUS_MENU_SUPPRESSION_RADIUS;
   };
 
   const suppressEvent = event => {
     event.preventDefault();
     event.stopImmediatePropagation();
-    plusMenuGuard.didSuppress = true;
-    win.setTimeout(() => {
-      plusMenuGuard = null;
-      blurComposer();
-    }, 0);
+    if (isComposerEditable(event.target)) {
+      win.setTimeout(blurComposer, 0);
+    }
   };
 
   const installPlusMenuGuard = () => {
@@ -227,16 +275,19 @@
 
     const handleFocusIn = event => {
       if (plusMenuGuard && isComposerEditable(event.target)) {
+        event.stopImmediatePropagation();
         win.setTimeout(blurComposer, 0);
       }
     };
 
     doc.addEventListener("pointerdown", handlePointerStart, true);
     doc.addEventListener("touchstart", handlePointerStart, true);
+    doc.addEventListener("mousedown", handlePossibleReplay, true);
     doc.addEventListener("pointerup", handlePossibleReplay, true);
     doc.addEventListener("touchend", handlePossibleReplay, true);
     doc.addEventListener("mouseup", handlePossibleReplay, true);
     doc.addEventListener("click", handlePossibleReplay, true);
+    doc.addEventListener("beforeinput", handlePossibleReplay, true);
     doc.addEventListener("focusin", handleFocusIn, true);
   };
 

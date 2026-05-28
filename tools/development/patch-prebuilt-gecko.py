@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 
 
-SHIM_VERSION = 30
+SHIM_VERSION = 32
 VALID_MODES = {
     "baseline",
     "plus-menu",
