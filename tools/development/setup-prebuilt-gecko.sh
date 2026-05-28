@@ -6,14 +6,14 @@ SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 ROOT_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)"
 TAG="${REYNARD_RELEASE_TAG:-0.3.0}"
 ASSET="${REYNARD_RELEASE_ASSET:-Reynard.ipa}"
-SHIM_MODE="${REYNARD_CHATGPT_SHIM_MODE:-plus-menu}"
+SHIM_MODE="${REYNARD_CHATGPT_SHIM_MODE:-chatgpt}"
 URL="https://github.com/minh-ton/reynard-browser/releases/download/${TAG}/${ASSET}"
 WORK_DIR="$ROOT_DIR/dist/prebuilt-gecko-work"
 DIST_DIR="$ROOT_DIR/engine/prebuilt-gecko/obj-aarch64-apple-ios/dist"
 BIN_DIR="$DIST_DIR/bin"
 INCLUDE_DIR="$DIST_DIR/include/GeckoView"
 MARKER="$ROOT_DIR/engine/prebuilt-gecko/.release"
-SHIM_VERSION="32"
+SHIM_VERSION="34"
 PREFS_APPENDED="false"
 DEFAULT_RELEASE_SHA256=""
 
@@ -44,10 +44,10 @@ hash_stdin() {
 }
 
 case "$SHIM_MODE" in
-	baseline|plus-menu|all) ;;
+	baseline|chatgpt|all) ;;
 	*)
 		echo "Unsupported REYNARD_CHATGPT_SHIM_MODE: $SHIM_MODE"
-		echo "Expected: baseline, plus-menu, all"
+		echo "Expected: baseline, chatgpt, all"
 		exit 1
 		;;
 esac

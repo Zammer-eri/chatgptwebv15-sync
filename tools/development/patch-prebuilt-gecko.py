@@ -6,10 +6,10 @@ from pathlib import Path
 import sys
 
 
-SHIM_VERSION = 32
+SHIM_VERSION = 34
 VALID_MODES = {
     "baseline",
-    "plus-menu",
+    "chatgpt",
     "all",
 }
 RUNTIME_MODES = VALID_MODES - {"baseline"}
@@ -217,7 +217,7 @@ def patch_geckoview_startup(bin_dir: Path, mode: str) -> bool:
 
 def main() -> None:
     if len(sys.argv) not in (2, 3):
-        raise SystemExit("usage: patch-prebuilt-gecko.py <dist-bin-dir> [baseline|plus-menu|all]")
+        raise SystemExit("usage: patch-prebuilt-gecko.py <dist-bin-dir> [baseline|chatgpt|all]")
 
     mode = normalize_mode(
         sys.argv[2] if len(sys.argv) == 3 else os.environ.get("REYNARD_CHATGPT_SHIM_MODE")

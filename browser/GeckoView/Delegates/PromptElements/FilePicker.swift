@@ -6,6 +6,7 @@
 //
 
 import UIKit
+import PhotosUI
 import UniformTypeIdentifiers
 
 @MainActor
@@ -142,10 +143,6 @@ final class FilePicker: NSObject {
     }
 
     private var availableActions: [PickerAction] {
-        if capture != .none && canUseCamera {
-            return [.camera]
-        }
-
         var actions: [PickerAction] = []
         if canUsePhotoLibrary {
             actions.append(.photoLibrary)
@@ -212,7 +209,11 @@ final class FilePicker: NSObject {
         dismissPageKeyboard()
         switch action {
         case .photoLibrary:
-            presentMediaPicker(sourceType: .photoLibrary)
+            if mode == .multiple {
+                presentPhotoLibraryPicker()
+            } else {
+                presentMediaPicker(sourceType: .photoLibrary)
+            }
         case .camera:
             presentMediaPicker(sourceType: .camera)
         case .chooseFile:
@@ -241,6 +242,27 @@ final class FilePicker: NSObject {
         picker.delegate = self
         picker.presentationController?.delegate = self
         picker.allowsMultipleSelection = mode == .multiple
+        presentingVC.present(picker, animated: true) { [weak self] in
+            self?.removeInteractionShield()
+        }
+        presentedController = picker
+    }
+
+    private func presentPhotoLibraryPicker() {
+        guard let geckoView = geckoView,
+              let presentingVC = geckoView.nearestViewController() else {
+            finish(with: nil)
+            return
+        }
+
+        var configuration = PHPickerConfiguration(photoLibrary: .shared())
+        configuration.selectionLimit = 0
+        configuration.filter = photoLibraryFilter()
+
+        let picker = PHPickerViewController(configuration: configuration)
+        picker.delegate = self
+        picker.presentationController?.delegate = self
+
         presentingVC.present(picker, animated: true) { [weak self] in
             self?.removeInteractionShield()
         }
@@ -291,6 +313,23 @@ final class FilePicker: NSObject {
     ) -> [String] {
         let availableTypes = Set(UIImagePickerController.availableMediaTypes(for: sourceType) ?? [])
         return acceptedTypes.mediaTypes.filter { availableTypes.contains($0) }
+    }
+
+    private func photoLibraryFilter() -> PHPickerFilter? {
+        let mediaTypes = Set(acceptedTypes.mediaTypes)
+        let wantsImages = mediaTypes.contains(UTType.image.identifier)
+        let wantsVideos = mediaTypes.contains(UTType.movie.identifier)
+
+        switch (wantsImages, wantsVideos) {
+        case (true, true):
+            return .any(of: [.images, .videos])
+        case (true, false):
+            return .images
+        case (false, true):
+            return .videos
+        case (false, false):
+            return nil
+        }
     }
 
     private func resolvedCameraDevice() -> UIImagePickerController.CameraDevice {
@@ -435,6 +474,30 @@ final class FilePicker: NSObject {
         }.value
     }
 
+    private func preparePhotoLibraryResult(from results: [PHPickerResult]) async -> SelectionResult? {
+        let selectedResults = mode == .multiple ? results : Array(results.prefix(1))
+        let stagingDirectoryURL = self.stagingDirectoryURL
+
+        try? Self.prepareDirectory(stagingDirectoryURL)
+        var fileURLs: [URL] = []
+
+        for result in selectedResults {
+            guard let stagedURL = try? await Self.stagePhotoLibraryResult(
+                result,
+                in: stagingDirectoryURL
+            ) else {
+                continue
+            }
+            fileURLs.append(stagedURL)
+        }
+
+        guard !fileURLs.isEmpty else {
+            return nil
+        }
+
+        return SelectionResult(files: fileURLs.map(\.path), filesInWebKitDirectory: [])
+    }
+
     nonisolated private static func stageFiles(from urls: [URL], in directory: URL) throws -> SelectionResult {
         try prepareDirectory(directory)
         let copiedURLs = try urls.map { try copyItem(at: $0, into: directory, preferredName: nil) }
@@ -446,6 +509,66 @@ final class FilePicker: NSObject {
         let destinationURL = uniqueDestinationURL(in: directory, preferredName: "photo.jpg")
         try imageData.write(to: destinationURL, options: .atomic)
         return SelectionResult(files: [destinationURL.path], filesInWebKitDirectory: [])
+    }
+
+    nonisolated private static func stagePhotoLibraryResult(
+        _ result: PHPickerResult,
+        in directory: URL
+    ) async throws -> URL {
+        let provider = result.itemProvider
+        let typeIdentifier = preferredPhotoLibraryTypeIdentifier(for: provider)
+        let sourceURL = try await withCheckedThrowingContinuation { continuation in
+            provider.loadFileRepresentation(forTypeIdentifier: typeIdentifier) { url, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+
+                guard let url else {
+                    continuation.resume(throwing: CocoaError(.fileReadUnknown))
+                    return
+                }
+
+                do {
+                    let preferredName = provider.suggestedName.flatMap {
+                        filename($0, typeIdentifier: typeIdentifier)
+                    }
+                    let destinationURL = uniqueDestinationURL(
+                        in: directory,
+                        preferredName: preferredName ?? url.lastPathComponent
+                    )
+                    try FileManager.default.copyItem(at: url, to: destinationURL)
+                    continuation.resume(returning: destinationURL)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
+        }
+        return sourceURL
+    }
+
+    nonisolated private static func preferredPhotoLibraryTypeIdentifier(
+        for provider: NSItemProvider
+    ) -> String {
+        if provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) {
+            return UTType.movie.identifier
+        }
+        return UTType.image.identifier
+    }
+
+    nonisolated private static func filename(_ name: String, typeIdentifier: String) -> String {
+        let sanitizedName = sanitizeFileName(name)
+        let currentExtension = URL(fileURLWithPath: sanitizedName).pathExtension
+        if !currentExtension.isEmpty {
+            return sanitizedName
+        }
+
+        let preferredExtension = UTType(typeIdentifier)?.preferredFilenameExtension
+        guard let preferredExtension, !preferredExtension.isEmpty else {
+            return sanitizedName
+        }
+
+        return "\(sanitizedName).\(preferredExtension)"
     }
 
     nonisolated private static func stageFolder(from url: URL, in directory: URL) throws -> SelectionResult {
@@ -599,6 +722,23 @@ extension FilePicker: UIImagePickerControllerDelegate, UINavigationControllerDel
             picker.dismiss(animated: true)
             presentedController = nil
             let result = await prepareMediaResult(mediaURL: mediaURL, imageURL: imageURL, imageData: imageData)
+            finish(with: result?.promptResult)
+        }
+    }
+}
+
+extension FilePicker: PHPickerViewControllerDelegate {
+    nonisolated func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            picker.dismiss(animated: true)
+            presentedController = nil
+            guard !results.isEmpty else {
+                finish(with: nil)
+                return
+            }
+
+            let result = await preparePhotoLibraryResult(from: results)
             finish(with: result?.promptResult)
         }
     }

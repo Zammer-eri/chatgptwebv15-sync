@@ -3,21 +3,17 @@
 
   const win = root.window || root;
 
-  const CACHE_REFRESH_MODES = new Set(["plus-menu", "all"]);
-  const COMPOSER_MODES = new Set(["all"]);
-  const PLUS_MENU_MODES = new Set(["plus-menu", "all"]);
+  const CACHE_REFRESH_MODES = new Set(["chatgpt", "all"]);
+  const RETURN_KEY_MODES = new Set(["chatgpt", "all"]);
   const CACHE_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
-  const CACHE_PURGE_VERSION = "plus-menu-v32";
-  const PLUS_MENU_SUPPRESSION_MS = 700;
-  const PLUS_MENU_SUPPRESSION_RADIUS = 96;
+  const CACHE_PURGE_VERSION = "chatgpt-v34";
   const COMPOSER_SELECTOR =
     'textarea,[contenteditable="true"][role="textbox"],[contenteditable="true"]';
   const COMPOSER_ROOT_SELECTOR =
     'form,[data-testid*="composer"],[class*="composer"],main';
   let doc = null;
   let insertingLineBreak = false;
-  let selectionStabilizationTimer = 0;
-  let plusMenuGuard = null;
+  let suppressComposerSubmitUntil = 0;
 
   const isChatGPT = () => {
     const host = win.location?.hostname || "";
@@ -143,154 +139,6 @@
       .at(-1) || null;
   };
 
-  const blurComposer = () => {
-    const editable = activeComposerEditable();
-    editable?.blur?.();
-    if (doc.activeElement && isComposerEditable(doc.activeElement)) {
-      doc.activeElement.blur?.();
-    }
-  };
-
-  const buttonElement = target => {
-    const element =
-      target instanceof win.Element ? target : target?.parentElement || null;
-    return element?.closest?.('button,[role="button"]') || null;
-  };
-
-  const elementLabel = element =>
-    [
-      element?.getAttribute?.("aria-label"),
-      element?.getAttribute?.("title"),
-      element?.textContent,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .trim()
-      .toLowerCase();
-
-  const isLikelyComposerPlusButton = target => {
-    const button = buttonElement(target);
-    if (!button || !visible(button) || button.closest("nav,aside")) {
-      return null;
-    }
-
-    const label = elementLabel(button);
-    if (/\b(attach|attachment|upload|add|plus|tools|more)\b/.test(label)) {
-      return button;
-    }
-
-    const composer = activeComposerEditable();
-    const root = composer?.closest?.(COMPOSER_ROOT_SELECTOR);
-    if (!root || !root.contains(button) || button.contains(composer)) {
-      return null;
-    }
-
-    const buttonRect = button.getBoundingClientRect();
-    const composerRect = composer.getBoundingClientRect();
-    const squareish =
-      buttonRect.width >= 24 &&
-      buttonRect.width <= 64 &&
-      buttonRect.height >= 24 &&
-      buttonRect.height <= 64 &&
-      Math.abs(buttonRect.width - buttonRect.height) <= 18;
-    const nearComposer =
-      buttonRect.right <= composerRect.left + 96 ||
-      buttonRect.left <= composerRect.left + 48;
-
-    return squareish && nearComposer ? button : null;
-  };
-
-  const eventPoint = event => {
-    const touch = event.changedTouches?.[0] || event.touches?.[0];
-    return {
-      x: Number.isFinite(event.clientX) ? event.clientX : touch?.clientX ?? 0,
-      y: Number.isFinite(event.clientY) ? event.clientY : touch?.clientY ?? 0,
-    };
-  };
-
-  const armPlusMenuGuard = (event, button) => {
-    const point = eventPoint(event);
-    plusMenuGuard = {
-      button,
-      x: point.x,
-      y: point.y,
-      expiresAt: win.performance.now() + PLUS_MENU_SUPPRESSION_MS,
-      clearTimer: 0,
-    };
-
-    plusMenuGuard.clearTimer = win.setTimeout(() => {
-      plusMenuGuard = null;
-    }, PLUS_MENU_SUPPRESSION_MS);
-  };
-
-  const shouldSuppressAfterPlusMenu = event => {
-    if (!plusMenuGuard) {
-      return false;
-    }
-
-    if (win.performance.now() > plusMenuGuard.expiresAt) {
-      win.clearTimeout(plusMenuGuard.clearTimer);
-      plusMenuGuard = null;
-      return false;
-    }
-
-    if (plusMenuGuard.button?.contains?.(event.target)) {
-      return false;
-    }
-
-    const point = eventPoint(event);
-    const distance = Math.hypot(point.x - plusMenuGuard.x, point.y - plusMenuGuard.y);
-    const target = event.target instanceof win.Element ? event.target : null;
-    const actionable = !!target?.closest?.('button,[role="button"],[role="menuitem"],a,input,textarea,[contenteditable="true"]');
-    const composerFocus = isComposerEditable(target);
-    return (actionable || composerFocus) && distance <= PLUS_MENU_SUPPRESSION_RADIUS;
-  };
-
-  const suppressEvent = event => {
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    if (isComposerEditable(event.target)) {
-      win.setTimeout(blurComposer, 0);
-    }
-  };
-
-  const installPlusMenuGuard = () => {
-    if (doc.__reynardChatGPTPlusMenuGuardInstalled) {
-      return;
-    }
-    doc.__reynardChatGPTPlusMenuGuardInstalled = true;
-
-    const handlePointerStart = event => {
-      const button = isLikelyComposerPlusButton(event.target);
-      if (button) {
-        armPlusMenuGuard(event, button);
-      }
-    };
-
-    const handlePossibleReplay = event => {
-      if (shouldSuppressAfterPlusMenu(event)) {
-        suppressEvent(event);
-      }
-    };
-
-    const handleFocusIn = event => {
-      if (plusMenuGuard && isComposerEditable(event.target)) {
-        event.stopImmediatePropagation();
-        win.setTimeout(blurComposer, 0);
-      }
-    };
-
-    doc.addEventListener("pointerdown", handlePointerStart, true);
-    doc.addEventListener("touchstart", handlePointerStart, true);
-    doc.addEventListener("mousedown", handlePossibleReplay, true);
-    doc.addEventListener("pointerup", handlePossibleReplay, true);
-    doc.addEventListener("touchend", handlePossibleReplay, true);
-    doc.addEventListener("mouseup", handlePossibleReplay, true);
-    doc.addEventListener("click", handlePossibleReplay, true);
-    doc.addEventListener("beforeinput", handlePossibleReplay, true);
-    doc.addEventListener("focusin", handleFocusIn, true);
-  };
-
   const dispatchInput = (element, inputType) => {
     try {
       element.dispatchEvent(
@@ -339,96 +187,11 @@
     return false;
   };
 
-  const nodeInside = (node, ancestor) => {
-    if (!node || !ancestor) {
-      return false;
-    }
-    const element =
-      node.nodeType === win.Node.ELEMENT_NODE ? node : node.parentElement;
-    return element === ancestor || !!ancestor.contains?.(element);
-  };
-
-  const selectionInside = editable => {
-    const selection = doc.getSelection?.();
-    if (!selection || selection.rangeCount === 0) {
-      return false;
-    }
-    return nodeInside(selection.anchorNode, editable) && nodeInside(selection.focusNode, editable);
-  };
-
-  const composerSelectionSnapshot = editable => {
-    if (!editable || !isComposerEditable(editable)) {
-      return null;
-    }
-
-    if (editable instanceof win.HTMLTextAreaElement) {
-      return {
-        editable,
-        kind: "textarea",
-        start: editable.selectionStart ?? 0,
-        end: editable.selectionEnd ?? editable.value.length,
-        direction: editable.selectionDirection || "none",
-      };
-    }
-
-    const selection = doc.getSelection?.();
-    if (!selection || selection.rangeCount === 0 || !selectionInside(editable)) {
-      return null;
-    }
-
-    return {
-      editable,
-      kind: "contenteditable",
-      range: selection.getRangeAt(0).cloneRange(),
-    };
-  };
-
-  const restoreComposerSelectionIfLost = snapshot => {
-    if (!snapshot?.editable?.isConnected || !isComposerEditable(snapshot.editable)) {
+  const installReturnKeyControls = () => {
+    if (doc.__reynardChatGPTReturnKeyControlsInstalled) {
       return;
     }
-
-    if (snapshot.kind === "textarea") {
-      if (doc.activeElement !== snapshot.editable) {
-        return;
-      }
-      try {
-        snapshot.editable.setSelectionRange(snapshot.start, snapshot.end, snapshot.direction);
-      } catch (_) {}
-      return;
-    }
-
-    if (selectionInside(snapshot.editable)) {
-      return;
-    }
-
-    try {
-      const selection = doc.getSelection?.();
-      selection?.removeAllRanges();
-      selection?.addRange(snapshot.range);
-    } catch (_) {}
-  };
-
-  const scheduleSelectionStabilization = target => {
-    const editable = editableElement(target) || activeComposerEditable();
-    const snapshot = composerSelectionSnapshot(editable);
-    if (!snapshot) {
-      return;
-    }
-
-    win.clearTimeout(selectionStabilizationTimer);
-    win.requestAnimationFrame?.(() => restoreComposerSelectionIfLost(snapshot));
-    selectionStabilizationTimer = win.setTimeout(
-      () => restoreComposerSelectionIfLost(snapshot),
-      80
-    );
-  };
-
-  const installComposerControls = () => {
-    if (doc.__reynardChatGPTComposerControlsInstalled) {
-      return;
-    }
-    doc.__reynardChatGPTComposerControlsInstalled = true;
+    doc.__reynardChatGPTReturnKeyControlsInstalled = true;
 
     const syncReturnHint = () => {
       for (const editable of doc.querySelectorAll(COMPOSER_SELECTOR)) {
@@ -452,6 +215,7 @@
       }
       event.preventDefault();
       event.stopImmediatePropagation();
+      suppressComposerSubmitUntil = win.performance.now() + 300;
       insertLineBreak(event.target);
     };
 
@@ -465,22 +229,26 @@
       }
       event.preventDefault();
       event.stopImmediatePropagation();
+      suppressComposerSubmitUntil = win.performance.now() + 300;
       insertLineBreak(event.target);
     };
 
-    const handleSelectionEvent = event => {
-      scheduleSelectionStabilization(event.target);
+    const handleSubmit = event => {
+      if (
+        win.performance.now() <= suppressComposerSubmitUntil &&
+        (isComposerEditable(doc.activeElement) || event.target?.querySelector?.(COMPOSER_SELECTOR))
+      ) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
     };
 
+    win.addEventListener("keydown", handleReturn, true);
+    win.addEventListener("beforeinput", handleBeforeInput, true);
+    win.addEventListener("submit", handleSubmit, true);
     doc.addEventListener("keydown", handleReturn, true);
     doc.addEventListener("beforeinput", handleBeforeInput, true);
-    doc.addEventListener("selectionchange", handleSelectionEvent, true);
-    doc.addEventListener("select", handleSelectionEvent, true);
-    doc.addEventListener("paste", handleSelectionEvent, true);
-    doc.addEventListener("input", handleSelectionEvent, true);
-    doc.addEventListener("keyup", handleSelectionEvent, true);
-    doc.addEventListener("pointerup", handleSelectionEvent, true);
-    doc.addEventListener("touchend", handleSelectionEvent, true);
+    doc.addEventListener("submit", handleSubmit, true);
     new win.MutationObserver(syncReturnHint).observe(doc.documentElement, {
       childList: true,
       subtree: true,
@@ -503,12 +271,8 @@
       refreshChatGPTCaches();
     }
 
-    if (PLUS_MENU_MODES.has(mode)) {
-      installPlusMenuGuard();
-    }
-
-    if (COMPOSER_MODES.has(mode)) {
-      installComposerControls();
+    if (RETURN_KEY_MODES.has(mode)) {
+      installReturnKeyControls();
     }
   };
 
