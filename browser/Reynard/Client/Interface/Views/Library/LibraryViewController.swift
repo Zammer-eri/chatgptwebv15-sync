@@ -55,7 +55,6 @@ final class LibraryViewController: UITabBarController, UITabBarControllerDelegat
             makeSectionViewController(for: .bookmarks, contentViewController: LibraryHostedSectionViewController(hostedViewFactory: { BookmarksManagerView() })),
             makeSectionViewController(for: .history, contentViewController: LibraryHostedSectionViewController(hostedViewFactory: { HistoryManagerView() })),
             makeSectionViewController(for: .downloads, contentViewController: LibraryHostedSectionViewController(hostedViewFactory: { DownloadsManagerView() })),
-            makeSectionViewController(for: .addons, contentViewController: AddonsSettingsViewController()),
         ]
     }
     

@@ -48,13 +48,6 @@ enum AddressBarMenu {
                 title: "",
                 options: .displayInline,
                 children: [
-                    UIAction(title: "Manage Add-ons", image: UIImage(systemName: "puzzlepiece.extension")) { _ in
-                        NotificationCenter.default.post(
-                            name: presentAddonSettingsNotification,
-                            object: nil,
-                            userInfo: [:]
-                        )
-                    },
                     UIAction(title: "Request Desktop Website", image: UIImage(systemName: "desktopcomputer")) { _ in
                         NotificationCenter.default.post(
                             name: changeWebsiteModeNotification,

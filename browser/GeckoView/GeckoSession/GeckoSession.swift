@@ -118,7 +118,7 @@ public class GeckoSession {
             }
         }
 
-        AddonsRuntimeController.shared.register(sessionListener: addonSessionListener)
+        // Add-on runtime is disabled while isolating launch failures.
     }
 
     public func open(windowId: String? = nil) {

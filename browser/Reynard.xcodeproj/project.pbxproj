@@ -63,7 +63,6 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				03OLPBF12F3100000000001 /* OpenIn.appex in Embed Process Extensions */,
 				02WCPBF12F3000000000001 /* Reynard Helper.appex in Embed Process Extensions */,
 			);
 			name = "Embed Process Extensions";
@@ -265,7 +264,6 @@
 			dependencies = (
 				01GECKO00B2F2F289C001F0001 /* PBXTargetDependency */,
 				02WCPDEP2F3000000000001 /* PBXTargetDependency */,
-				03OLDEP2F3100000000001 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				018C67A02F2F289C001F0BBB /* Reynard */,

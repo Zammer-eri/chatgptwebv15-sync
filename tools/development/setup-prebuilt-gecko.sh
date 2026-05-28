@@ -4,9 +4,9 @@ set -eu
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 ROOT_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)"
-TAG="${REYNARD_RELEASE_TAG:-0.4.0}"
+TAG="${REYNARD_RELEASE_TAG:-0.3.0}"
 ASSET="${REYNARD_RELEASE_ASSET:-Reynard.ipa}"
-SHIM_MODE="${REYNARD_CHATGPT_SHIM_MODE:-all}"
+SHIM_MODE="${REYNARD_CHATGPT_SHIM_MODE:-baseline}"
 URL="https://github.com/minh-ton/reynard-browser/releases/download/${TAG}/${ASSET}"
 WORK_DIR="$ROOT_DIR/dist/prebuilt-gecko-work"
 DIST_DIR="$ROOT_DIR/engine/prebuilt-gecko/obj-aarch64-apple-ios/dist"

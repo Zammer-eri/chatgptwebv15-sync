@@ -16,7 +16,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     private var embeddedSplitController: BrowserSplitViewController?
     private var pendingDownloadConfirmations: [DownloadStore.PendingDownload] = []
     private var isPresentingDownloadConfirmation = false
-    private var didStartAddons = false
 
     lazy var tabCollectionCoordinator = TabCollectionCoordinator(controller: self)
 
@@ -32,7 +31,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     lazy var browserLayout = BrowserLayout(controller: self)
     lazy var addressBarGestures = AddressBarGestures(controller: self)
     lazy var tabOverviewPresentation = TabOverviewPresentation(controller: self)
-    lazy var addonsController = AddonsController(controller: self)
 
     var isSearchFocused = false
     private var pendingSelectionAnimation = false
@@ -139,12 +137,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
             name: AddressBarMenu.changeWebsiteModeNotification,
             object: nil
         )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(presentAddonSettingsRequested(_:)),
-            name: AddressBarMenu.presentAddonSettingsNotification,
-            object: nil
-        )
         browserLayout.configureLayout()
         syncBrowserNavigationChrome(animated: false)
         syncPadSidebarButtonItem()
@@ -165,7 +157,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         tabManager.createInitialTab()
         refreshAddressBar()
         browserLayout.applyChromeLayout(animated: false)
-        startAddonsIfNeeded()
     }
 
     @objc private func applyUpdateMenuButtonBadge() {
@@ -486,40 +477,16 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
             )
         }
         browserUI.addressBar.setLoadingProgress(selectedTab?.progress ?? 0, isLoading: selectedTab?.isLoading ?? false)
-        let addonItems = addonsController.visibleMenuItemsForCurrentSite().map {
-            AddressBarMenu.AddonItem(menuItem: $0, image: addonsController.iconImage(for: $0.addon))
-        }
         browserUI.addressBar.setAddonsMenu(
             AddressBarMenu.makeMenu(
                 selectedURL: selectedURL,
-                addonItems: addonItems
+                addonItems: []
             )
         )
     }
 
     @objc private func changeWebsiteModeRequested() {
         browserActions.changeWebsiteMode()
-    }
-
-    @objc private func presentAddonSettingsRequested(_ notification: Notification) {
-        guard let item = notification.userInfo?["addonItem"] as? AddonMenuItem else {
-            presentAddonsManager()
-            return
-        }
-
-        addonsController.presentCurrentSiteSettings(for: item)
-    }
-
-    private func startAddonsIfNeeded() {
-        guard !didStartAddons else {
-            return
-        }
-
-        didStartAddons = true
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 350_000_000)
-            await self?.addonsController.start()
-        }
     }
 
     func tabManagerDidChangeTabs(_ tabManager: TabManager) {
@@ -548,8 +515,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
 
         let selectedTab = tabManager.tabs[index]
         browserUI.geckoView.session = selectedTab.session
-        addonsController.handleTabSelectionChange(selectedIndex: index, previousIndex: previousIndex)
-
         syncAddressBarLoadingState(progress: selectedTab.progress, isLoading: selectedTab.isLoading)
         refreshAddressBar()
 
@@ -623,7 +588,7 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     }
 
     func tabManager(_ tabManager: TabManager, shouldHandleExternalResponse response: ExternalResponseInfo, for session: GeckoSession) -> Bool {
-        return addonsController.handleExternalResponse(response)
+        return false
     }
 
     func backButtonClicked() {
@@ -828,17 +793,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
 
     @objc func dismissKeyboardTapped() {
         browserActions.dismissKeyboard()
-    }
-
-    private func presentAddonsManager() {
-        if isPadLayout,
-           !usesCompactPadChromeMode,
-           let splitViewController = splitViewController as? BrowserSplitViewController {
-            splitViewController.showLibrarySection(.addons)
-            return
-        }
-
-        browserActions.presentMenuSheet(initialSection: .addons)
     }
 
     private func presentDownloadsFromToolbar() {

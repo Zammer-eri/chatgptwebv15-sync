@@ -9,7 +9,7 @@ jobs:
     permissions:
       contents: write
     env:
-      REYNARD_CHATGPT_SHIM_MODE: all
+      REYNARD_CHATGPT_SHIM_MODE: baseline
 
     steps:
       - name: Checkout
@@ -34,7 +34,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: engine/prebuilt-gecko
-          key: reynard-prebuilt-gecko-0.4.0-Reynard-ipa-shim-v29-mode-all-${{ hashFiles('tools/development/setup-prebuilt-gecko.sh', 'tools/development/patch-prebuilt-gecko.py', 'tools/development/chatgpt-shell/*.js') }}
+          key: reynard-prebuilt-gecko-0.3.0-Reynard-ipa-shim-v29-mode-baseline-${{ hashFiles('tools/development/setup-prebuilt-gecko.sh', 'tools/development/patch-prebuilt-gecko.py', 'tools/development/chatgpt-shell/*.js') }}
 
       - name: Prepare prebuilt Gecko engine
         run: ./tools/development/setup-prebuilt-gecko.sh

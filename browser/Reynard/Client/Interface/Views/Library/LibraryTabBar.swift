@@ -12,6 +12,10 @@ enum LibrarySection: Int, CaseIterable {
     case history
     case downloads
     case addons
+
+    static var allCases: [LibrarySection] {
+        [.bookmarks, .history, .downloads]
+    }
     
     var title: String {
         switch self {

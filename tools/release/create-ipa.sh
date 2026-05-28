@@ -29,8 +29,10 @@ plutil -replace CFBundleIdentifier -string "com.codex.chatgpt" "$APP_PATH/Info.p
 plutil -replace CFBundleDisplayName -string "ChatGPT" "$APP_PATH/Info.plist"
 plutil -replace CFBundleIdentifier -string "com.codex.chatgpt.Helper" "$APP_PATH/PlugIns/Reynard Helper.appex/Info.plist"
 plutil -replace CFBundleDisplayName -string "ChatGPT Helper" "$APP_PATH/PlugIns/Reynard Helper.appex/Info.plist"
-plutil -replace CFBundleIdentifier -string "com.codex.chatgpt.OpenIn" "$APP_PATH/PlugIns/OpenIn.appex/Info.plist"
-plutil -replace CFBundleDisplayName -string "Open in ChatGPT" "$APP_PATH/PlugIns/OpenIn.appex/Info.plist"
+if [ -d "$APP_PATH/PlugIns/OpenIn.appex" ]; then
+	plutil -replace CFBundleIdentifier -string "com.codex.chatgpt.OpenIn" "$APP_PATH/PlugIns/OpenIn.appex/Info.plist"
+	plutil -replace CFBundleDisplayName -string "Open in ChatGPT" "$APP_PATH/PlugIns/OpenIn.appex/Info.plist"
+fi
 
 rm -rf "$WORK_DIR" "$ROOT_DIR/dist/Reynard-TrollStore.tipa"
 mkdir -p "$WORK_DIR/Payload"
@@ -64,5 +66,7 @@ find Payload -type f -exec sh -c '
 ldid -S"$ROOT_DIR/browser/Reynard/TrollStore/JIT/ptrace_jit.entitlements" "$PTRACE_JIT_OUT"
 ldid -S"$ROOT_DIR/browser/Reynard/Entitlements/Reynard.private.entitlements" "Payload/Reynard.app/Reynard"
 ldid -S"$ROOT_DIR/browser/Helper/Entitlements/Reynard-Helper.private.entitlements" "Payload/Reynard.app/PlugIns/Reynard Helper.appex/Reynard Helper"
-ldid -S "Payload/Reynard.app/PlugIns/OpenIn.appex/OpenIn"
+if [ -f "Payload/Reynard.app/PlugIns/OpenIn.appex/OpenIn" ]; then
+	ldid -S "Payload/Reynard.app/PlugIns/OpenIn.appex/OpenIn"
+fi
 zip -r ../Reynard-TrollStore.tipa Payload -x "._*" -x ".DS_Store" -x "__MACOSX" # trollstore ipa

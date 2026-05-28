@@ -103,7 +103,7 @@ final class SettingsRootViewController: SettingsTableViewController {
         switch visibleSections[section] {
         case .updates: return 2
         case .jit: return 2
-        case .general: return 2
+        case .general: return 1
         case .search: return 1
         case .compatibility: return preferences.useAndroidUserAgent ? 1 : 2
         case .tab: return 2
@@ -139,7 +139,7 @@ final class SettingsRootViewController: SettingsTableViewController {
             return cell
         case .general:
             let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
-            cell.textLabel?.text = indexPath.row == 0 ? "Add-ons" : "Request Desktop Website"
+            cell.textLabel?.text = "Request Desktop Website"
             cell.accessoryType = .disclosureIndicator
             return cell
         case .search:
@@ -200,11 +200,7 @@ final class SettingsRootViewController: SettingsTableViewController {
         case .jit where indexPath.row == 1:
             presentPairingFilePicker()
         case .general:
-            if indexPath.row == 0 {
-                navigationController?.pushViewController(AddonsSettingsViewController(), animated: true)
-            } else {
-                navigationController?.pushViewController(RequestDesktopWebsiteViewController(), animated: true)
-            }
+            navigationController?.pushViewController(RequestDesktopWebsiteViewController(), animated: true)
         case .search:
             navigationController?.pushViewController(SearchEngineSettingsViewController(), animated: true)
         case .compatibility:
