@@ -35,6 +35,8 @@ final class TabManagerImplementation: NSObject, TabManager {
 
     private weak var delegate: TabManagerDelegate?
     private var loadWatchdogs: [UUID: DispatchWorkItem] = [:]
+    private var chatRouteSequence = 0
+    private var lastChatRouteByTab: [UUID: (sequence: Int, url: String)] = [:]
 
     private lazy var isURLLenient: NSRegularExpression = {
         let pattern = "^\\s*(\\w+-+)*[\\w\\[]+(://[/]*|:|\\.)(\\w+-+)*[\\w\\[:]+([\\S&&[^\\w-]]\\S*)?\\s*$"
@@ -126,6 +128,16 @@ final class TabManagerImplementation: NSObject, TabManager {
         return host == "chatgpt.com" ||
             host.hasSuffix(".chatgpt.com") ||
             host == "chat.openai.com"
+    }
+
+    private func isChatConversationURL(_ value: String) -> Bool {
+        guard let url = remoteURL(from: value),
+              let host = url.host?.lowercased() else {
+            return false
+        }
+
+        return (host == "chatgpt.com" || host.hasSuffix(".chatgpt.com")) &&
+            url.path.hasPrefix("/c/")
     }
 
     private func shouldKeepEmbeddedForChatGPT(_ url: URL) -> Bool {
@@ -404,7 +416,10 @@ extension TabManagerImplementation: ContentDelegate {
         }
 
         tabs[index].title = title
-        ShellDiagnostics.log("titleChange tab=\(tabs[index].id.uuidString) title=\(title)")
+        let lastChatRoute = lastChatRouteByTab[tabs[index].id]
+        ShellDiagnostics.log(
+            "titleChange tab=\(tabs[index].id.uuidString) title=\(title) lastChatRouteSeq=\(lastChatRoute.map { String($0.sequence) } ?? "nil") lastChatRouteURL=\(lastChatRoute?.url ?? "nil")"
+        )
         delegate?.tabManager(self, didUpdateTabAt: index, reason: .title)
         persistState()
     }
@@ -541,6 +556,13 @@ extension TabManagerImplementation: NavigationDelegate {
         tabs[index].pendingDisplayText = nil
         tabs[index].favicon = nil
         ShellDiagnostics.log("locationChange tab=\(tabs[index].id.uuidString) session=\(session.diagnosticID ?? "nil") url=\(url ?? "nil") permissions=\(permissions.count)")
+        if let url, isChatConversationURL(url) {
+            chatRouteSequence += 1
+            lastChatRouteByTab[tabs[index].id] = (chatRouteSequence, url)
+            ShellDiagnostics.log(
+                "chatRoute seq=\(chatRouteSequence) tab=\(tabs[index].id.uuidString) selected=\(index == selectedTabIndex) titleBefore=\(tabs[index].title) url=\(url)"
+            )
+        }
         delegate?.tabManager(self, didUpdateTabAt: index, reason: .location)
         scheduleFaviconUpdate(forTabAt: index)
         persistState()
@@ -680,9 +702,12 @@ extension TabManagerImplementation: ProgressDelegate {
 enum ShellDiagnostics {
     private static let queue = DispatchQueue(label: "com.codex.chatgpt.shell-diagnostics")
     private static let maxLogBytes: UInt64 = 1_000_000
+    private static let runID = UUID().uuidString
+    private static let startDate = Date()
 
     static func log(_ message: String) {
-        let line = "[CHATGPT_SHELL_DIAG] \(timestamp()) \(message)"
+        let elapsed = String(format: "%.3f", Date().timeIntervalSince(startDate))
+        let line = "[CHATGPT_SHELL_DIAG] \(timestamp()) run=\(runID) t=+\(elapsed)s \(message)"
         NSLog("%@", line)
         writeToFile(line)
     }

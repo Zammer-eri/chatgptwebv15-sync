@@ -115,7 +115,10 @@ enum ContentEvents: String, CaseIterable {
 func newContentHandler(_ session: GeckoSession) -> GeckoSessionHandler {
     GeckoSessionHandler(
         moduleName: "GeckoViewContent",
-        events: ContentEvents.allCases.map(\.rawValue),
+        events: [
+            ContentEvents.contentCrash.rawValue,
+            ContentEvents.contentKill.rawValue,
+        ],
         session: session
     ) { @MainActor session, delegate, type, message in
         func parseStringDictionary(_ value: Any?) -> [String: String] {
