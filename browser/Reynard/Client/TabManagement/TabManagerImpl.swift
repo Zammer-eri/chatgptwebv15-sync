@@ -491,6 +491,10 @@ extension TabManagerImplementation: ContentDelegate {
     }
 
     func onChatGPTHealth(session: GeckoSession, health: [String: Any?]) {
+        logChatGPTHealth(session: session, source: "push", health: health)
+    }
+
+    private func logChatGPTHealth(session: GeckoSession, source: String, health: [String: Any?]) {
         let orderedKeys = [
             "seq", "reason", "href", "readyState", "title", "bodyTextLength", "visibleTextLength",
             "composerCount", "textareaCount", "buttonCount", "testIdCount", "articleCount",
@@ -503,7 +507,7 @@ extension TabManagerImplementation: ContentDelegate {
             }
             return "\(key)=\(Self.logValue(value))"
         }.joined(separator: " ")
-        ShellDiagnostics.log("chatGPTHealth session=\(session.diagnosticID ?? "nil") \(details)")
+        ShellDiagnostics.log("chatGPTHealth source=\(source) session=\(session.diagnosticID ?? "nil") \(details)")
     }
 
     private static func logValue(_ value: Any) -> String {
@@ -592,10 +596,52 @@ extension TabManagerImplementation: NavigationDelegate {
             ShellDiagnostics.log(
                 "chatRoute seq=\(chatRouteSequence) tab=\(tabs[index].id.uuidString) selected=\(index == selectedTabIndex) titleBefore=\(tabs[index].title) url=\(url)"
             )
+            scheduleChatGPTHealthProbe(session: session, routeSequence: chatRouteSequence, url: url)
         }
         delegate?.tabManager(self, didUpdateTabAt: index, reason: .location)
         scheduleFaviconUpdate(forTabAt: index)
         persistState()
+    }
+
+    private func scheduleChatGPTHealthProbe(session: GeckoSession, routeSequence: Int, url: String) {
+        for delay in [1.0, 3.0, 6.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak session] in
+                guard let session else { return }
+                Task { @MainActor in
+                    do {
+                        let health = try await self.withTimeout(seconds: 2) {
+                            try await session.chatGPTHealth()
+                        }
+                        if let health {
+                            self.logChatGPTHealth(
+                                session: session,
+                                source: "routeSeq=\(routeSequence) delay=\(delay) url=\(url)",
+                                health: health
+                            )
+                        } else {
+                            ShellDiagnostics.log("chatGPTHealth source=routeSeq=\(routeSequence) delay=\(delay) result=nil url=\(url)")
+                        }
+                    } catch {
+                        ShellDiagnostics.log("chatGPTHealth source=routeSeq=\(routeSequence) delay=\(delay) error=\(Self.logValue(error)) url=\(url)")
+                    }
+                }
+            }
+        }
+    }
+
+    private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                try await operation()
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw GeckoHandlerError("timeout")
+            }
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
     }
 
     func onCanGoBack(session: GeckoSession, canGoBack: Bool) {

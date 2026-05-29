@@ -5,7 +5,7 @@ import sys
 import zipfile
 
 
-RUNTIME_PATCH_VERSION = 44
+RUNTIME_PATCH_VERSION = 45
 EXTENSION_PREFS_BEGIN = "// BEGIN Reynard ChatGPT shell extension prefs"
 EXTENSION_PREFS_END = "// END Reynard ChatGPT shell extension prefs"
 EXTENSION_PREF_OVERRIDES = f"""{EXTENSION_PREFS_BEGIN}
@@ -27,6 +27,65 @@ pref("xpinstall.whitelist.fileRequest", false);
 {EXTENSION_PREFS_END}
 """
 CHATGPT_HEALTH_CHILD_METHODS = r"""
+
+  async collectChatGPTHealth(reason = "query") {
+    const win = this.contentWindow;
+    const doc = win?.document;
+    if (!win || !doc || !/^(chatgpt\.com|.*\.chatgpt\.com)$/i.test(win.location.hostname)) {
+      return null;
+    }
+
+    const count = selector => {
+      try {
+        return doc.querySelectorAll(selector).length;
+      } catch (_) {
+        return -1;
+      }
+    };
+
+    let indexedDBCount = -1;
+    try {
+      if (win.indexedDB?.databases) {
+        const databases = await win.Promise.race([
+          win.indexedDB.databases(),
+          new win.Promise(resolve => win.setTimeout(() => resolve(null), 300)),
+        ]);
+        indexedDBCount = Array.isArray(databases) ? databases.length : -1;
+      }
+    } catch (_) {}
+
+    const body = doc.body;
+    const bodyText = body?.textContent || "";
+    const visibleText = body?.innerText || "";
+    return {
+      seq: ++this._chatGPTHealthSeq,
+      reason,
+      href: win.location.href,
+      readyState: doc.readyState,
+      title: doc.title || "",
+      bodyTextLength: bodyText.length,
+      visibleTextLength: visibleText.length,
+      composerCount: count('[contenteditable="true"], textarea, [data-testid*="composer"], form textarea'),
+      textareaCount: count("textarea"),
+      buttonCount: count("button"),
+      testIdCount: count("[data-testid]"),
+      articleCount: count("article"),
+      mainCount: count("main"),
+      navCount: count("nav, aside"),
+      localStorageLength: (() => {
+        try {
+          return win.localStorage?.length ?? -1;
+        } catch (_) {
+          return -1;
+        }
+      })(),
+      indexedDBCount,
+      errorCount: this._chatGPTHealthErrors?.length || 0,
+      lastError: this._chatGPTHealthErrors?.at(-1) || "",
+      rejectionCount: this._chatGPTHealthRejections?.length || 0,
+      lastRejection: this._chatGPTHealthRejections?.at(-1) || "",
+    };
+  }
 
   installChatGPTHealthProbe(reason = "install") {
     const win = this.contentWindow;
@@ -107,48 +166,13 @@ CHATGPT_HEALTH_CHILD_METHODS = r"""
       }
     };
 
-    let indexedDBCount = -1;
-    try {
-      if (win.indexedDB?.databases) {
-        const databases = await win.Promise.race([
-          win.indexedDB.databases(),
-          new win.Promise(resolve => win.setTimeout(() => resolve(null), 300)),
-        ]);
-        indexedDBCount = Array.isArray(databases) ? databases.length : -1;
-      }
-    } catch (_) {}
-
-    const body = doc.body;
-    const bodyText = body?.textContent || "";
-    const visibleText = body?.innerText || "";
+    const health = await this.collectChatGPTHealth(reason);
+    if (!health) {
+      return;
+    }
     this.eventDispatcher?.sendRequest({
       type: "GeckoView:ChatGPTHealth",
-      seq: ++this._chatGPTHealthSeq,
-      reason,
-      href: win.location.href,
-      readyState: doc.readyState,
-      title: doc.title || "",
-      bodyTextLength: bodyText.length,
-      visibleTextLength: visibleText.length,
-      composerCount: count('[contenteditable="true"], textarea, [data-testid*="composer"], form textarea'),
-      textareaCount: count("textarea"),
-      buttonCount: count("button"),
-      testIdCount: count("[data-testid]"),
-      articleCount: count("article"),
-      mainCount: count("main"),
-      navCount: count("nav, aside"),
-      localStorageLength: (() => {
-        try {
-          return win.localStorage?.length ?? -1;
-        } catch (_) {
-          return -1;
-        }
-      })(),
-      indexedDBCount,
-      errorCount: this._chatGPTHealthErrors?.length || 0,
-      lastError: this._chatGPTHealthErrors?.at(-1) || "",
-      rejectionCount: this._chatGPTHealthRejections?.length || 0,
-      lastRejection: this._chatGPTHealthRejections?.at(-1) || "",
+      ...health,
     });
   }
 """
@@ -222,15 +246,65 @@ def patch_chatgpt_health_child(text: str) -> str:
             pageshow + '\n        this.installChatGPTHealthProbe("pageshow");',
             1,
         )
+
+    contains_case = 'case "ContainsFormData": {\n        return this.containsFormData();\n      }'
+    if contains_case in text and 'case "GetChatGPTHealth"' not in text:
+        text = text.replace(
+            contains_case,
+            contains_case
+            + '\n      case "GetChatGPTHealth": {\n        return this.collectChatGPTHealth("query");\n      }',
+            1,
+        )
+    return text
+
+
+def patch_chatgpt_health_module(text: str) -> str:
+    if "GeckoView:GetChatGPTHealth" in text:
+        return text
+
+    listener = '"GeckoView:ContainsFormData",'
+    if listener in text:
+        text = text.replace(listener, listener + '\n      "GeckoView:GetChatGPTHealth",', 1)
+
+    handler = 'case "GeckoView:ContainsFormData":\n        this._containsFormData(aCallback);\n        break;'
+    if handler in text:
+        text = text.replace(
+            handler,
+            handler
+            + '\n      case "GeckoView:GetChatGPTHealth":\n        this._getChatGPTHealth(aCallback);\n        break;',
+            1,
+        )
+
+    method_marker = "\n  async _containsFormData(aCallback) {"
+    method = r"""
+
+  async _getChatGPTHealth(aCallback) {
+    try {
+      const actor = this.window.moduleManager.getActor("GeckoViewContent");
+      aCallback.onSuccess(actor ? await actor.collectChatGPTHealth("native-query") : null);
+    } catch (error) {
+      aCallback.onError(`Cannot get ChatGPT health, error: ${error}`);
+    }
+  }
+"""
+    if method_marker in text:
+        text = text.replace(method_marker, method + method_marker, 1)
+
     return text
 
 
 def patch_chatgpt_health(bin_dir: Path) -> bool:
-    return patch_text_in_omni(
+    child_changed = patch_text_in_omni(
         bin_dir,
         "GeckoViewContentChild.sys.mjs",
         patch_chatgpt_health_child,
     )
+    module_changed = patch_text_in_omni(
+        bin_dir,
+        "GeckoViewContent.sys.mjs",
+        patch_chatgpt_health_module,
+    )
+    return child_changed or module_changed
 
 
 def main() -> None:

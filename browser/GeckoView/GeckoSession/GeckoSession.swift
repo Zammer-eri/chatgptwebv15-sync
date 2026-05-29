@@ -196,6 +196,10 @@ public class GeckoSession {
         dispatcher.dispatch(type: "GeckoView:Stop")
     }
 
+    public func chatGPTHealth() async throws -> [String: Any?]? {
+        try await dispatcher.query(type: "GeckoView:GetChatGPTHealth") as? [String: Any?]
+    }
+
     public func goBack(userInteraction: Bool = true) {
         dispatcher.dispatch(
             type: "GeckoView:GoBack",
