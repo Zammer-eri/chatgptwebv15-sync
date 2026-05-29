@@ -5,9 +5,10 @@
 //  Created by Minh Ton on 9/3/26.
 //
 
+import QuickLook
 import UIKit
 
-final class DownloadsManagerView: UIView, UITableViewDataSource, UITableViewDelegate, UISearchBarDelegate, UIGestureRecognizerDelegate {
+final class DownloadsManagerView: UIView, UITableViewDataSource, UITableViewDelegate, UISearchBarDelegate, UIGestureRecognizerDelegate, QLPreviewControllerDataSource, UIDocumentInteractionControllerDelegate {
     private struct Section {
         let title: String
         let items: [DownloadItemSnapshot]
@@ -35,13 +36,14 @@ final class DownloadsManagerView: UIView, UITableViewDataSource, UITableViewDele
     }()
     
     private lazy var tableView: UITableView = {
-        let view = UITableView(frame: .zero, style: .insetGrouped)
+        let view = UITableView(frame: .zero, style: .plain)
         view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = .secondarySystemBackground
         view.dataSource = self
         view.delegate = self
-        view.rowHeight = UITableView.automaticDimension
-        view.estimatedRowHeight = 96
+        view.rowHeight = 58
+        view.estimatedRowHeight = 58
+        view.separatorInset = UIEdgeInsets(top: 0, left: 58, bottom: 0, right: 0)
         if #available(iOS 15.0, *) {
             view.sectionHeaderTopPadding = 0
         }
@@ -55,12 +57,14 @@ final class DownloadsManagerView: UIView, UITableViewDataSource, UITableViewDele
     private var isShowingSwipeActions = false
     private var currentSearchTerm = ""
     private var hasStoredDownloads = false
+    private var previewFileURL: URL?
+    private var documentInteractionController: UIDocumentInteractionController?
     
     override init(frame: CGRect) {
         super.init(frame: frame)
         
         translatesAutoresizingMaskIntoConstraints = false
-        backgroundColor = .systemGroupedBackground
+        backgroundColor = .secondarySystemBackground
         addSubview(tableView)
         setupHeaderView()
         
@@ -391,27 +395,27 @@ final class DownloadsManagerView: UIView, UITableViewDataSource, UITableViewDele
     
     func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
         let container = UIView()
-        container.backgroundColor = .systemGroupedBackground
+        container.backgroundColor = .secondarySystemBackground
         
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.font = .systemFont(ofSize: 15, weight: .semibold)
+        label.font = .systemFont(ofSize: 12, weight: .semibold)
         label.textColor = .secondaryLabel
         label.text = sections[section].title
         
         container.addSubview(label)
         NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 24),
+            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
             label.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
-            label.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -6),
-            label.topAnchor.constraint(equalTo: container.topAnchor, constant: 10),
+            label.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -4),
+            label.topAnchor.constraint(equalTo: container.topAnchor, constant: 6),
         ])
         
         return container
     }
     
     func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
-        34
+        24
     }
     
     func tableView(
@@ -454,7 +458,7 @@ final class DownloadsManagerView: UIView, UITableViewDataSource, UITableViewDele
             return
         }
         
-        presentShareSheet(for: item, from: indexPath)
+        openFile(item, from: indexPath)
     }
     
     func tableView(_ tableView: UITableView, willBeginEditingRowAt indexPath: IndexPath) {
@@ -515,18 +519,44 @@ final class DownloadsManagerView: UIView, UITableViewDataSource, UITableViewDele
         viewController.present(alert, animated: true)
     }
     
-    private func presentShareSheet(for item: DownloadItemSnapshot, from indexPath: IndexPath) {
+    private func openFile(_ item: DownloadItemSnapshot, from indexPath: IndexPath) {
         guard let fileURL = item.fileURL,
               let viewController = nearestViewController else {
             return
         }
-        
-        let sheet = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
-        if let popover = sheet.popoverPresentationController {
-            popover.sourceView = tableView
-            popover.sourceRect = tableView.rectForRow(at: indexPath)
+
+        guard QLPreviewController.canPreview(fileURL as QLPreviewItem) else {
+            presentOpenInMenu(for: fileURL, from: indexPath)
+            return
         }
-        viewController.present(sheet, animated: true)
+
+        previewFileURL = fileURL
+        let previewController = QLPreviewController()
+        previewController.dataSource = self
+        viewController.present(previewController, animated: true)
+    }
+
+    private func presentOpenInMenu(for fileURL: URL, from indexPath: IndexPath) {
+        guard nearestViewController != nil else {
+            return
+        }
+
+        let controller = UIDocumentInteractionController(url: fileURL)
+        controller.delegate = self
+        documentInteractionController = controller
+        controller.presentOpenInMenu(from: tableView.rectForRow(at: indexPath), in: tableView, animated: true)
+    }
+
+    func numberOfPreviewItems(in controller: QLPreviewController) -> Int {
+        previewFileURL == nil ? 0 : 1
+    }
+
+    func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
+        previewFileURL! as QLPreviewItem
+    }
+
+    func documentInteractionControllerViewControllerForPreview(_ controller: UIDocumentInteractionController) -> UIViewController {
+        nearestViewController ?? UIViewController()
     }
     
     private var nearestViewController: UIViewController? {

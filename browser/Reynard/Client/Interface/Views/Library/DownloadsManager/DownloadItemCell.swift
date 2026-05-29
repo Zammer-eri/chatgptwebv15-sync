@@ -25,13 +25,15 @@ final class DownloadItemCell: UITableViewCell {
         view.translatesAutoresizingMaskIntoConstraints = false
         view.contentMode = .scaleAspectFit
         view.tintColor = .label
+        view.layer.cornerRadius = 6
+        view.clipsToBounds = true
         return view
     }()
     
     private let fileNameLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.font = .preferredFont(forTextStyle: .body)
+        label.font = .systemFont(ofSize: 14, weight: .medium)
         label.textColor = .label
         label.numberOfLines = 1
         return label
@@ -40,9 +42,9 @@ final class DownloadItemCell: UITableViewCell {
     private let detailsLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.font = .preferredFont(forTextStyle: .subheadline)
+        label.font = .systemFont(ofSize: 11, weight: .regular)
         label.textColor = .secondaryLabel
-        label.numberOfLines = 2
+        label.numberOfLines = 1
         return label
     }()
     
@@ -61,13 +63,16 @@ final class DownloadItemCell: UITableViewCell {
     
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
-        selectionStyle = .none
+        selectionStyle = .default
+        backgroundColor = .secondarySystemBackground
+        contentView.backgroundColor = .secondarySystemBackground
+        layoutMargins = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
         
         let labelsStack = UIStackView(arrangedSubviews: [fileNameLabel, detailsLabel, progressView])
         labelsStack.translatesAutoresizingMaskIntoConstraints = false
         labelsStack.axis = .vertical
         labelsStack.alignment = .fill
-        labelsStack.spacing = 4
+        labelsStack.spacing = 2
         
         contentView.addSubview(iconView)
         contentView.addSubview(labelsStack)
@@ -75,19 +80,19 @@ final class DownloadItemCell: UITableViewCell {
         NSLayoutConstraint.activate([
             iconView.leadingAnchor.constraint(equalTo: contentView.layoutMarginsGuide.leadingAnchor),
             iconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            iconView.topAnchor.constraint(greaterThanOrEqualTo: contentView.topAnchor, constant: 8),
-            iconView.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -8),
-            iconView.widthAnchor.constraint(equalToConstant: 44),
-            iconView.heightAnchor.constraint(equalToConstant: 44),
+            iconView.topAnchor.constraint(greaterThanOrEqualTo: contentView.topAnchor, constant: 6),
+            iconView.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -6),
+            iconView.widthAnchor.constraint(equalToConstant: 32),
+            iconView.heightAnchor.constraint(equalToConstant: 32),
             
-            labelsStack.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 13),
+            labelsStack.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 10),
             labelsStack.trailingAnchor.constraint(equalTo: contentView.layoutMarginsGuide.trailingAnchor),
             labelsStack.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            labelsStack.topAnchor.constraint(greaterThanOrEqualTo: contentView.topAnchor, constant: 13),
-            labelsStack.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -13),
+            labelsStack.topAnchor.constraint(greaterThanOrEqualTo: contentView.topAnchor, constant: 8),
+            labelsStack.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -8),
         ])
         
-        separatorInset.left = 73
+        separatorInset.left = 58
     }
     
     required init?(coder: NSCoder) {
@@ -175,7 +180,7 @@ final class DownloadItemCell: UITableViewCell {
             }
             
             let expectedItemID = item.id
-            Self.iconProvider.icon(for: fileURL, size: CGSize(width: 56, height: 56)) { [weak self] image in
+            Self.iconProvider.icon(for: fileURL, size: CGSize(width: 40, height: 40)) { [weak self] image in
                 guard let self,
                       self.representedFileURL == fileURL,
                       self.representedItemID == expectedItemID else {
