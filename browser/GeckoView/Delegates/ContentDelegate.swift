@@ -66,6 +66,7 @@ public protocol ContentDelegate {
     func onCookieBannerHandled(session: GeckoSession)
     func onExternalResponse(session: GeckoSession, response: ExternalResponseInfo)
     func onSavePdf(session: GeckoSession, request: SavePdfInfo)
+    func onChatGPTTapTarget(session: GeckoSession, info: [String: Any])
 }
 
 extension ContentDelegate {
@@ -89,6 +90,7 @@ extension ContentDelegate {
     public func onCookieBannerHandled(session: GeckoSession) {}
     public func onExternalResponse(session: GeckoSession, response: ExternalResponseInfo) {}
     public func onSavePdf(session: GeckoSession, request: SavePdfInfo) {}
+    public func onChatGPTTapTarget(session: GeckoSession, info: [String: Any]) {}
 }
 
 enum ContentEvents: String, CaseIterable {
@@ -110,6 +112,7 @@ enum ContentEvents: String, CaseIterable {
     case cookieBannerEventHandled = "GeckoView:CookieBannerEvent:Handled"
     case savePdf = "GeckoView:SavePdf"
     case onProductUrl = "GeckoView:OnProductUrl"
+    case chatGPTTapTarget = "GeckoView:ChatGPTTapTarget"
 }
 
 func newContentHandler(_ session: GeckoSession) -> GeckoSessionHandler {
@@ -118,6 +121,7 @@ func newContentHandler(_ session: GeckoSession) -> GeckoSessionHandler {
         events: [
             ContentEvents.contentCrash.rawValue,
             ContentEvents.contentKill.rawValue,
+            ContentEvents.chatGPTTapTarget.rawValue,
         ],
         session: session
     ) { @MainActor session, delegate, type, message in
@@ -278,6 +282,10 @@ func newContentHandler(_ session: GeckoSession) -> GeckoSessionHandler {
             
         case .onProductUrl:
             delegate?.onProductUrl(session: session)
+            return nil
+
+        case .chatGPTTapTarget:
+            delegate?.onChatGPTTapTarget(session: session, info: message ?? [:])
             return nil
         }
     }

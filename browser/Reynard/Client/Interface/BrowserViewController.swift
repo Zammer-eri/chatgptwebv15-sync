@@ -497,11 +497,47 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         }
 
         guard let tab = tabManager.selectedTab else { return }
-        reloadTab(tab)
+        reloadTabAfterClearingAppCache(tab)
     }
 
     private func reloadTab(_ tab: Tab) {
         tabManager.reload(tab)
+    }
+
+    private func reloadTabAfterClearingAppCache(_ tab: Tab) {
+        tab.session.stop()
+        clearAppCacheForReload { [weak self, weak tab] in
+            guard let self, let tab else { return }
+            self.reloadTab(tab)
+        }
+    }
+
+    private func clearAppCacheForReload(completion: @escaping () -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let fileManager = FileManager.default
+            let cacheURLs = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)
+            let temporaryURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+
+            URLCache.shared.removeAllCachedResponses()
+
+            for directoryURL in cacheURLs + [temporaryURL] {
+                guard let contents = try? fileManager.contentsOfDirectory(
+                    at: directoryURL,
+                    includingPropertiesForKeys: nil,
+                    options: [.skipsSubdirectoryDescendants]
+                ) else {
+                    continue
+                }
+
+                for itemURL in contents {
+                    try? fileManager.removeItem(at: itemURL)
+                }
+            }
+
+            DispatchQueue.main.async {
+                completion()
+            }
+        }
     }
 
     @objc func tabsTapped() {

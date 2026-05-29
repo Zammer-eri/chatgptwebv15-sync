@@ -415,6 +415,74 @@ extension TabManagerImplementation: ContentDelegate {
             DownloadStore.shared.startDownload(download)
         }
     }
+
+    func onChatGPTTapTarget(session: GeckoSession, info: [String: Any]) {
+        ChatGPTTapTargetLog.write(info)
+    }
+}
+
+private enum ChatGPTTapTargetLog {
+    private static let queue = DispatchQueue(label: "com.codex.chatgpt.tap-target-log")
+    private static let maxLogBytes: UInt64 = 250_000
+
+    static func write(_ info: [String: Any]) {
+        queue.async {
+            guard let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+                return
+            }
+
+            let fileURL = documentsURL.appendingPathComponent("ChatGPTTapTargets.log", isDirectory: false)
+            rotateIfNeeded(fileURL)
+
+            let line = "\(timestamp()) \(compactDescription(info))\n"
+            guard let data = line.data(using: .utf8) else {
+                return
+            }
+
+            if FileManager.default.fileExists(atPath: fileURL.path),
+               let handle = try? FileHandle(forWritingTo: fileURL) {
+                defer { try? handle.close() }
+                try? handle.seekToEnd()
+                try? handle.write(contentsOf: data)
+                return
+            }
+
+            try? data.write(to: fileURL, options: .atomic)
+        }
+    }
+
+    private static func timestamp() -> String {
+        ISO8601DateFormatter().string(from: Date())
+    }
+
+    private static func rotateIfNeeded(_ fileURL: URL) {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+              let fileSize = attributes[.size] as? UInt64,
+              fileSize > maxLogBytes else {
+            return
+        }
+
+        try? FileManager.default.removeItem(at: fileURL)
+    }
+
+    private static func compactDescription(_ info: [String: Any]) -> String {
+        let eventType = info["eventType"] ?? ""
+        let x = info["x"] ?? ""
+        let y = info["y"] ?? ""
+        let activeTag = info["activeTag"] ?? ""
+        let activeAria = info["activeAria"] ?? ""
+        let activeTestid = info["activeTestid"] ?? ""
+        let chain = (info["chain"] as? [[String: Any]] ?? []).map { item in
+            let tag = item["tag"] ?? ""
+            let aria = item["aria"] ?? ""
+            let testid = item["testid"] ?? ""
+            let role = item["role"] ?? ""
+            let text = item["text"] ?? ""
+            let rect = item["rect"] ?? ""
+            return "[tag=\(tag) role=\(role) aria=\(aria) testid=\(testid) text=\(text) rect=\(rect)]"
+        }.joined(separator: " <- ")
+        return "event=\(eventType) x=\(x) y=\(y) active=\(activeTag) activeAria=\(activeAria) activeTestid=\(activeTestid) chain=\(chain)"
+    }
 }
 
 extension TabManagerImplementation: NavigationDelegate {

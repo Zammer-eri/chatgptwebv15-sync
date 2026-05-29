@@ -28,7 +28,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: engine/prebuilt-gecko
-          key: reynard-prebuilt-gecko-0.3.0-Reynard-ipa-runtime-v43-${{ hashFiles('tools/development/setup-prebuilt-gecko.sh', 'tools/development/patch-prebuilt-gecko.py') }}
+          key: reynard-prebuilt-gecko-0.3.0-Reynard-ipa-runtime-v46-${{ hashFiles('tools/development/setup-prebuilt-gecko.sh', 'tools/development/patch-prebuilt-gecko.py') }}
 
       - name: Prepare prebuilt Gecko engine
         run: ./tools/development/setup-prebuilt-gecko.sh
