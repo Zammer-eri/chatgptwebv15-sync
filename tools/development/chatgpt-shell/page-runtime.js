@@ -145,6 +145,12 @@
     return rect.bottom > viewport.bottom - 16;
   };
 
+  const correctComposerVisibility = editable => {
+    if (composerBelowViewport(editable)) {
+      editable.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    }
+  };
+
   const scheduleComposerVisibilityCheck = editable => {
     const token = ++composerVisibilityCheckToken;
     const run = () => {
@@ -152,12 +158,14 @@
         return;
       }
 
-      if (composerBelowViewport(editable)) {
-        editable.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-      }
+      correctComposerVisibility(editable);
     };
 
-    win.requestAnimationFrame?.(() => win.setTimeout(run, 0)) || win.setTimeout(run, 0);
+    run();
+    win.requestAnimationFrame?.(() => {
+      run();
+      win.setTimeout(run, 80);
+    }) || win.setTimeout(run, 0);
   };
 
   const nudgeComposerAfterReturn = editable => {
@@ -175,14 +183,14 @@
         return;
       }
 
-      if (composerBelowViewport(editable)) {
-        editable.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-      }
+      scheduleComposerVisibilityCheck(editable);
     };
 
     nudge();
+    scheduleComposerVisibilityCheck(editable);
     win.requestAnimationFrame?.(() => {
       nudge();
+      scheduleComposerVisibilityCheck(editable);
       win.setTimeout(run, 90);
     }) || run();
   };
