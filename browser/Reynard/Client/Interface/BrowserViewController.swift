@@ -35,6 +35,18 @@ javascript:(()=>{const d=document;const v=e=>{const r=e.getBoundingClientRect&&e
     private var pendingSelectionAnimation = false
     private let utilityPanel = UtilityPanelView()
     private var utilityPanelVisible = false
+    private var isShellRecoveryOverlayVisible = false
+    private var shellRecoveryOverlayToken = UUID()
+    private let shellRecoveryOverlay = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterialDark))
+    private let shellRecoveryPill = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
+    private let shellRecoveryLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.text = "Refreshing"
+        label.font = .systemFont(ofSize: 16, weight: .semibold)
+        label.textColor = .label
+        return label
+    }()
 
     override var shouldAutorotate: Bool {
         false
@@ -108,6 +120,7 @@ javascript:(()=>{const d=document;const v=e=>{const r=e.getBoundingClientRect&&e
         }
 
         browserLayout.configureLayout()
+        configureShellRecoveryOverlay()
         configureUtilityPanel()
         syncBrowserNavigationChrome(animated: false)
         syncPadSidebarButtonItem()
@@ -394,6 +407,9 @@ javascript:(()=>{const d=document;const v=e=>{const r=e.getBoundingClientRect&&e
             if index == tabManager.selectedTabIndex {
                 let tab = tabManager.tabs[index]
                 syncAddressBarLoadingState(progress: tab.progress, isLoading: tab.isLoading)
+                if isShellRecoveryOverlayVisible && !tab.isLoading {
+                    setShellRecoveryOverlayVisible(false, animated: true)
+                }
             }
 
         case .thumbnail:
@@ -529,6 +545,7 @@ javascript:(()=>{const d=document;const v=e=>{const r=e.getBoundingClientRect&&e
         }
 
         guard let tab = tabManager.selectedTab else { return }
+        setShellRecoveryOverlayVisible(true, animated: true)
         reloadTabAfterClearingAppCache(tab)
     }
 
@@ -569,6 +586,81 @@ javascript:(()=>{const d=document;const v=e=>{const r=e.getBoundingClientRect&&e
             DispatchQueue.main.async {
                 completion()
             }
+        }
+    }
+
+    private func configureShellRecoveryOverlay() {
+        shellRecoveryOverlay.translatesAutoresizingMaskIntoConstraints = false
+        shellRecoveryOverlay.alpha = 0
+        shellRecoveryOverlay.isHidden = true
+        shellRecoveryOverlay.isUserInteractionEnabled = false
+
+        shellRecoveryPill.translatesAutoresizingMaskIntoConstraints = false
+        shellRecoveryPill.layer.cornerCurve = .continuous
+        shellRecoveryPill.layer.cornerRadius = 18
+        shellRecoveryPill.clipsToBounds = true
+        shellRecoveryPill.contentView.addSubview(shellRecoveryLabel)
+
+        shellRecoveryOverlay.contentView.addSubview(shellRecoveryPill)
+        view.addSubview(shellRecoveryOverlay)
+
+        NSLayoutConstraint.activate([
+            shellRecoveryOverlay.topAnchor.constraint(equalTo: view.topAnchor),
+            shellRecoveryOverlay.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            shellRecoveryOverlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            shellRecoveryOverlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            shellRecoveryPill.centerXAnchor.constraint(equalTo: shellRecoveryOverlay.contentView.centerXAnchor),
+            shellRecoveryPill.centerYAnchor.constraint(equalTo: shellRecoveryOverlay.contentView.centerYAnchor),
+            shellRecoveryLabel.leadingAnchor.constraint(equalTo: shellRecoveryPill.contentView.leadingAnchor, constant: 18),
+            shellRecoveryLabel.trailingAnchor.constraint(equalTo: shellRecoveryPill.contentView.trailingAnchor, constant: -18),
+            shellRecoveryLabel.topAnchor.constraint(equalTo: shellRecoveryPill.contentView.topAnchor, constant: 10),
+            shellRecoveryLabel.bottomAnchor.constraint(equalTo: shellRecoveryPill.contentView.bottomAnchor, constant: -10),
+        ])
+    }
+
+    private func setShellRecoveryOverlayVisible(_ visible: Bool, animated: Bool) {
+        guard visible != isShellRecoveryOverlayVisible || shellRecoveryOverlay.isHidden else {
+            return
+        }
+
+        isShellRecoveryOverlayVisible = visible
+        if visible {
+            shellRecoveryOverlay.isHidden = false
+            view.bringSubviewToFront(shellRecoveryOverlay)
+            shellRecoveryPill.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
+            let token = UUID()
+            shellRecoveryOverlayToken = token
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+                guard let self,
+                      self.shellRecoveryOverlayToken == token,
+                      self.isShellRecoveryOverlayVisible else {
+                    return
+                }
+                self.setShellRecoveryOverlayVisible(false, animated: true)
+            }
+        }
+
+        let animations = {
+            self.shellRecoveryOverlay.alpha = visible ? 1 : 0
+            self.shellRecoveryPill.transform = visible ? .identity : CGAffineTransform(scaleX: 0.98, y: 0.98)
+        }
+        let completion: (Bool) -> Void = { _ in
+            if !visible {
+                self.shellRecoveryOverlay.isHidden = true
+            }
+        }
+
+        if animated {
+            UIView.animate(
+                withDuration: visible ? 0.18 : 0.22,
+                delay: 0,
+                options: [.beginFromCurrentState, .allowUserInteraction],
+                animations: animations,
+                completion: completion
+            )
+        } else {
+            animations()
+            completion(true)
         }
     }
 

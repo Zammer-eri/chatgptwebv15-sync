@@ -32,7 +32,7 @@ final class KeyboardAccessoryBar {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.setTitle("Send", for: .normal)
         button.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
-        button.tintColor = .label
+        button.tintColor = .systemBlue
         return button
     }()
 
@@ -55,6 +55,8 @@ final class KeyboardAccessoryBar {
         view.addSubview(stack)
         sendPill.contentView.addSubview(sendButton)
         donePill.contentView.addSubview(doneButton)
+        configurePressFeedback(for: sendButton, pill: sendPill)
+        configurePressFeedback(for: doneButton, pill: donePill)
 
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -70,5 +72,42 @@ final class KeyboardAccessoryBar {
             doneButton.topAnchor.constraint(equalTo: donePill.contentView.topAnchor),
             doneButton.bottomAnchor.constraint(equalTo: donePill.contentView.bottomAnchor),
         ])
+    }
+
+    private func configurePressFeedback(for button: UIButton, pill: UIView) {
+        button.addAction(
+            UIAction { [weak pill] _ in
+                Self.animatePress(on: pill)
+            },
+            for: .touchDown
+        )
+        button.addAction(
+            UIAction { [weak pill] _ in
+                Self.animateRelease(on: pill)
+            },
+            for: [.touchUpInside, .touchUpOutside, .touchCancel]
+        )
+    }
+
+    private static func animatePress(on view: UIView?) {
+        UIView.animate(
+            withDuration: 0.09,
+            delay: 0,
+            options: [.beginFromCurrentState, .allowUserInteraction]
+        ) {
+            view?.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
+            view?.alpha = 0.72
+        }
+    }
+
+    private static func animateRelease(on view: UIView?) {
+        UIView.animate(
+            withDuration: 0.16,
+            delay: 0,
+            options: [.beginFromCurrentState, .allowUserInteraction]
+        ) {
+            view?.transform = .identity
+            view?.alpha = 1
+        }
     }
 }

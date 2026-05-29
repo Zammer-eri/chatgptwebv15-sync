@@ -23,12 +23,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.rootViewController = browserViewController
         window.makeKeyAndVisible()
         self.window = window
-        
-        handleIncomingURLContexts(connectionOptions.urlContexts)
-    }
-    
-    func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
-        handleIncomingURLContexts(URLContexts)
     }
     
     func sceneDidDisconnect(_ scene: UIScene) {
@@ -57,41 +51,5 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Called as the scene transitions from the foreground to the background.
         // Use this method to save data, release shared resources, and store enough scene-specific state information
         // to restore the scene back to its current state.
-    }
-    
-    private func handleIncomingURLContexts(_ urlContexts: Set<UIOpenURLContext>) {
-        guard let incomingURL = urlContexts.first?.url else {
-            return
-        }
-        handleIncomingURL(incomingURL)
-    }
-    
-    private func handleIncomingURL(_ incomingURL: URL) {
-        guard let browserViewController = window?.rootViewController as? BrowserViewController,
-              let resolvedURL = resolvedBrowserURL(from: incomingURL) else {
-            return
-        }
-
-        DispatchQueue.main.async {
-            browserViewController.openExternalURL(resolvedURL)
-        }
-    }
-    
-    private func resolvedBrowserURL(from incomingURL: URL) -> URL? {
-        guard let scheme = incomingURL.scheme?.lowercased() else {
-            return nil
-        }
-        
-        if scheme == "http" || scheme == "https" {
-            return incomingURL
-        }
-        
-        guard scheme == "reynard",
-              let components = URLComponents(url: incomingURL, resolvingAgainstBaseURL: false),
-              let encodedURL = components.queryItems?.first(where: { $0.name == "url" })?.value else {
-            return nil
-        }
-        
-        return URL(string: encodedURL)
     }
 }

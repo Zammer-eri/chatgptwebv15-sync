@@ -40,17 +40,12 @@ final class OpenInViewController: UIViewController {
                 return
             }
             
-            guard let sharedURL else {
+            guard sharedURL != nil else {
                 self.finishWithError(message: "No link was provided.")
                 return
             }
             
-            guard let browserURL = self.browserOpenURL(for: sharedURL) else {
-                self.finishWithError(message: "Unable to open Reynard.")
-                return
-            }
-            
-            self.openHostApp(with: browserURL)
+            self.finishWithError(message: "Open in ChatGPT is unavailable.")
         }
     }
     
@@ -69,17 +64,6 @@ final class OpenInViewController: UIViewController {
         }
         
         completion(nil)
-    }
-    
-    private func browserOpenURL(for sharedURL: URL) -> URL? {
-        guard var components = URLComponents(string: "reynard://open") else {
-            return nil
-        }
-        
-        components.queryItems = [
-            URLQueryItem(name: "url", value: sharedURL.absoluteString)
-        ]
-        return components.url
     }
     
     private func openHostApp(with url: URL) {
@@ -104,7 +88,7 @@ final class OpenInViewController: UIViewController {
             responder = r.next
         }
 
-        finishWithError(message: "Unable to open Reynard.")
+        finishWithError(message: "Unable to open ChatGPT.")
     }
     
     private func clearBackgrounds(startingAt view: UIView?) {
