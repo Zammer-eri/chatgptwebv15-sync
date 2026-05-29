@@ -8,9 +8,6 @@
     'form,[data-testid*="composer"],[class*="composer"],main';
   let doc = null;
   let insertingLineBreak = false;
-  let nudgingComposerInput = false;
-  let composerVisibilityCheckToken = 0;
-  let returnVisibilityCheckToken = 0;
   let suppressComposerSubmitUntil = 0;
 
   const isChatGPT = () => {
@@ -64,137 +61,6 @@
     }
   };
 
-  const dispatchTextLikeInput = element => {
-    nudgingComposerInput = true;
-    try {
-      element.dispatchEvent(
-        new win.InputEvent("input", {
-          bubbles: true,
-          cancelable: false,
-          inputType: "insertText",
-          data: "",
-        })
-      );
-    } catch (_) {
-      try {
-        element.dispatchEvent(new win.Event("input", { bubbles: true }));
-      } catch (_) {}
-    } finally {
-      nudgingComposerInput = false;
-    }
-
-    try {
-      doc.dispatchEvent(new win.Event("selectionchange"));
-    } catch (_) {}
-  };
-
-  const viewportBounds = () => {
-    const visualViewport = win.visualViewport;
-    if (visualViewport) {
-      return {
-        top: visualViewport.offsetTop || 0,
-        bottom: (visualViewport.offsetTop || 0) + visualViewport.height,
-      };
-    }
-
-    return {
-      top: 0,
-      bottom: win.innerHeight || doc.documentElement?.clientHeight || 0,
-    };
-  };
-
-  const focusedEditableRect = editable => {
-    if (!(editable instanceof win.HTMLElement)) {
-      return null;
-    }
-
-    if (editable instanceof win.HTMLTextAreaElement) {
-      return editable.getBoundingClientRect?.() || null;
-    }
-
-    const selection = doc.getSelection?.();
-    if (selection?.rangeCount) {
-      const range = selection.getRangeAt(0);
-      if (editable.contains(range.commonAncestorContainer)) {
-        const rects = range.getClientRects?.();
-        if (rects?.length) {
-          return rects[rects.length - 1];
-        }
-
-        const rect = range.getBoundingClientRect?.();
-        if (rect && rect.width >= 0 && rect.height >= 0 && (rect.top || rect.bottom || rect.height)) {
-          return rect;
-        }
-      }
-    }
-
-    return editable.getBoundingClientRect?.() || null;
-  };
-
-  const composerBelowViewport = editable => {
-    if (!editable || !isComposerEditable(editable) || !visible(editable)) {
-      return false;
-    }
-
-    const rect = focusedEditableRect(editable);
-    const viewport = viewportBounds();
-    if (!rect || viewport.bottom <= viewport.top) {
-      return false;
-    }
-
-    return rect.bottom > viewport.bottom - 16;
-  };
-
-  const correctComposerVisibility = editable => {
-    if (composerBelowViewport(editable)) {
-      editable.scrollIntoView?.({ block: "nearest", inline: "nearest" });
-    }
-  };
-
-  const scheduleComposerVisibilityCheck = editable => {
-    const token = ++composerVisibilityCheckToken;
-    const run = () => {
-      if (token !== composerVisibilityCheckToken || !editable?.isConnected) {
-        return;
-      }
-
-      correctComposerVisibility(editable);
-    };
-
-    run();
-    win.requestAnimationFrame?.(() => {
-      run();
-      win.setTimeout(run, 80);
-    }) || win.setTimeout(run, 0);
-  };
-
-  const nudgeComposerAfterReturn = editable => {
-    const token = ++returnVisibilityCheckToken;
-    const nudge = () => {
-      if (token !== returnVisibilityCheckToken || !editable?.isConnected) {
-        return false;
-      }
-
-      dispatchTextLikeInput(editable);
-      return true;
-    };
-    const run = () => {
-      if (!nudge()) {
-        return;
-      }
-
-      scheduleComposerVisibilityCheck(editable);
-    };
-
-    nudge();
-    scheduleComposerVisibilityCheck(editable);
-    win.requestAnimationFrame?.(() => {
-      nudge();
-      scheduleComposerVisibilityCheck(editable);
-      win.setTimeout(run, 90);
-    }) || run();
-  };
-
   const insertContentEditableLineBreak = editable => {
     const selection = doc.getSelection?.();
     if (!selection || selection.rangeCount === 0) {
@@ -235,24 +101,20 @@
         const end = editable.selectionEnd ?? start;
         editable.setRangeText("\n", start, end, "end");
         dispatchInput(editable, "insertLineBreak");
-        nudgeComposerAfterReturn(editable);
         return true;
       }
 
       if (insertContentEditableLineBreak(editable)) {
-        nudgeComposerAfterReturn(editable);
         return true;
       }
 
       if (doc.execCommand?.("insertLineBreak")) {
         dispatchInput(editable, "insertLineBreak");
-        nudgeComposerAfterReturn(editable);
         return true;
       }
 
       if (doc.execCommand?.("insertParagraph")) {
         dispatchInput(editable, "insertLineBreak");
-        nudgeComposerAfterReturn(editable);
         return true;
       }
     } catch (_) {
@@ -324,21 +186,11 @@
       }
     };
 
-    const handleComposerInput = event => {
-      if (nudgingComposerInput || !isComposerEditable(event.target)) {
-        return;
-      }
-
-      scheduleComposerVisibilityCheck(editableElement(event.target));
-    };
-
     win.addEventListener("keydown", handleReturn, true);
     win.addEventListener("beforeinput", handleBeforeInput, true);
-    win.addEventListener("input", handleComposerInput, true);
     win.addEventListener("submit", handleSubmit, true);
     doc.addEventListener("keydown", handleReturn, true);
     doc.addEventListener("beforeinput", handleBeforeInput, true);
-    doc.addEventListener("input", handleComposerInput, true);
     doc.addEventListener("submit", handleSubmit, true);
     new win.MutationObserver(syncReturnHint).observe(doc.documentElement, {
       childList: true,

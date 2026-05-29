@@ -10,9 +10,6 @@ import UIKit
 
 final class BrowserLayout {
     private static let chatGPTShellMode = true
-    private static let shellMinimumInputSurroundingClearance: CGFloat = 120
-    private static let shellMaximumInputSurroundingClearance: CGFloat = 190
-    private static let shellInputSurroundingClearanceRatio: CGFloat = 0.42
     private static let keyboardAccessorySpacing: CGFloat = 8
     private static let keyboardAvoidancePadding: CGFloat = 12
     private unowned let controller: BrowserViewController
@@ -680,16 +677,7 @@ final class BrowserLayout {
             return nil
         }
 
-        let surroundingClearance: CGFloat
-        if Self.chatGPTShellMode {
-            surroundingClearance = min(
-                Self.shellMaximumInputSurroundingClearance,
-                max(Self.shellMinimumInputSurroundingClearance, effectiveKeyboardAvoidanceHeight * Self.shellInputSurroundingClearanceRatio)
-            )
-        } else {
-            surroundingClearance = 0
-        }
-        return max(0, min(2, (rectInGecko.maxY + surroundingClearance) / geckoView.bounds.height))
+        return max(0, min(2, rectInGecko.maxY / geckoView.bounds.height))
     }
     
     private func applyFocusedInputRelocation(duration: TimeInterval, curve: UIView.AnimationOptions) {
