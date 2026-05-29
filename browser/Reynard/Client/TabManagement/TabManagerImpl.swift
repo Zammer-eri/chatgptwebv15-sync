@@ -182,7 +182,8 @@ final class TabManagerImplementation: NSObject, TabManager {
             return false
         }
 
-        return Self.embeddedChatGPTFlowHosts.contains { hostMatches(host, domain: $0) } ||
+        return isChatGPTURL(url.absoluteString) ||
+            Self.embeddedChatGPTFlowHosts.contains { hostMatches(host, domain: $0) } ||
             Self.embeddedChatGPTFileHosts.contains { hostMatches(host, domain: $0) } ||
             host.hasSuffix(".blob.core.windows.net")
     }
