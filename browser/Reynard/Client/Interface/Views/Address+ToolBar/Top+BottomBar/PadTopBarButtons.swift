@@ -15,8 +15,6 @@ final class PadTopBarButtons {
     lazy var menuButton = MakeButtons.makeToolbarButton(controller: controller, imageName: "ellipsis.circle", action: #selector(BrowserViewController.topBarMenuTapped))
     lazy var downloadButton = MakeButtons.makeDownloadToolbarButton(target: controller, action: #selector(BrowserViewController.topBarDownloadsTapped))
     lazy var shareButton = MakeButtons.makeToolbarButton(controller: controller, imageName: "square.and.arrow.up", action: #selector(BrowserViewController.shareTapped))
-    lazy var newTabButton = MakeButtons.makeToolbarButton(controller: controller, imageName: "plus", action: #selector(BrowserViewController.newTabTapped))
-    lazy var tabOverviewButton = MakeButtons.makeToolbarButton(controller: controller, imageName: "square.on.square", action: #selector(BrowserViewController.tabsTapped))
     
     lazy var leftStack: UIStackView = {
         downloadButton.isHidden = true
@@ -30,7 +28,7 @@ final class PadTopBarButtons {
     }()
     
     lazy var rightStack: UIStackView = {
-        let stack = UIStackView(arrangedSubviews: [shareButton, newTabButton, tabOverviewButton])
+        let stack = UIStackView(arrangedSubviews: [shareButton])
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.axis = .horizontal
         stack.spacing = 10

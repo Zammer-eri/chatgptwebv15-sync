@@ -29,6 +29,9 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
 
     var isSearchFocused = false
     private var pendingSelectionAnimation = false
+    private let utilityPanel = UtilityPanelView()
+    private var utilityPanelLeadingConstraint: NSLayoutConstraint?
+    private var utilityPanelVisible = false
 
     override var shouldAutorotate: Bool {
         false
@@ -62,15 +65,7 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
 
 
     var usesPhoneTopAddressBarLayout: Bool {
-        guard !isPadLayout else { return false }
-        let isLandscape: Bool
-        if let orientation = view.window?.windowScene?.interfaceOrientation {
-            isLandscape = orientation.isLandscape
-        } else {
-            isLandscape = view.bounds.width > view.bounds.height
-        }
-        guard !isLandscape else { return false }
-        return BrowserPreferences.shared.addressBarPosition == .top
+        false
     }
 
     var usesPhoneBottomOverviewLayout: Bool {
@@ -109,19 +104,8 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
             return
         }
 
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(addressBarPositionDidChange),
-            name: Notification.Name("addressBarPositionChanged"),
-            object: nil
-        )
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(landscapeTabBarDidChange),
-            name: Notification.Name("landscapeTabBarChanged"),
-            object: nil
-        )
         browserLayout.configureLayout()
+        configureUtilityPanel()
         syncBrowserNavigationChrome(animated: false)
         syncPadSidebarButtonItem()
         configureChatGPTShellGestures()
@@ -168,9 +152,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         syncPadSidebarButtonItem()
         refreshAddressBar()
         browserLayout.applyChromeLayout(animated: false)
-        browserUI.tabOverviewCollection.collectionView.collectionViewLayout.invalidateLayout()
-        browserUI.padTabBar.collectionView.collectionViewLayout.invalidateLayout()
-        tabOverviewPresentation.refreshForCurrentOrientation()
     }
 
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
@@ -182,13 +163,10 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         coordinator.animate { _ in
             self.syncBrowserNavigationChrome(animated: false)
             self.syncPadSidebarButtonItem()
-            self.browserUI.tabOverviewCollection.collectionView.collectionViewLayout.invalidateLayout()
-            self.browserUI.padTabBar.collectionView.collectionViewLayout.invalidateLayout()
         } completion: { _ in
             self.syncBrowserNavigationChrome(animated: false)
             self.syncPadSidebarButtonItem()
             self.browserUI.geckoView.transform = .identity
-            self.tabOverviewPresentation.refreshForCurrentOrientation()
             DispatchQueue.main.async {
                 guard self.isViewLoaded, self.view.window != nil else {
                     return
@@ -257,12 +235,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
             tabManager.createInitialTab()
             return
         }
-
-        if tabManager.tabs.count == 1 && tabManager.tabs[0].url == nil {
-            return
-        }
-
-        _ = createTab(selecting: true, at: tabManager.tabs.count)
     }
 
     func updateNavigationButtons() {
@@ -277,14 +249,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         browserUI.padTopBarButtons.shareButton.isEnabled = shareEnabled
         browserUI.padTopBarButtons.backButton.isEnabled = tab.canGoBack
         browserUI.padTopBarButtons.forwardButton.isEnabled = tab.canGoForward
-    }
-
-    @objc private func addressBarPositionDidChange() {
-        browserLayout.applyChromeLayout(animated: true)
-    }
-
-    @objc private func landscapeTabBarDidChange() {
-        browserLayout.applyChromeLayout(animated: true)
     }
 
     private func syncPadSidebarButtonItem() {
@@ -319,36 +283,11 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     }
 
     func setLibrarySidebarVisible(_ visible: Bool, animated: Bool) {
-        guard isPadLayout else {
-            return
-        }
-
-        (splitViewController as? BrowserSplitViewController)?.setLibrarySidebarVisible(visible)
-        browserLayout.applyChromeLayout(animated: animated)
+        setUtilityPanelVisible(visible, animated: animated)
     }
 
     private func activeTabStripHeight() -> CGFloat {
-        guard usesPadChromeLayout,
-              tabManager.tabs.count > 1 else {
-            return 0
-        }
-
-        if !isPadLayout {
-            guard BrowserPreferences.shared.showsLandscapeTabBar else {
-                return 0
-            }
-            let isLandscape: Bool
-            if let orientation = view.window?.windowScene?.interfaceOrientation {
-                isLandscape = orientation.isLandscape
-            } else {
-                isLandscape = view.bounds.width > view.bounds.height
-            }
-            guard isLandscape else {
-                return 0
-            }
-        }
-
-        return 36
+        0
     }
 
     func tabPreviewAspectRatio() -> CGFloat {
@@ -411,16 +350,10 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         }
         refreshAddressBar()
 
-        browserUI.tabOverviewCollection.collectionView.reloadData()
-        browserUI.padTabBar.collectionView.reloadData()
         browserLayout.applyChromeLayout(animated: false)
     }
 
     func tabManager(_ tabManager: TabManager, didSelectTabAt index: Int, previousIndex: Int?) {
-        if let previousIndex {
-            captureThumbnail(for: previousIndex)
-        }
-
         guard tabManager.tabs.indices.contains(index) else {
             return
         }
@@ -431,12 +364,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         refreshAddressBar()
 
         updateNavigationButtons()
-        browserUI.tabOverviewCollection.collectionView.reloadData()
-        browserUI.padTabBar.collectionView.reloadData()
-
-        if usesPadChromeLayout {
-            centerSelectedPadTab(animated: pendingSelectionAnimation)
-        }
         pendingSelectionAnimation = false
     }
 
@@ -447,18 +374,13 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
 
         switch reason {
         case .title:
-            browserUI.padTabBar.collectionView.reloadData()
-            browserUI.tabOverviewCollection.collectionView.reloadData()
+            break
 
         case .location:
             if index == tabManager.selectedTabIndex {
                 refreshAddressBar()
                 updateNavigationButtons()
             }
-
-        case .favicon:
-            browserUI.padTabBar.collectionView.reloadData()
-            browserUI.tabOverviewCollection.collectionView.reloadData()
 
         case .navigationState:
             if index == tabManager.selectedTabIndex {
@@ -472,7 +394,7 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
             }
 
         case .thumbnail:
-            browserUI.tabOverviewCollection.collectionView.reloadData()
+            break
         }
     }
 
@@ -485,7 +407,13 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     }
 
     func tabManager(_ tabManager: TabManager, shouldHandleExternalResponse response: ExternalResponseInfo, for session: GeckoSession) -> Bool {
-        return false
+        guard let download = DownloadStore.shared.prepareDownload(from: response) else {
+            return false
+        }
+
+        DownloadStore.shared.startDownload(download)
+        setUtilityPanelVisible(true, animated: true)
+        return true
     }
 
     func backButtonClicked() {
@@ -498,12 +426,11 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     }
 
     func menuButtonClicked() {
+        setUtilityPanelVisible(true, animated: true)
     }
 
     func downloadsButtonClicked() {
-    }
-
-    func tabsButtonClicked() {
+        setUtilityPanelVisible(true, animated: true)
     }
 
     func addressBarDidSubmit(_ searchTerm: String) {
@@ -537,10 +464,27 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     }
 
     private func configureChatGPTShellGestures() {
+        let utilityGesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleUtilityPanelGesture(_:)))
+        utilityGesture.edges = .left
+        utilityGesture.cancelsTouchesInView = false
+        view.addGestureRecognizer(utilityGesture)
+
         let reloadGesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleShellReloadGesture(_:)))
         reloadGesture.edges = .right
         reloadGesture.cancelsTouchesInView = false
         view.addGestureRecognizer(reloadGesture)
+    }
+
+    @objc private func handleUtilityPanelGesture(_ gesture: UIScreenEdgePanGestureRecognizer) {
+        guard gesture.state == .ended || gesture.state == .recognized else {
+            return
+        }
+
+        guard gesture.translation(in: view).x > 24 else {
+            return
+        }
+
+        setUtilityPanelVisible(true, animated: true)
     }
 
     @objc private func handleShellReloadGesture(_ gesture: UIScreenEdgePanGestureRecognizer) {
@@ -561,6 +505,7 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     }
 
     @objc func tabsTapped() {
+        setUtilityPanelVisible(true, animated: true)
     }
 
     @objc func doneTapped() {
@@ -576,7 +521,7 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     }
 
     @objc func librarySidebarTapped() {
-        setLibrarySidebarVisible(!isLibrarySidebarVisible, animated: true)
+        setUtilityPanelVisible(!utilityPanelVisible, animated: true)
     }
 
     @objc func padBackTapped() {
@@ -586,9 +531,11 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     }
 
     @objc func topBarMenuTapped() {
+        setUtilityPanelVisible(true, animated: true)
     }
 
     @objc func topBarDownloadsTapped() {
+        setUtilityPanelVisible(true, animated: true)
     }
 
     @objc func dismissKeyboardTapped() {
@@ -601,6 +548,135 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         }
     }
 
+    private func configureUtilityPanel() {
+        utilityPanel.translatesAutoresizingMaskIntoConstraints = false
+        utilityPanel.onClose = { [weak self] in
+            self?.setUtilityPanelVisible(false, animated: true)
+        }
+        utilityPanel.onAndroidUserAgentChanged = { isOn in
+            BrowserPreferences.shared.useAndroidUserAgent = isOn
+        }
+        view.addSubview(utilityPanel)
+        let width = utilityPanel.widthAnchor.constraint(equalTo: view.widthAnchor, multiplier: 0.88)
+        width.priority = .defaultHigh
+        utilityPanelLeadingConstraint = utilityPanel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: -380)
+        NSLayoutConstraint.activate([
+            utilityPanelLeadingConstraint!,
+            utilityPanel.topAnchor.constraint(equalTo: view.topAnchor),
+            utilityPanel.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            width,
+            utilityPanel.widthAnchor.constraint(lessThanOrEqualToConstant: 380),
+        ])
+        utilityPanel.isHidden = true
+    }
+
+    private func setUtilityPanelVisible(_ visible: Bool, animated: Bool) {
+        utilityPanelVisible = visible
+        utilityPanel.syncControls()
+        utilityPanel.isHidden = false
+        view.bringSubviewToFront(utilityPanel)
+        utilityPanelLeadingConstraint?.constant = visible ? 0 : -(utilityPanel.bounds.width > 0 ? utilityPanel.bounds.width : 380)
+        let animations = {
+            self.view.layoutIfNeeded()
+        }
+        let completion: (Bool) -> Void = { _ in
+            self.utilityPanel.isHidden = !visible
+        }
+        if animated {
+            UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseOut], animations: animations, completion: completion)
+        } else {
+            animations()
+            completion(true)
+        }
+    }
+
+}
+
+private final class UtilityPanelView: UIView {
+    var onClose: (() -> Void)?
+    var onAndroidUserAgentChanged: ((Bool) -> Void)?
+
+    private let androidUASwitch = UISwitch()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .systemGroupedBackground
+        layer.shadowColor = UIColor.black.cgColor
+        layer.shadowOpacity = 0.2
+        layer.shadowRadius = 16
+        layer.shadowOffset = CGSize(width: 3, height: 0)
+
+        let titleLabel = UILabel()
+        titleLabel.text = "Downloads"
+        titleLabel.font = .systemFont(ofSize: 22, weight: .semibold)
+
+        let closeButton = UIButton(type: .system)
+        closeButton.setImage(UIImage(systemName: "xmark"), for: .normal)
+        closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
+
+        let header = UIStackView(arrangedSubviews: [titleLabel, closeButton])
+        header.translatesAutoresizingMaskIntoConstraints = false
+        header.axis = .horizontal
+        header.alignment = .center
+        header.spacing = 12
+
+        let uaLabel = UILabel()
+        uaLabel.text = "Use Android User Agent"
+        uaLabel.font = .systemFont(ofSize: 16, weight: .regular)
+
+        androidUASwitch.addTarget(self, action: #selector(androidUASwitchChanged), for: .valueChanged)
+
+        let uaRow = UIStackView(arrangedSubviews: [uaLabel, androidUASwitch])
+        uaRow.translatesAutoresizingMaskIntoConstraints = false
+        uaRow.axis = .horizontal
+        uaRow.alignment = .center
+        uaRow.spacing = 12
+        uaRow.layoutMargins = UIEdgeInsets(top: 10, left: 16, bottom: 10, right: 16)
+        uaRow.isLayoutMarginsRelativeArrangement = true
+        uaRow.backgroundColor = .secondarySystemGroupedBackground
+        uaRow.layer.cornerRadius = 10
+
+        let downloadsView = DownloadsManagerView()
+
+        addSubview(header)
+        addSubview(uaRow)
+        addSubview(downloadsView)
+
+        NSLayoutConstraint.activate([
+            header.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 14),
+            header.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
+            header.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            closeButton.widthAnchor.constraint(equalToConstant: 34),
+            closeButton.heightAnchor.constraint(equalToConstant: 34),
+
+            uaRow.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 14),
+            uaRow.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            uaRow.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+
+            downloadsView.topAnchor.constraint(equalTo: uaRow.bottomAnchor, constant: 8),
+            downloadsView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            downloadsView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            downloadsView.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+
+        syncControls()
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func syncControls() {
+        androidUASwitch.isOn = BrowserPreferences.shared.useAndroidUserAgent
+    }
+
+    @objc private func closeTapped() {
+        onClose?()
+    }
+
+    @objc private func androidUASwitchChanged() {
+        onAndroidUserAgentChanged?(androidUASwitch.isOn)
+    }
 }
 
 final class BrowserSplitViewController: UISplitViewController, UISplitViewControllerDelegate {

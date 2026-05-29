@@ -34,25 +34,12 @@ final class TabManagerImplementation: NSObject, TabManager {
     }
 
     private weak var delegate: TabManagerDelegate?
-    private var loadWatchdogs: [UUID: DispatchWorkItem] = [:]
-    private var chatRouteSequence = 0
-    private var lastChatRouteByTab: [UUID: (sequence: Int, url: String)] = [:]
-
-    private struct ShellTimeoutError: Error, CustomStringConvertible {
-        let description: String
-    }
-
-    private lazy var isURLLenient: NSRegularExpression = {
-        let pattern = "^\\s*(\\w+-+)*[\\w\\[]+(://[/]*|:|\\.)(\\w+-+)*[\\w\\[:]+([\\S&&[^\\w-]]\\S*)?\\s*$"
-        return try! NSRegularExpression(pattern: pattern)
-    }()
 
     init(delegate: TabManagerDelegate?) {
         self.delegate = delegate
     }
 
     private func closeSession(_ session: GeckoSession) {
-        ShellDiagnostics.log("closeSession session=\(session.diagnosticID ?? "nil")")
         if session.isOpen() {
             session.setActive(false)
         }
@@ -66,14 +53,12 @@ final class TabManagerImplementation: NSObject, TabManager {
     }
 
     private func loadURL(_ url: String, in tab: Tab, flags: Int = GeckoSessionLoadFlags.none) {
-        ShellDiagnostics.log("loadURL tab=\(tab.id.uuidString) flags=\(flags) url=\(url)")
         tab.session.updateSettings(UserAgentController.shared.sessionSettings(for: url, tabID: tab.id))
         tab.session.load(url, flags: flags)
     }
 
     private func makeTab(windowId: String?) -> Tab {
         let tab = Tab(session: createSession(windowId: windowId))
-        ShellDiagnostics.log("makeTab tab=\(tab.id.uuidString) session=\(tab.session.diagnosticID ?? "nil") windowId=\(windowId ?? "nil")")
         return tab
     }
 
@@ -98,6 +83,20 @@ final class TabManagerImplementation: NSObject, TabManager {
         }
 
         return url
+    }
+
+    private func normalizedAddressInput(_ value: String) -> String? {
+        if remoteURL(from: value) != nil {
+            return value
+        }
+
+        guard value.rangeOfCharacter(from: .whitespacesAndNewlines) == nil,
+              value.contains("."),
+              remoteURL(from: "https://" + value) != nil else {
+            return nil
+        }
+
+        return "https://" + value
     }
 
     private func shouldOpenLoadRequestExternally(session: GeckoSession, request: LoadRequest) -> Bool {
@@ -163,7 +162,6 @@ final class TabManagerImplementation: NSObject, TabManager {
             return false
         }
 
-        ShellDiagnostics.log("externalOpen url=\(url.absoluteString)")
         DispatchQueue.main.async { [weak self] in
             guard let self else {
                 return
@@ -171,12 +169,6 @@ final class TabManagerImplementation: NSObject, TabManager {
             self.delegate?.tabManager(self, didRequestExternalOpen: url)
         }
         return true
-    }
-
-    private func scheduleFaviconUpdate(forTabAt index: Int) {
-        guard tabs.indices.contains(index) else { return }
-        tabs[index].favicon = nil
-        delegate?.tabManager(self, didUpdateTabAt: index, reason: .favicon)
     }
 
     private func loadRestoredURLIfNeeded(for index: Int) {
@@ -191,42 +183,38 @@ final class TabManagerImplementation: NSObject, TabManager {
 
         tab.pendingRestoreURL = nil
         tab.suppressInitialNavigation = false
-        ShellDiagnostics.log("loadRestoredURL tab=\(tab.id.uuidString) url=\(url)")
         loadURL(url, in: tab)
     }
 
     func createInitialTab() {
         let index = addTab(selecting: true, windowId: nil, at: nil)
         if let tab = tabs[safe: index] {
-            ShellDiagnostics.log("createInitialTab tab=\(tab.id.uuidString)")
             load(Self.shellHomeURL, in: tab)
         }
     }
 
     @discardableResult
     func addTab(selecting: Bool, windowId: String? = nil, at insertionIndex: Int? = nil) -> Int {
-        let tab = makeTab(windowId: windowId)
-        let index = min(max(insertionIndex ?? tabs.count, 0), tabs.count)
-
-        if index == tabs.count {
-            tabs.append(tab)
-        } else {
-            tabs.insert(tab, at: index)
-            if selectedTabIndex >= index {
-                selectedTabIndex += 1
+        if let existing = tabs.first {
+            if selecting {
+                selectedTabIndex = 0
+                existing.session.setActive(true)
             }
+            return 0
         }
 
+        let tab = makeTab(windowId: windowId)
+        tabs.append(tab)
+
         delegate?.tabManagerDidChangeTabs(self)
-        ShellDiagnostics.log("addTab tab=\(tab.id.uuidString) index=\(index) selecting=\(selecting) count=\(tabs.count)")
 
         if selecting {
-            selectTab(at: index)
+            selectTab(at: 0)
         } else {
             persistState()
         }
 
-        return index
+        return 0
     }
 
     func selectTab(at index: Int) {
@@ -238,7 +226,6 @@ final class TabManagerImplementation: NSObject, TabManager {
 
         selectedTabIndex = index
         tabs[index].session.setActive(true)
-        ShellDiagnostics.log("selectTab index=\(index) tab=\(tabs[index].id.uuidString) previous=\(previousIndex.map(String.init) ?? "nil")")
 
         delegate?.tabManager(self, didSelectTabAt: index, previousIndex: previousIndex)
         loadRestoredURLIfNeeded(for: index)
@@ -246,63 +233,21 @@ final class TabManagerImplementation: NSObject, TabManager {
     }
 
     func removeTab(at index: Int) {
-        guard tabs.indices.contains(index) else {
+        guard let tab = selectedTab else {
+            createInitialTab()
             return
         }
 
-        let wasSelected = index == selectedTabIndex
-        let removedTab = tabs.remove(at: index)
-        UserAgentController.shared.clearOverrides(forTabID: removedTab.id)
-        cancelLoadWatchdog(for: removedTab)
-        ShellDiagnostics.log("removeTab index=\(index) tab=\(removedTab.id.uuidString) wasSelected=\(wasSelected)")
-
-        if tabs.isEmpty {
-            selectedTabIndex = -1
-            delegate?.tabManagerDidChangeTabs(self)
-            let replacementIndex = addTab(selecting: true, windowId: nil, at: nil)
-            if let replacementTab = tabs[safe: replacementIndex] {
-                load(Self.shellHomeURL, in: replacementTab)
-            }
-            closeSession(removedTab.session)
-            return
-        }
-
-        if wasSelected {
-            selectedTabIndex = -1
-        } else if index < selectedTabIndex {
-            selectedTabIndex -= 1
-        }
-
-        delegate?.tabManagerDidChangeTabs(self)
-
-        if wasSelected {
-            let fallback = min(index, tabs.count - 1)
-            selectTab(at: fallback)
-        } else {
-            persistState()
-        }
-
-        closeSession(removedTab.session)
+        load(Self.shellHomeURL, in: tab)
     }
 
     func removeAllTabs() {
-        guard !tabs.isEmpty else {
+        guard let tab = selectedTab else {
+            createInitialTab()
             return
         }
 
-        let removedTabs = tabs
-        tabs.removeAll(keepingCapacity: true)
-        removedTabs.forEach(cancelLoadWatchdog)
-        removedTabs.forEach { UserAgentController.shared.clearOverrides(forTabID: $0.id) }
-        selectedTabIndex = -1
-        ShellDiagnostics.log("removeAllTabs count=\(removedTabs.count)")
-        delegate?.tabManagerDidChangeTabs(self)
-        let replacementIndex = addTab(selecting: true, windowId: nil)
-        if let replacementTab = tabs[safe: replacementIndex] {
-            load(Self.shellHomeURL, in: replacementTab)
-        }
-
-        removedTabs.forEach { closeSession($0.session) }
+        load(Self.shellHomeURL, in: tab)
     }
 
     func browse(to term: String) {
@@ -320,18 +265,12 @@ final class TabManagerImplementation: NSObject, TabManager {
 
         tab.suppressInitialNavigation = false
         tab.pendingDisplayText = trimmedValue
-        ShellDiagnostics.log("browse tab=\(tab.id.uuidString) term=\(trimmedValue)")
 
-        let fullRange = NSRange(location: 0, length: (trimmedValue as NSString).length)
-        let isURL = isURLLenient.firstMatch(in: trimmedValue, range: fullRange) != nil
-
-        if isURL {
-            load(trimmedValue, in: tab, flags: GeckoSessionLoadFlags.none)
+        guard let target = normalizedAddressInput(trimmedValue) else {
             return
         }
 
-        let searchTarget = searchURL(for: trimmedValue)
-        loadURL(searchTarget, in: tab)
+        load(target, in: tab, flags: GeckoSessionLoadFlags.none)
     }
 
     func load(_ url: String, in tab: Tab, flags: Int = GeckoSessionLoadFlags.none) {
@@ -342,18 +281,15 @@ final class TabManagerImplementation: NSObject, TabManager {
 
         tab.suppressInitialNavigation = false
         tab.pendingDisplayText = trimmedValue
-        ShellDiagnostics.log("load tab=\(tab.id.uuidString) flags=\(flags) url=\(trimmedValue)")
         loadURL(trimmedValue, in: tab, flags: flags)
     }
 
     func reload(_ tab: Tab) {
         guard let target = restoredURL(from: tab.url) else {
-            ShellDiagnostics.log("reload fallback tab=\(tab.id.uuidString) flags=\(reloadFlags)")
             load(Self.shellHomeURL, in: tab, flags: reloadFlags)
             return
         }
 
-        ShellDiagnostics.log("reload tab=\(tab.id.uuidString) flags=\(reloadFlags) url=\(target)")
         tab.session.updateSettings(UserAgentController.shared.sessionSettings(for: target, tabID: tab.id))
         tab.session.reload(flags: reloadFlags)
     }
@@ -385,30 +321,7 @@ final class TabManagerImplementation: NSObject, TabManager {
         session.progressDelegate = self
         session.navigationDelegate = self
         session.open(windowId: windowId)
-        ShellDiagnostics.log("createSession session=\(session.diagnosticID ?? "nil") windowId=\(windowId ?? "nil")")
         return session
-    }
-
-    private func scheduleLoadWatchdog(for tab: Tab, url: String) {
-        cancelLoadWatchdog(for: tab)
-        let tabID = tab.id
-        let workItem = DispatchWorkItem { [weak self] in
-            guard let self,
-                  let index = self.tabs.firstIndex(where: { $0.id == tabID }),
-                  self.tabs[index].isLoading else {
-                return
-            }
-
-            ShellDiagnostics.log(
-                "loadWatchdog stuck tab=\(tabID.uuidString) progress=\(self.tabs[index].progress) currentURL=\(self.tabs[index].url ?? "nil") startedURL=\(url)"
-            )
-        }
-        loadWatchdogs[tabID] = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 30, execute: workItem)
-    }
-
-    private func cancelLoadWatchdog(for tab: Tab) {
-        loadWatchdogs.removeValue(forKey: tab.id)?.cancel()
     }
 
 }
@@ -420,16 +333,11 @@ extension TabManagerImplementation: ContentDelegate {
         }
 
         tabs[index].title = title
-        let lastChatRoute = lastChatRouteByTab[tabs[index].id]
-        ShellDiagnostics.log(
-            "titleChange tab=\(tabs[index].id.uuidString) title=\(title) lastChatRouteSeq=\(lastChatRoute.map { String($0.sequence) } ?? "nil") lastChatRouteURL=\(lastChatRoute?.url ?? "nil")"
-        )
         delegate?.tabManager(self, didUpdateTabAt: index, reason: .title)
         persistState()
     }
 
     func onPreviewImage(session: GeckoSession, previewImageUrl: String) {
-        ShellDiagnostics.log("previewImage session=\(session.diagnosticID ?? "nil") url=\(previewImageUrl)")
     }
 
     func onFocusRequest(session: GeckoSession) {
@@ -439,98 +347,43 @@ extension TabManagerImplementation: ContentDelegate {
 
         session.setActive(true)
         session.setFocused(true)
-        ShellDiagnostics.log("focusRequest session=\(session.diagnosticID ?? "nil")")
     }
 
     func onCloseRequest(session: GeckoSession) {
-        guard let index = tabIndex(for: session) else {
-            return
-        }
-        ShellDiagnostics.log("closeRequest tab=\(tabs[index].id.uuidString) session=\(session.diagnosticID ?? "nil")")
-        removeTab(at: index)
+        session.load(Self.shellHomeURL)
     }
 
     func onFullScreen(session: GeckoSession, fullScreen: Bool) {
-        ShellDiagnostics.log("fullscreen session=\(session.diagnosticID ?? "nil") fullScreen=\(fullScreen)")
     }
 
     func onMetaViewportFitChange(session: GeckoSession, viewportFit: String) {
-        ShellDiagnostics.log("metaViewportFit session=\(session.diagnosticID ?? "nil") viewportFit=\(viewportFit)")
     }
 
     func onProductUrl(session: GeckoSession) {
-        ShellDiagnostics.log("productURL session=\(session.diagnosticID ?? "nil")")
     }
 
     func onCrash(session: GeckoSession) {
-        guard let index = tabIndex(for: session) else {
-            return
-        }
-        ShellDiagnostics.log("contentCrash tab=\(tabs[index].id.uuidString) session=\(session.diagnosticID ?? "nil") url=\(tabs[index].url ?? "nil")")
-        removeTab(at: index)
+        session.reload()
     }
 
     func onKill(session: GeckoSession) {
-        guard let index = tabIndex(for: session) else {
-            return
-        }
-        ShellDiagnostics.log("contentKill tab=\(tabs[index].id.uuidString) session=\(session.diagnosticID ?? "nil") url=\(tabs[index].url ?? "nil")")
-        removeTab(at: index)
+        session.reload()
     }
 
     func onFirstComposite(session: GeckoSession) {
-        ShellDiagnostics.log("firstComposite session=\(session.diagnosticID ?? "nil")")
     }
 
     func onFirstContentfulPaint(session: GeckoSession) {
-        ShellDiagnostics.log("firstContentfulPaint session=\(session.diagnosticID ?? "nil")")
     }
 
     func onPaintStatusReset(session: GeckoSession) {
-        ShellDiagnostics.log("paintStatusReset session=\(session.diagnosticID ?? "nil")")
     }
 
     func onWebAppManifest(session: GeckoSession, manifest: Any) {
-        ShellDiagnostics.log("webAppManifest session=\(session.diagnosticID ?? "nil")")
-    }
-
-    func onChatGPTHealth(session: GeckoSession, health: [String: Any?]) {
-        logChatGPTHealth(session: session, source: "push", health: health)
-    }
-
-    private func logChatGPTHealth(session: GeckoSession, source: String, health: [String: Any?]) {
-        let orderedKeys = [
-            "seq", "reason", "href", "readyState", "title", "bodyTextLength", "visibleTextLength",
-            "composerCount", "textareaCount", "buttonCount", "testIdCount", "articleCount",
-            "mainCount", "navCount", "localStorageLength", "indexedDBCount", "errorCount",
-            "lastError", "rejectionCount", "lastRejection",
-        ]
-        let details = orderedKeys.compactMap { key -> String? in
-            guard let value = health[key] ?? nil else {
-                return nil
-            }
-            return "\(key)=\(Self.logValue(value))"
-        }.joined(separator: " ")
-        ShellDiagnostics.log("chatGPTHealth source=\(source) session=\(session.diagnosticID ?? "nil") \(details)")
-    }
-
-    private static func logValue(_ value: Any) -> String {
-        let raw: String
-        if let string = value as? String {
-            raw = string
-        } else {
-            raw = "\(value)"
-        }
-        return raw
-            .replacingOccurrences(of: "\n", with: "\\n")
-            .replacingOccurrences(of: "\r", with: "\\r")
-            .prefix(500)
-            .description
     }
 
     func onSlowScript(session: GeckoSession, scriptFileName: String) async -> SlowScriptResponse {
         guard let index = tabIndex(for: session) else {
-            ShellDiagnostics.log("slowScript unknownSession=\(session.diagnosticID ?? "nil") file=\(scriptFileName) action=halt")
             return .halt
         }
 
@@ -538,32 +391,29 @@ extension TabManagerImplementation: ContentDelegate {
         if isChatGPTURL(tab.url) ||
             isChatGPTURL(tab.pendingDisplayText) ||
             isChatGPTURL(tab.pendingRestoreURL) {
-            ShellDiagnostics.log("slowScript tab=\(tab.id.uuidString) file=\(scriptFileName) action=resume url=\(tab.url ?? "nil")")
             return .resume
         }
 
-        ShellDiagnostics.log("slowScript tab=\(tab.id.uuidString) file=\(scriptFileName) action=halt url=\(tab.url ?? "nil")")
         return .halt
     }
 
     func onShowDynamicToolbar(session: GeckoSession) {
-        ShellDiagnostics.log("showDynamicToolbar session=\(session.diagnosticID ?? "nil")")
     }
 
     func onCookieBannerDetected(session: GeckoSession) {
-        ShellDiagnostics.log("cookieBannerDetected session=\(session.diagnosticID ?? "nil")")
     }
 
     func onCookieBannerHandled(session: GeckoSession) {
-        ShellDiagnostics.log("cookieBannerHandled session=\(session.diagnosticID ?? "nil")")
     }
 
     func onExternalResponse(session: GeckoSession, response: ExternalResponseInfo) {
-        ShellDiagnostics.log("externalResponse session=\(session.diagnosticID ?? "nil") url=\(response.url) mime=\(response.mimeType ?? "nil")")
+        _ = delegate?.tabManager(self, shouldHandleExternalResponse: response, for: session)
     }
 
     func onSavePdf(session: GeckoSession, request: SavePdfInfo) {
-        ShellDiagnostics.log("savePdf session=\(session.diagnosticID ?? "nil") url=\(request.url)")
+        if let download = DownloadStore.shared.prepareDownload(from: request) {
+            DownloadStore.shared.startDownload(download)
+        }
     }
 }
 
@@ -578,7 +428,6 @@ extension TabManagerImplementation: NavigationDelegate {
         if tabs[index].suppressInitialNavigation,
            let normalizedURL,
            normalizedURL.hasPrefix("about:blank") {
-            ShellDiagnostics.log("locationIgnored tab=\(tabs[index].id.uuidString) url=\(url ?? "nil")")
             return
         }
 
@@ -592,60 +441,8 @@ extension TabManagerImplementation: NavigationDelegate {
 
         tabs[index].url = url
         tabs[index].pendingDisplayText = nil
-        tabs[index].favicon = nil
-        ShellDiagnostics.log("locationChange tab=\(tabs[index].id.uuidString) session=\(session.diagnosticID ?? "nil") url=\(url ?? "nil") permissions=\(permissions.count)")
-        if let url, isChatConversationURL(url) {
-            chatRouteSequence += 1
-            lastChatRouteByTab[tabs[index].id] = (chatRouteSequence, url)
-            ShellDiagnostics.log(
-                "chatRoute seq=\(chatRouteSequence) tab=\(tabs[index].id.uuidString) selected=\(index == selectedTabIndex) titleBefore=\(tabs[index].title) url=\(url)"
-            )
-            scheduleChatGPTHealthProbe(session: session, routeSequence: chatRouteSequence, url: url)
-        }
         delegate?.tabManager(self, didUpdateTabAt: index, reason: .location)
-        scheduleFaviconUpdate(forTabAt: index)
         persistState()
-    }
-
-    private func scheduleChatGPTHealthProbe(session: GeckoSession, routeSequence: Int, url: String) {
-        for delay in [1.0, 3.0, 6.0] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak session] in
-                guard let session else { return }
-                Task { @MainActor in
-                    do {
-                        let health = try await self.withTimeout(seconds: 2) {
-                            try await session.chatGPTHealth()
-                        }
-                        if let health {
-                            self.logChatGPTHealth(
-                                session: session,
-                                source: "routeSeq=\(routeSequence) delay=\(delay) url=\(url)",
-                                health: health
-                            )
-                        } else {
-                            ShellDiagnostics.log("chatGPTHealth source=routeSeq=\(routeSequence) delay=\(delay) result=nil url=\(url)")
-                        }
-                    } catch {
-                        ShellDiagnostics.log("chatGPTHealth source=routeSeq=\(routeSequence) delay=\(delay) error=\(Self.logValue(error)) url=\(url)")
-                    }
-                }
-            }
-        }
-    }
-
-    private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T) async throws -> T {
-        try await withThrowingTaskGroup(of: T.self) { group in
-            group.addTask {
-                try await operation()
-            }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                throw ShellTimeoutError(description: "timeout")
-            }
-            let result = try await group.next()!
-            group.cancelAll()
-            return result
-        }
     }
 
     func onCanGoBack(session: GeckoSession, canGoBack: Bool) {
@@ -668,11 +465,9 @@ extension TabManagerImplementation: NavigationDelegate {
 
     func onLoadRequest(session: GeckoSession, request: LoadRequest) async -> AllowOrDeny {
         if shouldOpenLoadRequestExternally(session: session, request: request) {
-            ShellDiagnostics.log("loadRequest denyExternal session=\(session.diagnosticID ?? "nil") uri=\(request.uri) trigger=\(request.triggerUri ?? "nil") redirect=\(request.isRedirect) gesture=\(request.hasUserGesture)")
             return .deny
         }
 
-        ShellDiagnostics.log("loadRequest allow session=\(session.diagnosticID ?? "nil") uri=\(request.uri) trigger=\(request.triggerUri ?? "nil") redirect=\(request.isRedirect) gesture=\(request.hasUserGesture)")
         return .allow
     }
 
@@ -684,47 +479,19 @@ extension TabManagerImplementation: NavigationDelegate {
         if let index = tabIndex(for: session),
            shouldOpenExternallyFromChatGPT(targetURLString: uri, sourceURLString: tabs[index].url),
            requestExternalOpen(uri) {
-            ShellDiagnostics.log("newSession deniedExternal sourceSession=\(session.diagnosticID ?? "nil") uri=\(uri)")
             return nil
         }
 
-        ShellDiagnostics.log("newSession sourceSession=\(session.diagnosticID ?? "nil") windowId=\(windowId) uri=\(uri)")
-        let newSession = GeckoSession()
-        newSession.contentDelegate = self
-        newSession.progressDelegate = self
-        newSession.navigationDelegate = self
-
-        let newTab = Tab(session: newSession)
-        newSession.updateSettings(UserAgentController.shared.sessionSettings(for: uri, tabID: newTab.id))
-        newTab.url = uri
-        newTab.favicon = nil
-
-        let insertionIndex = tabIndex(for: session).map { $0 + 1 }
-        let index = min(max(insertionIndex ?? tabs.count, 0), tabs.count)
-        if index == tabs.count {
-            tabs.append(newTab)
-        } else {
-            tabs.insert(newTab, at: index)
-            if selectedTabIndex >= index {
-                selectedTabIndex += 1
-            }
+        if let tab = selectedTab {
+            loadURL(uri, in: tab)
         }
-
-        delegate?.tabManagerDidChangeTabs(self)
-        delegate?.tabManager(self, didUpdateTabAt: index, reason: .location)
-        scheduleFaviconUpdate(forTabAt: index)
-        persistState()
-        delegate?.tabManager(self, animateNewTabSelectionAt: index) { [weak self] in
-            self?.selectTab(at: index)
-        }
-        return newSession
+        return nil
     }
 }
 
 extension TabManagerImplementation: ProgressDelegate {
     func onPageStart(session: GeckoSession, url: String) {
         guard let index = tabIndex(for: session) else {
-            ShellDiagnostics.log("pageStart unknownSession=\(session.diagnosticID ?? "nil") url=\(url)")
             return
         }
 
@@ -738,93 +505,30 @@ extension TabManagerImplementation: ProgressDelegate {
            (desiredSettings.userAgentOverride != session.userAgentOverride ||
             desiredSettings.userAgentMode != session.userAgentMode ||
             desiredSettings.viewportMode != session.viewportMode) {
-            ShellDiagnostics.log("pageStart reloadForSettings tab=\(tabs[index].id.uuidString) currentHost=\(currentHost ?? "nil") requestedHost=\(requestedHost ?? "nil") url=\(url)")
             loadURL(url, in: tabs[index])
         }
 
         tabs[index].isLoading = true
         tabs[index].progress = 0
-        ShellDiagnostics.log("pageStart tab=\(tabs[index].id.uuidString) session=\(session.diagnosticID ?? "nil") url=\(url)")
-        scheduleLoadWatchdog(for: tabs[index], url: url)
         delegate?.tabManager(self, didUpdateTabAt: index, reason: .loading)
     }
 
     func onPageStop(session: GeckoSession, success: Bool) {
         guard let index = tabIndex(for: session) else {
-            ShellDiagnostics.log("pageStop unknownSession=\(session.diagnosticID ?? "nil") success=\(success)")
             return
         }
 
         tabs[index].isLoading = false
-        cancelLoadWatchdog(for: tabs[index])
-        ShellDiagnostics.log("pageStop tab=\(tabs[index].id.uuidString) session=\(session.diagnosticID ?? "nil") success=\(success) progress=\(tabs[index].progress) url=\(tabs[index].url ?? "nil")")
         delegate?.tabManager(self, didUpdateTabAt: index, reason: .loading)
         delegate?.tabManager(self, didUpdateTabAt: index, reason: .thumbnail)
     }
 
     func onProgressChange(session: GeckoSession, progress: Int) {
         guard let index = tabIndex(for: session) else {
-            ShellDiagnostics.log("progress unknownSession=\(session.diagnosticID ?? "nil") progress=\(progress)")
             return
         }
 
         tabs[index].progress = Float(progress) / 100
-        if progress == 100 {
-            ShellDiagnostics.log("progress tab=\(tabs[index].id.uuidString) session=\(session.diagnosticID ?? "nil") progress=\(progress) url=\(tabs[index].url ?? "nil")")
-        }
         delegate?.tabManager(self, didUpdateTabAt: index, reason: .loading)
-    }
-}
-
-enum ShellDiagnostics {
-    private static let queue = DispatchQueue(label: "com.codex.chatgpt.shell-diagnostics")
-    private static let maxLogBytes: UInt64 = 1_000_000
-    private static let runID = UUID().uuidString
-    private static let startDate = Date()
-
-    static func log(_ message: String) {
-        let elapsed = String(format: "%.3f", Date().timeIntervalSince(startDate))
-        let line = "[CHATGPT_SHELL_DIAG] \(timestamp()) run=\(runID) t=+\(elapsed)s \(message)"
-        NSLog("%@", line)
-        writeToFile(line)
-    }
-
-    private static func timestamp() -> String {
-        ISO8601DateFormatter().string(from: Date())
-    }
-
-    private static func writeToFile(_ line: String) {
-        queue.async {
-            guard let documentsURL = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
-                  let data = (line + "\n").data(using: .utf8) else {
-                return
-            }
-
-            let fileURL = documentsURL.appendingPathComponent("ChatGPTShellDiagnostics.log", isDirectory: false)
-            rotateLogIfNeeded(at: fileURL)
-
-            if FileManager.default.fileExists(atPath: fileURL.path),
-               let handle = try? FileHandle(forWritingTo: fileURL) {
-                defer { try? handle.close() }
-                try? handle.seekToEnd()
-                try? handle.write(contentsOf: data)
-                return
-            }
-
-            try? data.write(to: fileURL, options: .atomic)
-        }
-    }
-
-    private static func rotateLogIfNeeded(at fileURL: URL) {
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
-              let fileSize = attributes[.size] as? UInt64,
-              fileSize > maxLogBytes else {
-            return
-        }
-
-        let rotatedURL = fileURL.deletingLastPathComponent()
-            .appendingPathComponent("ChatGPTShellDiagnostics.previous.log", isDirectory: false)
-        try? FileManager.default.removeItem(at: rotatedURL)
-        try? FileManager.default.moveItem(at: fileURL, to: rotatedURL)
     }
 }

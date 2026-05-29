@@ -8,20 +8,14 @@
 import UIKit
 
 enum LibrarySection: Int, CaseIterable {
-    case bookmarks
-    case history
     case downloads
 
     static var allCases: [LibrarySection] {
-        [.bookmarks, .history, .downloads]
+        [.downloads]
     }
     
     var title: String {
         switch self {
-        case .bookmarks:
-            return "Bookmarks"
-        case .history:
-            return "History"
         case .downloads:
             return "Downloads"
         }
@@ -29,10 +23,6 @@ enum LibrarySection: Int, CaseIterable {
     
     var symbolName: String {
         switch self {
-        case .bookmarks:
-            return "bookmark"
-        case .history:
-            return "clock"
         case .downloads:
             return "arrow.down.circle"
         }
@@ -40,10 +30,6 @@ enum LibrarySection: Int, CaseIterable {
     
     var selectedSymbolName: String {
         switch self {
-        case .bookmarks:
-            return "bookmark.fill"
-        case .history:
-            return "clock.fill"
         case .downloads:
             return "arrow.down.circle.fill"
         }

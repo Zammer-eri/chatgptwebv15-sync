@@ -13,7 +13,6 @@ protocol PhoneToolbarDelegate: AnyObject {
     func shareButtonClicked()
     func menuButtonClicked()
     func downloadsButtonClicked()
-    func tabsButtonClicked()
 }
 
 final class PhoneToolbar: UIView {
@@ -37,10 +36,6 @@ final class PhoneToolbar: UIView {
     
     private lazy var downloadButton = MakeButtons.makeDownloadToolbarButton(target: self, action: #selector(toolbarDownloadButtonClicked))
     
-    private lazy var tabsButton: UIButton = {
-        MakeButtons.makeToolbarButton(target: self, imageName: "square.on.square", action: #selector(tabsButtonClicked))
-    }()
-    
     override init(frame: CGRect) {
         super.init(frame: frame)
         
@@ -48,7 +43,7 @@ final class PhoneToolbar: UIView {
         shareButton.isEnabled = false
         downloadButton.isHidden = true
         
-        let stack = UIStackView(arrangedSubviews: [backButton, forwardButton, shareButton, menuButton, downloadButton, tabsButton])
+        let stack = UIStackView(arrangedSubviews: [backButton, forwardButton, shareButton, menuButton, downloadButton])
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.axis = .horizontal
         stack.distribution = .fillEqually
@@ -104,10 +99,6 @@ final class PhoneToolbar: UIView {
     
     @objc func menuButtonClicked() {
         delegate?.menuButtonClicked()
-    }
-    
-    @objc func tabsButtonClicked() {
-        delegate?.tabsButtonClicked()
     }
     
     func setMenuButtonIndicatesUpdate(_ hasUpdate: Bool) {

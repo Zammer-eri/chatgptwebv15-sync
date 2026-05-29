@@ -123,10 +123,6 @@ final class LibrarySidebarViewController: UIViewController, UICollectionViewDele
         let contentViewController: UIViewController
         
         switch section {
-        case .bookmarks:
-            contentViewController = LibrarySidebarHostedSectionViewController(hostedView: BookmarksManagerView())
-        case .history:
-            contentViewController = LibrarySidebarHostedSectionViewController(hostedView: HistoryManagerView())
         case .downloads:
             contentViewController = LibrarySidebarHostedSectionViewController(hostedView: DownloadsManagerView())
         }

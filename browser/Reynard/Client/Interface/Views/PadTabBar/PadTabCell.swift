@@ -10,18 +10,7 @@ import UIKit
 final class PadTabCell: UICollectionViewCell {
     static let reuseIdentifier = "PadTabCell"
     
-    private static let fallbackFavicon = UIImage(systemName: "globe")
-    
     var onClose: (() -> Void)?
-    
-    private let faviconImageView: UIImageView = {
-        let imageView = UIImageView()
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        imageView.contentMode = .scaleAspectFit
-        imageView.tintColor = .secondaryLabel
-        imageView.clipsToBounds = true
-        return imageView
-    }()
     
     private let titleLabel: UILabel = {
         let label = UILabel()
@@ -69,7 +58,6 @@ final class PadTabCell: UICollectionViewCell {
         contentView.layer.cornerRadius = 0
         
         contentView.addSubview(titleStackView)
-        titleStackView.addArrangedSubview(faviconImageView)
         titleStackView.addArrangedSubview(titleLabel)
         contentView.addSubview(closeButton)
         contentView.addSubview(separatorView)
@@ -81,9 +69,6 @@ final class PadTabCell: UICollectionViewCell {
             titleStackView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
             titleStackView.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.leadingAnchor, constant: 10),
             titleStackView.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -34),
-            
-            faviconImageView.widthAnchor.constraint(equalToConstant: 16),
-            faviconImageView.heightAnchor.constraint(equalToConstant: 16),
             
             titleLabel.widthAnchor.constraint(lessThanOrEqualTo: contentView.widthAnchor, constant: -58),
             
@@ -105,16 +90,13 @@ final class PadTabCell: UICollectionViewCell {
     
     override func prepareForReuse() {
         super.prepareForReuse()
-        faviconImageView.image = Self.fallbackFavicon
         onClose = nil
     }
     
     func configure(tab: Tab, selected: Bool) {
         titleLabel.text = tab.title.isEmpty ? "Homepage" : tab.title
-        faviconImageView.image = tab.favicon ?? Self.fallbackFavicon
         contentView.backgroundColor = selected ? .systemGray6 : .systemGray5
         titleLabel.textColor = selected ? .label : .secondaryLabel
-        faviconImageView.tintColor = selected ? .label : .secondaryLabel
         closeButton.isHidden = !selected
         separatorView.isHidden = selected
     }

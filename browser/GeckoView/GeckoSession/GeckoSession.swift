@@ -39,10 +39,6 @@ public class GeckoSession {
     public var userAgentMode = 0
     public var viewportMode = 0
 
-    public var diagnosticID: String? {
-        id
-    }
-
     public func updateUserAgent(_ ua: String?) {
         updateSettings(
             GeckoSessionSettings(
@@ -194,10 +190,6 @@ public class GeckoSession {
 
     public func stop() {
         dispatcher.dispatch(type: "GeckoView:Stop")
-    }
-
-    public func chatGPTHealth() async throws -> [String: Any?]? {
-        try await dispatcher.query(type: "GeckoView:GetChatGPTHealth") as? [String: Any?]
     }
 
     public func goBack(userInteraction: Bool = true) {

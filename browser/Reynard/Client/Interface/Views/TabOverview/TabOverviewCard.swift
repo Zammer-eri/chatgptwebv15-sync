@@ -10,8 +10,6 @@ import UIKit
 final class TabOverviewCard: UICollectionViewCell {
     static let reuseIdentifier = "TabOverviewCard"
     
-    private static let fallbackFavicon = UIImage(systemName: "globe")
-    
     var onClose: (() -> Void)?
     
     private let previewShadowView: UIView = {
@@ -79,15 +77,6 @@ final class TabOverviewCard: UICollectionViewCell {
         return label
     }()
     
-    private let faviconImageView: UIImageView = {
-        let imageView = UIImageView()
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        imageView.contentMode = .scaleAspectFit
-        imageView.tintColor = .secondaryLabel
-        imageView.clipsToBounds = true
-        return imageView
-    }()
-    
     private let titleContainerView: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -119,7 +108,6 @@ final class TabOverviewCard: UICollectionViewCell {
         previewContainerView.addSubview(closeButton)
         contentView.addSubview(titleContainerView)
         titleContainerView.addSubview(titleStackView)
-        titleStackView.addArrangedSubview(faviconImageView)
         titleStackView.addArrangedSubview(titleLabel)
         
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
@@ -160,9 +148,6 @@ final class TabOverviewCard: UICollectionViewCell {
             titleStackView.trailingAnchor.constraint(lessThanOrEqualTo: titleContainerView.trailingAnchor),
             titleStackView.centerYAnchor.constraint(equalTo: titleContainerView.centerYAnchor),
             
-            faviconImageView.widthAnchor.constraint(equalToConstant: 16),
-            faviconImageView.heightAnchor.constraint(equalToConstant: 16),
-            
             titleLabel.widthAnchor.constraint(lessThanOrEqualTo: titleContainerView.widthAnchor, constant: -24),
         ])
     }
@@ -174,7 +159,6 @@ final class TabOverviewCard: UICollectionViewCell {
     override func prepareForReuse() {
         super.prepareForReuse()
         previewImageView.image = nil
-        faviconImageView.image = Self.fallbackFavicon
         onClose = nil
         contentView.alpha = 1
         previewShadowView.layer.shadowColor = UITraitCollection.current.userInterfaceStyle == .dark ? UIColor.white.cgColor : UIColor.black.cgColor
@@ -183,7 +167,6 @@ final class TabOverviewCard: UICollectionViewCell {
     func configure(tab: Tab) {
         titleLabel.text = tab.title.isEmpty ? "Homepage" : tab.title
         previewImageView.image = tab.thumbnail
-        faviconImageView.image = tab.favicon ?? Self.fallbackFavicon
     }
     
     var currentPreviewImage: UIImage? {

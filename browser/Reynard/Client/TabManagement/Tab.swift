@@ -13,7 +13,6 @@ final class Tab {
     var session: GeckoSession
     var title: String
     var url: String?
-    var favicon: UIImage?
     var pendingRestoreURL: String?
     var pendingDisplayText: String?
     var suppressInitialNavigation = true
@@ -28,14 +27,12 @@ final class Tab {
         session: GeckoSession,
         title: String = "",
         url: String? = nil,
-        favicon: UIImage? = nil,
         thumbnail: UIImage? = nil
     ) {
         self.id = id
         self.session = session
         self.title = title
         self.url = url
-        self.favicon = favicon
         self.thumbnail = thumbnail
     }
 }

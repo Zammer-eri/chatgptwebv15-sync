@@ -11,7 +11,7 @@ final class LibraryViewController: UITabBarController, UITabBarControllerDelegat
     private let initialSection: LibrarySection
     private let onClose: (() -> Void)?
     
-    init(initialSection: LibrarySection = .bookmarks, onClose: (() -> Void)? = nil) {
+    init(initialSection: LibrarySection = .downloads, onClose: (() -> Void)? = nil) {
         self.initialSection = initialSection
         self.onClose = onClose
         super.init(nibName: nil, bundle: nil)
@@ -52,8 +52,6 @@ final class LibraryViewController: UITabBarController, UITabBarControllerDelegat
     
     private func makeSectionViewControllers() -> [UIViewController] {
         [
-            makeSectionViewController(for: .bookmarks, contentViewController: LibraryHostedSectionViewController(hostedViewFactory: { BookmarksManagerView() })),
-            makeSectionViewController(for: .history, contentViewController: LibraryHostedSectionViewController(hostedViewFactory: { HistoryManagerView() })),
             makeSectionViewController(for: .downloads, contentViewController: LibraryHostedSectionViewController(hostedViewFactory: { DownloadsManagerView() })),
         ]
     }
