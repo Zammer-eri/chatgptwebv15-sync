@@ -643,9 +643,12 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
     private let cardView = UIView()
     private let homeContent = UIView()
     private let downloadsContent = UIView()
-    private let userAgentControl = UISegmentedControl(items: ["iOS", "Android"])
+    private let androidUASwitch = UISwitch()
     private let saveButton = UIButton(type: .system)
-    private var cardHeightConstraint: NSLayoutConstraint?
+    private var saveButtonHeightConstraint: NSLayoutConstraint?
+    private var saveButtonTopConstraint: NSLayoutConstraint?
+    private var downloadsButtonTopConstraint: NSLayoutConstraint?
+    private var savedAndroidUA = false
     private var showingDownloads = false
 
     override init(frame: CGRect) {
@@ -667,16 +670,13 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
         cardView.layer.shadowOpacity = 0.25
         cardView.layer.shadowRadius = 28
         cardView.layer.shadowOffset = CGSize(width: 0, height: 12)
-        cardView.clipsToBounds = false
+        cardView.clipsToBounds = true
 
         addSubview(blurView)
         addSubview(dimView)
         addSubview(cardView)
         cardView.addSubview(homeContent)
         cardView.addSubview(downloadsContent)
-
-        cardHeightConstraint = cardView.heightAnchor.constraint(equalToConstant: 286)
-        cardHeightConstraint?.priority = .defaultHigh
 
         NSLayoutConstraint.activate([
             blurView.topAnchor.constraint(equalTo: topAnchor),
@@ -693,10 +693,10 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
             cardView.centerYAnchor.constraint(equalTo: centerYAnchor),
             cardView.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 18),
             cardView.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -18),
-            cardView.widthAnchor.constraint(lessThanOrEqualToConstant: 430),
-            cardView.widthAnchor.constraint(equalTo: widthAnchor, constant: -36).withPriority(.defaultHigh),
+            cardView.widthAnchor.constraint(lessThanOrEqualToConstant: 336),
+            cardView.widthAnchor.constraint(equalTo: widthAnchor, constant: -56).withPriority(.defaultHigh),
+            cardView.heightAnchor.constraint(equalTo: cardView.widthAnchor),
             cardView.heightAnchor.constraint(lessThanOrEqualTo: safeAreaLayoutGuide.heightAnchor, multiplier: 0.82),
-            cardHeightConstraint!,
 
             homeContent.topAnchor.constraint(equalTo: cardView.topAnchor),
             homeContent.bottomAnchor.constraint(equalTo: cardView.bottomAnchor),
@@ -722,13 +722,10 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
         fatalError("init(coder:) has not been implemented")
     }
 
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        updateCardHeight(animated: false)
-    }
-
     func syncControls() {
-        userAgentControl.selectedSegmentIndex = BrowserPreferences.shared.useAndroidUserAgent ? 1 : 0
+        savedAndroidUA = BrowserPreferences.shared.useAndroidUserAgent
+        androidUASwitch.isOn = savedAndroidUA
+        updateSaveButton(animated: false)
     }
 
     func prepareForVisibilityChange(_ visible: Bool) {
@@ -744,7 +741,6 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
     func showHome(animated: Bool) {
         showingDownloads = false
         switchContent(to: homeContent, from: downloadsContent, animated: animated)
-        updateCardHeight(animated: animated)
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
@@ -753,26 +749,16 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
     }
 
     private func configureHomeContent() {
-        let titleLabel = UILabel()
-        titleLabel.text = "ChatGPT"
-        titleLabel.font = .systemFont(ofSize: 24, weight: .semibold)
-
         let closeButton = UIButton(type: .system)
         closeButton.setImage(UIImage(systemName: "xmark"), for: .normal)
         closeButton.tintColor = .label
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
 
-        let header = UIStackView(arrangedSubviews: [titleLabel, closeButton])
-        header.translatesAutoresizingMaskIntoConstraints = false
-        header.axis = .horizontal
-        header.alignment = .center
-        header.spacing = 12
-
         let uaLabel = UILabel()
-        uaLabel.text = "User Agent"
+        uaLabel.text = "Android User Agent"
         uaLabel.font = .systemFont(ofSize: 17, weight: .medium)
 
-        userAgentControl.translatesAutoresizingMaskIntoConstraints = false
+        androidUASwitch.addTarget(self, action: #selector(androidUASwitchChanged), for: .valueChanged)
 
         let uaRow = UIView()
         uaRow.translatesAutoresizingMaskIntoConstraints = false
@@ -780,8 +766,9 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
         uaRow.layer.cornerRadius = 14
         uaRow.layer.cornerCurve = .continuous
         uaRow.addSubview(uaLabel)
-        uaRow.addSubview(userAgentControl)
+        uaRow.addSubview(androidUASwitch)
         uaLabel.translatesAutoresizingMaskIntoConstraints = false
+        androidUASwitch.translatesAutoresizingMaskIntoConstraints = false
 
         saveButton.setTitle("Save", for: .normal)
         saveButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
@@ -790,6 +777,7 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
         saveButton.layer.cornerRadius = 14
         saveButton.layer.cornerCurve = .continuous
         saveButton.addTarget(self, action: #selector(saveUserAgentTapped), for: .touchUpInside)
+        saveButtonHeightConstraint = saveButton.heightAnchor.constraint(equalToConstant: 0)
 
         let downloadsButton = UIButton(type: .system)
         downloadsButton.contentHorizontalAlignment = .fill
@@ -805,39 +793,39 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
         downloadsButton.titleEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 8)
         downloadsButton.tintColor = .label
 
-        homeContent.addSubview(header)
+        homeContent.addSubview(closeButton)
         homeContent.addSubview(uaRow)
         homeContent.addSubview(saveButton)
         homeContent.addSubview(downloadsButton)
+        saveButtonTopConstraint = saveButton.topAnchor.constraint(equalTo: uaRow.bottomAnchor, constant: 0)
+        downloadsButtonTopConstraint = downloadsButton.topAnchor.constraint(equalTo: saveButton.bottomAnchor, constant: 12)
 
         NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo: homeContent.topAnchor, constant: 20),
-            header.leadingAnchor.constraint(equalTo: homeContent.leadingAnchor, constant: 20),
-            header.trailingAnchor.constraint(equalTo: homeContent.trailingAnchor, constant: -20),
+            closeButton.topAnchor.constraint(equalTo: homeContent.topAnchor, constant: 16),
+            closeButton.trailingAnchor.constraint(equalTo: homeContent.trailingAnchor, constant: -16),
             closeButton.widthAnchor.constraint(equalToConstant: 34),
             closeButton.heightAnchor.constraint(equalToConstant: 34),
 
-            uaRow.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 18),
+            uaRow.topAnchor.constraint(equalTo: closeButton.bottomAnchor, constant: 18),
             uaRow.leadingAnchor.constraint(equalTo: homeContent.leadingAnchor, constant: 16),
             uaRow.trailingAnchor.constraint(equalTo: homeContent.trailingAnchor, constant: -16),
             uaRow.heightAnchor.constraint(equalToConstant: 72),
 
             uaLabel.leadingAnchor.constraint(equalTo: uaRow.leadingAnchor, constant: 16),
             uaLabel.centerYAnchor.constraint(equalTo: uaRow.centerYAnchor),
-            userAgentControl.trailingAnchor.constraint(equalTo: uaRow.trailingAnchor, constant: -14),
-            userAgentControl.centerYAnchor.constraint(equalTo: uaRow.centerYAnchor),
-            userAgentControl.leadingAnchor.constraint(greaterThanOrEqualTo: uaLabel.trailingAnchor, constant: 14),
-            userAgentControl.widthAnchor.constraint(greaterThanOrEqualToConstant: 150),
+            androidUASwitch.trailingAnchor.constraint(equalTo: uaRow.trailingAnchor, constant: -16),
+            androidUASwitch.centerYAnchor.constraint(equalTo: uaRow.centerYAnchor),
+            androidUASwitch.leadingAnchor.constraint(greaterThanOrEqualTo: uaLabel.trailingAnchor, constant: 14),
 
-            saveButton.topAnchor.constraint(equalTo: uaRow.bottomAnchor, constant: 14),
+            saveButtonTopConstraint!,
             saveButton.leadingAnchor.constraint(equalTo: homeContent.leadingAnchor, constant: 16),
             saveButton.trailingAnchor.constraint(equalTo: homeContent.trailingAnchor, constant: -16),
-            saveButton.heightAnchor.constraint(equalToConstant: 50),
+            saveButtonHeightConstraint!,
 
-            downloadsButton.topAnchor.constraint(equalTo: saveButton.bottomAnchor, constant: 12),
+            downloadsButtonTopConstraint!,
             downloadsButton.leadingAnchor.constraint(equalTo: homeContent.leadingAnchor, constant: 16),
             downloadsButton.trailingAnchor.constraint(equalTo: homeContent.trailingAnchor, constant: -16),
-            downloadsButton.heightAnchor.constraint(equalToConstant: 50),
+            downloadsButton.heightAnchor.constraint(equalToConstant: 56),
         ])
     }
 
@@ -906,13 +894,21 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
         }
     }
 
-    private func updateCardHeight(animated: Bool) {
-        let maxHeight = max(286, bounds.height - safeAreaInsets.top - safeAreaInsets.bottom - 44)
-        cardHeightConstraint?.constant = showingDownloads ? min(620, maxHeight) : 286
-        guard animated else { return }
-        UIView.animate(withDuration: 0.22, delay: 0, options: [.curveEaseInOut]) {
+    private func updateSaveButton(animated: Bool) {
+        let changed = androidUASwitch.isOn != savedAndroidUA
+        let updates = {
+            self.saveButton.alpha = changed ? 1 : 0
+            self.saveButton.isEnabled = changed
+            self.saveButtonHeightConstraint?.constant = changed ? 48 : 0
+            self.saveButtonTopConstraint?.constant = changed ? 14 : 0
+            self.downloadsButtonTopConstraint?.constant = changed ? 12 : 14
             self.layoutIfNeeded()
         }
+        guard animated else {
+            updates()
+            return
+        }
+        UIView.animate(withDuration: 0.18, delay: 0, options: [.curveEaseInOut], animations: updates)
     }
 
     @objc private func closeTapped() {
@@ -924,17 +920,22 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
     }
 
     @objc private func saveUserAgentTapped() {
-        onSaveUserAgent?(userAgentControl.selectedSegmentIndex == 1)
+        savedAndroidUA = androidUASwitch.isOn
+        updateSaveButton(animated: true)
+        onSaveUserAgent?(androidUASwitch.isOn)
     }
 
     @objc private func downloadsTapped() {
         showingDownloads = true
         switchContent(to: downloadsContent, from: homeContent, animated: true)
-        updateCardHeight(animated: true)
     }
 
     @objc private func backTapped() {
         showHome(animated: true)
+    }
+
+    @objc private func androidUASwitchChanged() {
+        updateSaveButton(animated: true)
     }
 }
 
