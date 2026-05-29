@@ -44,6 +44,7 @@ protocol TabManagerDelegate: AnyObject {
     func tabManager(_ tabManager: TabManager, animateNewTabSelectionAt index: Int, completion: @escaping () -> Void)
     func tabManager(_ tabManager: TabManager, didRequestExternalOpen url: URL)
     func tabManager(_ tabManager: TabManager, shouldHandleExternalResponse response: ExternalResponseInfo, for session: GeckoSession) -> Bool
+    func tabManager(_ tabManager: TabManager, shouldHandleSavePdf request: SavePdfInfo, for session: GeckoSession) -> Bool
 }
 
 extension TabManagerDelegate {
@@ -54,6 +55,10 @@ extension TabManagerDelegate {
     func tabManager(_ tabManager: TabManager, didRequestExternalOpen url: URL) {}
 
     func tabManager(_ tabManager: TabManager, shouldHandleExternalResponse response: ExternalResponseInfo, for session: GeckoSession) -> Bool {
+        false
+    }
+
+    func tabManager(_ tabManager: TabManager, shouldHandleSavePdf request: SavePdfInfo, for session: GeckoSession) -> Bool {
         false
     }
 }

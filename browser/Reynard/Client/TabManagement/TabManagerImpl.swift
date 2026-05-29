@@ -26,6 +26,10 @@ final class TabManagerImplementation: NSObject, TabManager {
         "login.openai.com",
         "openid.apple.com",
     ]
+    private static let embeddedChatGPTFileHosts: Set<String> = [
+        "files.oaiusercontent.com",
+        "oaiusercontent.com",
+    ]
     private(set) var tabs: [Tab] = []
     private(set) var selectedTabIndex = -1
 
@@ -100,6 +104,15 @@ final class TabManagerImplementation: NSObject, TabManager {
     }
 
     private func shouldOpenLoadRequestExternally(session: GeckoSession, request: LoadRequest) -> Bool {
+        if request.target == .new,
+           let index = tabIndex(for: session),
+           shouldOpenNewSessionExternallyFromChatGPT(
+               targetURLString: request.uri,
+               sourceURLString: request.triggerUri ?? tabs[index].url
+           ) {
+            return requestExternalOpen(request.uri)
+        }
+
         guard (request.hasUserGesture || request.isRedirect),
               let index = tabIndex(for: session),
               shouldOpenExternallyFromChatGPT(
@@ -110,6 +123,16 @@ final class TabManagerImplementation: NSObject, TabManager {
         }
 
         return requestExternalOpen(request.uri)
+    }
+
+    private func shouldOpenNewSessionExternallyFromChatGPT(targetURLString: String, sourceURLString: String?) -> Bool {
+        guard let targetURL = remoteURL(from: targetURLString),
+              isChatGPTURL(sourceURLString),
+              !shouldKeepEmbeddedNewSessionForChatGPT(targetURL) else {
+            return false
+        }
+
+        return true
     }
 
     private func shouldOpenExternallyFromChatGPT(targetURLString: String, sourceURLString: String?) -> Bool {
@@ -149,7 +172,19 @@ final class TabManagerImplementation: NSObject, TabManager {
         }
 
         return isChatGPTURL(url.absoluteString) ||
-            Self.embeddedChatGPTFlowHosts.contains { hostMatches(host, domain: $0) }
+            Self.embeddedChatGPTFlowHosts.contains { hostMatches(host, domain: $0) } ||
+            Self.embeddedChatGPTFileHosts.contains { hostMatches(host, domain: $0) } ||
+            host.hasSuffix(".blob.core.windows.net")
+    }
+
+    private func shouldKeepEmbeddedNewSessionForChatGPT(_ url: URL) -> Bool {
+        guard let host = url.host?.lowercased() else {
+            return false
+        }
+
+        return Self.embeddedChatGPTFlowHosts.contains { hostMatches(host, domain: $0) } ||
+            Self.embeddedChatGPTFileHosts.contains { hostMatches(host, domain: $0) } ||
+            host.hasSuffix(".blob.core.windows.net")
     }
 
     private func hostMatches(_ host: String, domain: String) -> Bool {
@@ -411,9 +446,7 @@ extension TabManagerImplementation: ContentDelegate {
     }
 
     func onSavePdf(session: GeckoSession, request: SavePdfInfo) {
-        if let download = DownloadStore.shared.prepareDownload(from: request) {
-            DownloadStore.shared.startDownload(download)
-        }
+        _ = delegate?.tabManager(self, shouldHandleSavePdf: request, for: session)
     }
 }
 
@@ -477,7 +510,7 @@ extension TabManagerImplementation: NavigationDelegate {
 
     func onNewSession(session: GeckoSession, uri: String, windowId: String) async -> GeckoSession? {
         if let index = tabIndex(for: session),
-           shouldOpenExternallyFromChatGPT(targetURLString: uri, sourceURLString: tabs[index].url),
+           shouldOpenNewSessionExternallyFromChatGPT(targetURLString: uri, sourceURLString: tabs[index].url),
            requestExternalOpen(uri) {
             return nil
         }

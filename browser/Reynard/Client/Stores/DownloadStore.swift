@@ -176,6 +176,7 @@ final class DownloadStore: NSObject {
     
     func snapshot() -> DownloadStoreSnapshot {
         stateQueue.sync {
+            syncDownloadsDirectoryLocked()
             makeSnapshotLocked()
         }
     }
@@ -462,23 +463,74 @@ final class DownloadStore: NSObject {
     private func loadPersistedDownloadsLocked() {
         guard let data = try? Data(contentsOf: storage.manifestFileURL) else {
             persistedDownloads = []
+            syncDownloadsDirectoryLocked()
             savePersistedDownloadsLocked()
             return
         }
         
         if data.isEmpty {
             persistedDownloads = []
+            syncDownloadsDirectoryLocked()
             savePersistedDownloadsLocked()
             return
         }
         
         if let decoded = try? JSONDecoder().decode([PersistedDownloadEntry].self, from: data) {
             persistedDownloads = decoded.sorted { $0.addedAt > $1.addedAt }
+            syncDownloadsDirectoryLocked()
             return
         }
         
         persistedDownloads = []
+        syncDownloadsDirectoryLocked()
         savePersistedDownloadsLocked()
+    }
+
+    private func syncDownloadsDirectoryLocked() {
+        prepareStorageLocked()
+
+        let fileURLs = (try? fileManager.contentsOfDirectory(
+            at: storage.downloadsDirectoryURL,
+            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey, .creationDateKey, .fileSizeKey, .contentTypeKey],
+            options: [.skipsHiddenFiles]
+        ))?
+            .filter { url in
+                (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+            } ?? []
+
+        let existingFileNames = Set(fileURLs.map(\.lastPathComponent))
+        let previousEntries = persistedDownloads
+        persistedDownloads.removeAll { entry in
+            !existingFileNames.contains(entry.relativePath)
+        }
+
+        let trackedFileNames = Set(persistedDownloads.map(\.relativePath))
+        for fileURL in fileURLs where !trackedFileNames.contains(fileURL.lastPathComponent) {
+            let values = try? fileURL.resourceValues(
+                forKeys: [.contentModificationDateKey, .creationDateKey, .fileSizeKey, .contentTypeKey]
+            )
+            let mimeType = values?.contentType?.preferredMIMEType ??
+                UTType(filenameExtension: fileURL.pathExtension)?.preferredMIMEType
+
+            persistedDownloads.append(
+                PersistedDownloadEntry(
+                    id: UUID(),
+                    fileName: fileURL.lastPathComponent,
+                    relativePath: fileURL.lastPathComponent,
+                    sourceURLString: fileURL.absoluteString,
+                    originalURLString: nil,
+                    mimeType: mimeType,
+                    fileSize: Int64(values?.fileSize ?? 0),
+                    addedAt: values?.contentModificationDate ?? values?.creationDate ?? Date()
+                )
+            )
+        }
+
+        persistedDownloads.sort { $0.addedAt > $1.addedAt }
+
+        if persistedDownloads.map(\.relativePath) != previousEntries.map(\.relativePath) {
+            savePersistedDownloadsLocked()
+        }
     }
     
     private func savePersistedDownloadsLocked() {

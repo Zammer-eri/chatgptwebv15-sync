@@ -118,6 +118,8 @@ func newContentHandler(_ session: GeckoSession) -> GeckoSessionHandler {
         events: [
             ContentEvents.contentCrash.rawValue,
             ContentEvents.contentKill.rawValue,
+            ContentEvents.externalResponse.rawValue,
+            ContentEvents.savePdf.rawValue,
         ],
         session: session
     ) { @MainActor session, delegate, type, message in

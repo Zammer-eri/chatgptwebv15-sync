@@ -410,9 +410,38 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
             return false
         }
 
-        DownloadStore.shared.startDownload(download)
-        setUtilityPanelVisible(true, animated: true)
+        presentDownloadPrompt(download)
         return true
+    }
+
+    func tabManager(_ tabManager: TabManager, shouldHandleSavePdf request: SavePdfInfo, for session: GeckoSession) -> Bool {
+        guard let download = DownloadStore.shared.prepareDownload(from: request) else {
+            return false
+        }
+
+        presentDownloadPrompt(download)
+        return true
+    }
+
+    private func presentDownloadPrompt(_ download: DownloadStore.PendingDownload) {
+        let alert = UIAlertController(
+            title: "Download File?",
+            message: download.fileName,
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Download", style: .default) { [weak self] _ in
+            guard let self else { return }
+            DownloadStore.shared.startDownload(download)
+            self.setUtilityPanelVisible(true, animated: true)
+            self.utilityPanel.showDownloads(animated: true)
+        })
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.view.window != nil else { return }
+            let presenter = self.presentedViewController ?? self
+            presenter.present(alert, animated: true)
+        }
     }
 
     func backButtonClicked() {
@@ -750,6 +779,11 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
         switchContent(to: homeContent, from: downloadsContent, animated: animated)
     }
 
+    func showDownloads(animated: Bool) {
+        showingDownloads = true
+        switchContent(to: downloadsContent, from: homeContent, animated: animated)
+    }
+
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         guard let touchedView = touch.view else { return true }
         return !touchedView.isDescendant(of: cardView)
@@ -936,8 +970,7 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
     }
 
     @objc private func downloadsTapped() {
-        showingDownloads = true
-        switchContent(to: downloadsContent, from: homeContent, animated: true)
+        showDownloads(animated: true)
     }
 
     @objc private func backTapped() {
