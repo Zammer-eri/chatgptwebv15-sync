@@ -643,9 +643,12 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
     private let cardView = UIView()
     private let homeContent = UIView()
     private let downloadsContent = UIView()
+    private let homeStackView = UIStackView()
+    private let downloadsRow = UIControl()
     private let androidUASwitch = UISwitch()
     private let saveButton = UIButton(type: .system)
     private var cardSideConstraint: NSLayoutConstraint?
+    private var saveButtonHeightConstraint: NSLayoutConstraint?
     private var savedAndroidUA = false
     private var showingDownloads = false
 
@@ -753,10 +756,9 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
     }
 
     private func configureHomeContent() {
-        let stackView = UIStackView()
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        stackView.axis = .vertical
-        stackView.spacing = 12
+        homeStackView.translatesAutoresizingMaskIntoConstraints = false
+        homeStackView.axis = .vertical
+        homeStackView.spacing = 12
 
         let uaLabel = UILabel()
         uaLabel.text = "Android User Agent"
@@ -774,7 +776,6 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
         uaRow.addSubview(uaLabel)
         uaRow.addSubview(androidUASwitch)
 
-        let downloadsRow = UIControl()
         downloadsRow.translatesAutoresizingMaskIntoConstraints = false
         downloadsRow.backgroundColor = .tertiarySystemBackground
         downloadsRow.layer.cornerRadius = 14
@@ -801,18 +802,21 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
         saveButton.layer.cornerRadius = 14
         saveButton.layer.cornerCurve = .continuous
         saveButton.addTarget(self, action: #selector(saveUserAgentTapped), for: .touchUpInside)
-        saveButton.isHidden = true
+        saveButton.isEnabled = false
         saveButton.alpha = 0
+        saveButtonHeightConstraint = saveButton.heightAnchor.constraint(equalToConstant: 0)
 
-        stackView.addArrangedSubview(uaRow)
-        stackView.addArrangedSubview(downloadsRow)
-        stackView.addArrangedSubview(saveButton)
-        homeContent.addSubview(stackView)
+        homeStackView.addArrangedSubview(uaRow)
+        homeStackView.addArrangedSubview(downloadsRow)
+        homeStackView.addArrangedSubview(saveButton)
+        homeStackView.setCustomSpacing(12, after: uaRow)
+        homeStackView.setCustomSpacing(0, after: downloadsRow)
+        homeContent.addSubview(homeStackView)
 
         NSLayoutConstraint.activate([
-            stackView.leadingAnchor.constraint(equalTo: homeContent.leadingAnchor, constant: 16),
-            stackView.trailingAnchor.constraint(equalTo: homeContent.trailingAnchor, constant: -16),
-            stackView.centerYAnchor.constraint(equalTo: homeContent.centerYAnchor),
+            homeStackView.leadingAnchor.constraint(equalTo: homeContent.leadingAnchor, constant: 16),
+            homeStackView.trailingAnchor.constraint(equalTo: homeContent.trailingAnchor, constant: -16),
+            homeStackView.centerYAnchor.constraint(equalTo: homeContent.centerYAnchor),
 
             uaRow.heightAnchor.constraint(equalToConstant: 72),
 
@@ -830,7 +834,7 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
             chevronView.widthAnchor.constraint(equalToConstant: 14),
             chevronView.heightAnchor.constraint(equalToConstant: 18),
 
-            saveButton.heightAnchor.constraint(equalToConstant: 48),
+            saveButtonHeightConstraint!,
         ])
     }
 
@@ -901,22 +905,20 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
 
     private func updateSaveButton(animated: Bool) {
         let changed = androidUASwitch.isOn != savedAndroidUA
-        if changed {
-            saveButton.isHidden = false
-        }
         let updates = {
             self.saveButton.alpha = changed ? 1 : 0
             self.saveButton.isEnabled = changed
+            self.saveButtonHeightConstraint?.constant = changed ? 48 : 0
+            self.homeStackView.setCustomSpacing(changed ? 12 : 0, after: self.downloadsRow)
+            self.homeStackView.layoutIfNeeded()
             self.homeContent.layoutIfNeeded()
+            self.cardView.layoutIfNeeded()
         }
         guard animated else {
             updates()
-            saveButton.isHidden = !changed
             return
         }
-        UIView.animate(withDuration: 0.18, delay: 0, options: [.curveEaseInOut], animations: updates) { _ in
-            self.saveButton.isHidden = !changed
-        }
+        UIView.animate(withDuration: 0.22, delay: 0, options: [.curveEaseInOut], animations: updates)
     }
 
     @objc private func closeTapped() {
