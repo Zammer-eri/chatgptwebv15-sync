@@ -645,9 +645,7 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
     private let downloadsContent = UIView()
     private let androidUASwitch = UISwitch()
     private let saveButton = UIButton(type: .system)
-    private var saveButtonHeightConstraint: NSLayoutConstraint?
-    private var saveButtonTopConstraint: NSLayoutConstraint?
-    private var downloadsButtonTopConstraint: NSLayoutConstraint?
+    private var cardSideConstraint: NSLayoutConstraint?
     private var savedAndroidUA = false
     private var showingDownloads = false
 
@@ -670,13 +668,14 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
         cardView.layer.shadowOpacity = 0.25
         cardView.layer.shadowRadius = 28
         cardView.layer.shadowOffset = CGSize(width: 0, height: 12)
-        cardView.clipsToBounds = true
+        cardView.clipsToBounds = false
 
         addSubview(blurView)
         addSubview(dimView)
         addSubview(cardView)
         cardView.addSubview(homeContent)
         cardView.addSubview(downloadsContent)
+        cardSideConstraint = cardView.widthAnchor.constraint(equalToConstant: 280)
 
         NSLayoutConstraint.activate([
             blurView.topAnchor.constraint(equalTo: topAnchor),
@@ -693,10 +692,8 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
             cardView.centerYAnchor.constraint(equalTo: centerYAnchor),
             cardView.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 18),
             cardView.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -18),
-            cardView.widthAnchor.constraint(lessThanOrEqualToConstant: 336),
-            cardView.widthAnchor.constraint(equalTo: widthAnchor, constant: -56).withPriority(.defaultHigh),
+            cardSideConstraint!,
             cardView.heightAnchor.constraint(equalTo: cardView.widthAnchor),
-            cardView.heightAnchor.constraint(lessThanOrEqualTo: safeAreaLayoutGuide.heightAnchor, multiplier: 0.82),
 
             homeContent.topAnchor.constraint(equalTo: cardView.topAnchor),
             homeContent.bottomAnchor.constraint(equalTo: cardView.bottomAnchor),
@@ -720,6 +717,13 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let availableWidth = max(220, bounds.width - 56)
+        let availableHeight = max(220, bounds.height - safeAreaInsets.top - safeAreaInsets.bottom - 80)
+        cardSideConstraint?.constant = min(336, min(availableWidth, availableHeight))
     }
 
     func syncControls() {
@@ -749,16 +753,18 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
     }
 
     private func configureHomeContent() {
-        let closeButton = UIButton(type: .system)
-        closeButton.setImage(UIImage(systemName: "xmark"), for: .normal)
-        closeButton.tintColor = .label
-        closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
+        let stackView = UIStackView()
+        stackView.translatesAutoresizingMaskIntoConstraints = false
+        stackView.axis = .vertical
+        stackView.spacing = 12
 
         let uaLabel = UILabel()
         uaLabel.text = "Android User Agent"
         uaLabel.font = .systemFont(ofSize: 17, weight: .medium)
+        uaLabel.translatesAutoresizingMaskIntoConstraints = false
 
         androidUASwitch.addTarget(self, action: #selector(androidUASwitchChanged), for: .valueChanged)
+        androidUASwitch.translatesAutoresizingMaskIntoConstraints = false
 
         let uaRow = UIView()
         uaRow.translatesAutoresizingMaskIntoConstraints = false
@@ -767,9 +773,27 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
         uaRow.layer.cornerCurve = .continuous
         uaRow.addSubview(uaLabel)
         uaRow.addSubview(androidUASwitch)
-        uaLabel.translatesAutoresizingMaskIntoConstraints = false
-        androidUASwitch.translatesAutoresizingMaskIntoConstraints = false
 
+        let downloadsRow = UIControl()
+        downloadsRow.translatesAutoresizingMaskIntoConstraints = false
+        downloadsRow.backgroundColor = .tertiarySystemBackground
+        downloadsRow.layer.cornerRadius = 14
+        downloadsRow.layer.cornerCurve = .continuous
+        downloadsRow.addTarget(self, action: #selector(downloadsTapped), for: .touchUpInside)
+
+        let downloadsLabel = UILabel()
+        downloadsLabel.text = "Downloads"
+        downloadsLabel.font = .systemFont(ofSize: 17, weight: .medium)
+        downloadsLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let chevronView = UIImageView(image: UIImage(systemName: "chevron.right"))
+        chevronView.translatesAutoresizingMaskIntoConstraints = false
+        chevronView.tintColor = .secondaryLabel
+        chevronView.contentMode = .scaleAspectFit
+        downloadsRow.addSubview(downloadsLabel)
+        downloadsRow.addSubview(chevronView)
+
+        saveButton.translatesAutoresizingMaskIntoConstraints = false
         saveButton.setTitle("Save", for: .normal)
         saveButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
         saveButton.backgroundColor = .label
@@ -777,38 +801,19 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
         saveButton.layer.cornerRadius = 14
         saveButton.layer.cornerCurve = .continuous
         saveButton.addTarget(self, action: #selector(saveUserAgentTapped), for: .touchUpInside)
-        saveButtonHeightConstraint = saveButton.heightAnchor.constraint(equalToConstant: 0)
+        saveButton.isHidden = true
+        saveButton.alpha = 0
 
-        let downloadsButton = UIButton(type: .system)
-        downloadsButton.contentHorizontalAlignment = .fill
-        downloadsButton.backgroundColor = .tertiarySystemBackground
-        downloadsButton.layer.cornerRadius = 14
-        downloadsButton.layer.cornerCurve = .continuous
-        downloadsButton.addTarget(self, action: #selector(downloadsTapped), for: .touchUpInside)
-        downloadsButton.setTitle("Downloads", for: .normal)
-        downloadsButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .medium)
-        downloadsButton.setImage(UIImage(systemName: "chevron.right"), for: .normal)
-        downloadsButton.semanticContentAttribute = .forceRightToLeft
-        downloadsButton.imageEdgeInsets = UIEdgeInsets(top: 0, left: 8, bottom: 0, right: -8)
-        downloadsButton.titleEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 8)
-        downloadsButton.tintColor = .label
-
-        homeContent.addSubview(closeButton)
-        homeContent.addSubview(uaRow)
-        homeContent.addSubview(saveButton)
-        homeContent.addSubview(downloadsButton)
-        saveButtonTopConstraint = saveButton.topAnchor.constraint(equalTo: uaRow.bottomAnchor, constant: 0)
-        downloadsButtonTopConstraint = downloadsButton.topAnchor.constraint(equalTo: saveButton.bottomAnchor, constant: 12)
+        stackView.addArrangedSubview(uaRow)
+        stackView.addArrangedSubview(downloadsRow)
+        stackView.addArrangedSubview(saveButton)
+        homeContent.addSubview(stackView)
 
         NSLayoutConstraint.activate([
-            closeButton.topAnchor.constraint(equalTo: homeContent.topAnchor, constant: 16),
-            closeButton.trailingAnchor.constraint(equalTo: homeContent.trailingAnchor, constant: -16),
-            closeButton.widthAnchor.constraint(equalToConstant: 34),
-            closeButton.heightAnchor.constraint(equalToConstant: 34),
+            stackView.leadingAnchor.constraint(equalTo: homeContent.leadingAnchor, constant: 16),
+            stackView.trailingAnchor.constraint(equalTo: homeContent.trailingAnchor, constant: -16),
+            stackView.centerYAnchor.constraint(equalTo: homeContent.centerYAnchor),
 
-            uaRow.topAnchor.constraint(equalTo: closeButton.bottomAnchor, constant: 18),
-            uaRow.leadingAnchor.constraint(equalTo: homeContent.leadingAnchor, constant: 16),
-            uaRow.trailingAnchor.constraint(equalTo: homeContent.trailingAnchor, constant: -16),
             uaRow.heightAnchor.constraint(equalToConstant: 72),
 
             uaLabel.leadingAnchor.constraint(equalTo: uaRow.leadingAnchor, constant: 16),
@@ -817,15 +822,15 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
             androidUASwitch.centerYAnchor.constraint(equalTo: uaRow.centerYAnchor),
             androidUASwitch.leadingAnchor.constraint(greaterThanOrEqualTo: uaLabel.trailingAnchor, constant: 14),
 
-            saveButtonTopConstraint!,
-            saveButton.leadingAnchor.constraint(equalTo: homeContent.leadingAnchor, constant: 16),
-            saveButton.trailingAnchor.constraint(equalTo: homeContent.trailingAnchor, constant: -16),
-            saveButtonHeightConstraint!,
+            downloadsRow.heightAnchor.constraint(equalToConstant: 72),
+            downloadsLabel.leadingAnchor.constraint(equalTo: downloadsRow.leadingAnchor, constant: 16),
+            downloadsLabel.centerYAnchor.constraint(equalTo: downloadsRow.centerYAnchor),
+            chevronView.trailingAnchor.constraint(equalTo: downloadsRow.trailingAnchor, constant: -18),
+            chevronView.centerYAnchor.constraint(equalTo: downloadsRow.centerYAnchor),
+            chevronView.widthAnchor.constraint(equalToConstant: 14),
+            chevronView.heightAnchor.constraint(equalToConstant: 18),
 
-            downloadsButtonTopConstraint!,
-            downloadsButton.leadingAnchor.constraint(equalTo: homeContent.leadingAnchor, constant: 16),
-            downloadsButton.trailingAnchor.constraint(equalTo: homeContent.trailingAnchor, constant: -16),
-            downloadsButton.heightAnchor.constraint(equalToConstant: 56),
+            saveButton.heightAnchor.constraint(equalToConstant: 48),
         ])
     }
 
@@ -896,19 +901,22 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
 
     private func updateSaveButton(animated: Bool) {
         let changed = androidUASwitch.isOn != savedAndroidUA
+        if changed {
+            saveButton.isHidden = false
+        }
         let updates = {
             self.saveButton.alpha = changed ? 1 : 0
             self.saveButton.isEnabled = changed
-            self.saveButtonHeightConstraint?.constant = changed ? 48 : 0
-            self.saveButtonTopConstraint?.constant = changed ? 14 : 0
-            self.downloadsButtonTopConstraint?.constant = changed ? 12 : 14
-            self.layoutIfNeeded()
+            self.homeContent.layoutIfNeeded()
         }
         guard animated else {
             updates()
+            saveButton.isHidden = !changed
             return
         }
-        UIView.animate(withDuration: 0.18, delay: 0, options: [.curveEaseInOut], animations: updates)
+        UIView.animate(withDuration: 0.18, delay: 0, options: [.curveEaseInOut], animations: updates) { _ in
+            self.saveButton.isHidden = !changed
+        }
     }
 
     @objc private func closeTapped() {
@@ -936,13 +944,6 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
 
     @objc private func androidUASwitchChanged() {
         updateSaveButton(animated: true)
-    }
-}
-
-private extension NSLayoutConstraint {
-    func withPriority(_ priority: UILayoutPriority) -> NSLayoutConstraint {
-        self.priority = priority
-        return self
     }
 }
 
