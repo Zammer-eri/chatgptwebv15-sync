@@ -8,6 +8,7 @@
     'form,[data-testid*="composer"],[class*="composer"],main';
   let doc = null;
   let insertingLineBreak = false;
+  let suppressComposerSubmitUntil = 0;
 
   const isChatGPT = () => {
     const host = win.location?.hostname || "";
@@ -45,19 +46,42 @@
       .at(-1) || null;
   };
 
-  const dispatchInput = element => {
+  const dispatchInput = (element, inputType) => {
     try {
       element.dispatchEvent(
         new win.InputEvent("input", {
           bubbles: true,
           cancelable: false,
-          inputType: "insertLineBreak",
-          data: "\n",
+          inputType,
+          data: inputType === "insertLineBreak" ? "\n" : null,
         })
       );
     } catch (_) {
       element.dispatchEvent(new win.Event("input", { bubbles: true }));
     }
+  };
+
+  const insertContentEditableLineBreak = editable => {
+    const selection = doc.getSelection?.();
+    if (!selection || selection.rangeCount === 0) {
+      return false;
+    }
+
+    const range = selection.getRangeAt(0);
+    if (!editable.contains(range.commonAncestorContainer)) {
+      return false;
+    }
+
+    range.deleteContents();
+
+    const br = doc.createElement("br");
+    range.insertNode(br);
+    range.setStartAfter(br);
+    range.setEndAfter(br);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    dispatchInput(editable, "insertLineBreak");
+    return true;
   };
 
   const insertLineBreak = target => {
@@ -76,16 +100,24 @@
         const start = editable.selectionStart ?? editable.value.length;
         const end = editable.selectionEnd ?? start;
         editable.setRangeText("\n", start, end, "end");
-        dispatchInput(editable);
+        dispatchInput(editable, "insertLineBreak");
+        return true;
+      }
+
+      if (insertContentEditableLineBreak(editable)) {
         return true;
       }
 
       if (doc.execCommand?.("insertLineBreak")) {
-        dispatchInput(editable);
+        dispatchInput(editable, "insertLineBreak");
         return true;
       }
     } catch (_) {
-      return false;
+      try {
+        return insertContentEditableLineBreak(editable);
+      } catch (_) {
+        return false;
+      }
     } finally {
       insertingLineBreak = false;
     }
@@ -93,11 +125,11 @@
     return false;
   };
 
-  const installComposerControls = () => {
-    if (doc.__embeddedGPTComposerReturnInstalled) {
+  const installReturnKeyControls = () => {
+    if (doc.__reynardChatGPTReturnKeyControlsInstalled) {
       return;
     }
-    doc.__embeddedGPTComposerReturnInstalled = true;
+    doc.__reynardChatGPTReturnKeyControlsInstalled = true;
 
     const syncReturnHint = () => {
       for (const editable of doc.querySelectorAll(COMPOSER_SELECTOR)) {
@@ -121,12 +153,13 @@
       }
       event.preventDefault();
       event.stopImmediatePropagation();
+      suppressComposerSubmitUntil = win.performance.now() + 300;
       insertLineBreak(event.target);
     };
 
     const handleBeforeInput = event => {
       if (
-        event.inputType !== "insertParagraph" ||
+        (event.inputType !== "insertParagraph" && event.inputType !== "insertLineBreak") ||
         insertingLineBreak ||
         !isComposerEditable(event.target)
       ) {
@@ -134,11 +167,26 @@
       }
       event.preventDefault();
       event.stopImmediatePropagation();
+      suppressComposerSubmitUntil = win.performance.now() + 300;
       insertLineBreak(event.target);
     };
 
+    const handleSubmit = event => {
+      if (
+        win.performance.now() <= suppressComposerSubmitUntil &&
+        (isComposerEditable(doc.activeElement) || event.target?.querySelector?.(COMPOSER_SELECTOR))
+      ) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+    };
+
+    win.addEventListener("keydown", handleReturn, true);
+    win.addEventListener("beforeinput", handleBeforeInput, true);
+    win.addEventListener("submit", handleSubmit, true);
     doc.addEventListener("keydown", handleReturn, true);
     doc.addEventListener("beforeinput", handleBeforeInput, true);
+    doc.addEventListener("submit", handleSubmit, true);
     new win.MutationObserver(syncReturnHint).observe(doc.documentElement, {
       childList: true,
       subtree: true,
@@ -150,11 +198,13 @@
     if (!isChatGPT()) {
       return;
     }
+
     doc = win.document;
     if (!doc) {
       return;
     }
-    installComposerControls();
+
+    installReturnKeyControls();
   };
 
   win.EmbeddedGPTShellRuntime = {
