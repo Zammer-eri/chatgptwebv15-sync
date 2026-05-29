@@ -13,7 +13,6 @@ final class BrowserLayout {
     private static let shellMinimumInputSurroundingClearance: CGFloat = 120
     private static let shellMaximumInputSurroundingClearance: CGFloat = 190
     private static let shellInputSurroundingClearanceRatio: CGFloat = 0.42
-    private static let shellMaximumGeckoKeyboardOffset: CGFloat = 180
     private static let keyboardAccessorySpacing: CGFloat = 8
     private static let keyboardAvoidancePadding: CGFloat = 12
     private unowned let controller: BrowserViewController
@@ -655,12 +654,6 @@ final class BrowserLayout {
                 }
 
                 self.focusedInputBottomRatio = self.focusedTextInputBottomRatio()
-                if Self.chatGPTShellMode {
-                    let nextOffset = self.resolvedGeckoPhoneVerticalOffset(shouldShowGeckoBehindKeyboard: false)
-                    guard nextOffset > self.geckoPhoneVerticalOffset + 1 else {
-                        continue
-                    }
-                }
                 self.applyFocusedInputRelocation(duration: duration, curve: curve)
             }
         }
@@ -755,8 +748,7 @@ final class BrowserLayout {
         
         let focusBottom = geckoFrame.height * bottomRatio
         let visibleBottom = max(0, geckoFrame.height - keyboardOverlap - Self.keyboardAvoidancePadding)
-        let offset = min(keyboardOverlap, max(0, focusBottom - visibleBottom))
-        return Self.chatGPTShellMode ? min(offset, Self.shellMaximumGeckoKeyboardOffset) : offset
+        return min(keyboardOverlap, max(0, focusBottom - visibleBottom))
     }
 
     private var shouldAvoidKeyboardAccessory: Bool {
