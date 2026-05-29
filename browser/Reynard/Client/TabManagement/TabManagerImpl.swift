@@ -38,6 +38,10 @@ final class TabManagerImplementation: NSObject, TabManager {
     private var chatRouteSequence = 0
     private var lastChatRouteByTab: [UUID: (sequence: Int, url: String)] = [:]
 
+    private struct ShellTimeoutError: Error, CustomStringConvertible {
+        let description: String
+    }
+
     private lazy var isURLLenient: NSRegularExpression = {
         let pattern = "^\\s*(\\w+-+)*[\\w\\[]+(://[/]*|:|\\.)(\\w+-+)*[\\w\\[:]+([\\S&&[^\\w-]]\\S*)?\\s*$"
         return try! NSRegularExpression(pattern: pattern)
@@ -636,7 +640,7 @@ extension TabManagerImplementation: NavigationDelegate {
             }
             group.addTask {
                 try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                throw GeckoHandlerError("timeout")
+                throw ShellTimeoutError(description: "timeout")
             }
             let result = try await group.next()!
             group.cancelAll()
