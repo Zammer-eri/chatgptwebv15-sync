@@ -3,7 +3,7 @@
 
   const win = root.window || root;
   const COMPOSER_SELECTOR =
-    'textarea,[contenteditable="true"][role="textbox"],[contenteditable="true"]';
+    '#prompt-textarea,textarea,[contenteditable="true"][role="textbox"]';
   const COMPOSER_ROOT_SELECTOR =
     'form,[data-testid*="composer"],[class*="composer"],main';
   let doc = null;
@@ -112,6 +112,11 @@
         dispatchInput(editable, "insertLineBreak");
         return true;
       }
+
+      if (doc.execCommand?.("insertParagraph")) {
+        dispatchInput(editable, "insertLineBreak");
+        return true;
+      }
     } catch (_) {
       try {
         return insertContentEditableLineBreak(editable);
@@ -131,11 +136,10 @@
     }
     doc.__reynardChatGPTReturnKeyControlsInstalled = true;
 
-    const syncReturnHint = () => {
-      for (const editable of doc.querySelectorAll(COMPOSER_SELECTOR)) {
-        if (isComposerEditable(editable)) {
-          editable.setAttribute("enterkeyhint", "enter");
-        }
+    const syncReturnHint = target => {
+      const editable = editableElement(target) || activeComposerEditable();
+      if (editable && isComposerEditable(editable)) {
+        editable.setAttribute("enterkeyhint", "enter");
       }
     };
 
@@ -184,13 +188,7 @@
     win.addEventListener("keydown", handleReturn, true);
     win.addEventListener("beforeinput", handleBeforeInput, true);
     win.addEventListener("submit", handleSubmit, true);
-    doc.addEventListener("keydown", handleReturn, true);
-    doc.addEventListener("beforeinput", handleBeforeInput, true);
-    doc.addEventListener("submit", handleSubmit, true);
-    new win.MutationObserver(syncReturnHint).observe(doc.documentElement, {
-      childList: true,
-      subtree: true,
-    });
+    win.addEventListener("focusin", event => syncReturnHint(event.target), true);
     syncReturnHint();
   };
 
