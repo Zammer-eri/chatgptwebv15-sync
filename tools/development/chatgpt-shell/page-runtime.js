@@ -104,6 +104,10 @@
         return true;
       }
 
+      if (insertContentEditableLineBreak(editable)) {
+        return true;
+      }
+
       if (doc.execCommand?.("insertLineBreak")) {
         dispatchInput(editable, "insertLineBreak");
         return true;
@@ -111,10 +115,6 @@
 
       if (doc.execCommand?.("insertParagraph")) {
         dispatchInput(editable, "insertLineBreak");
-        return true;
-      }
-
-      if (insertContentEditableLineBreak(editable)) {
         return true;
       }
     } catch (_) {
