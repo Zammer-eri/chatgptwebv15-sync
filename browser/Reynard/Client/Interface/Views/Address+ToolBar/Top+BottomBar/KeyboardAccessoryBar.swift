@@ -6,6 +6,10 @@
 import UIKit
 
 final class KeyboardAccessoryBar {
+    private static let spacing: CGFloat = 8
+    static let compactWidth: CGFloat = 78
+    static let expandedWidth: CGFloat = compactWidth * 2 + spacing
+
     let view: UIView = {
         let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -46,23 +50,22 @@ final class KeyboardAccessoryBar {
     }()
 
     init() {
-        let stack = UIStackView(arrangedSubviews: [sendPill, donePill])
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        stack.axis = .horizontal
-        stack.alignment = .fill
-        stack.spacing = 8
-        stack.distribution = .fillEqually
-        view.addSubview(stack)
+        view.addSubview(sendPill)
+        view.addSubview(donePill)
         sendPill.contentView.addSubview(sendButton)
         donePill.contentView.addSubview(doneButton)
         configurePressFeedback(for: sendButton, pill: sendPill)
         configurePressFeedback(for: doneButton, pill: donePill)
 
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: view.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            donePill.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            donePill.topAnchor.constraint(equalTo: view.topAnchor),
+            donePill.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            donePill.widthAnchor.constraint(equalToConstant: Self.compactWidth),
+            sendPill.trailingAnchor.constraint(equalTo: donePill.leadingAnchor, constant: -Self.spacing),
+            sendPill.topAnchor.constraint(equalTo: view.topAnchor),
+            sendPill.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            sendPill.widthAnchor.constraint(equalToConstant: Self.compactWidth),
             sendButton.leadingAnchor.constraint(equalTo: sendPill.contentView.leadingAnchor, constant: 14),
             sendButton.trailingAnchor.constraint(equalTo: sendPill.contentView.trailingAnchor, constant: -14),
             sendButton.topAnchor.constraint(equalTo: sendPill.contentView.topAnchor),

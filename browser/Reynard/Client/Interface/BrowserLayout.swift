@@ -13,6 +13,7 @@ final class BrowserLayout {
     private static let shellMinimumInputSurroundingClearance: CGFloat = 120
     private static let shellMaximumInputSurroundingClearance: CGFloat = 190
     private static let shellInputSurroundingClearanceRatio: CGFloat = 0.42
+    private static let shellMaximumGeckoKeyboardOffset: CGFloat = 180
     private static let keyboardAccessorySpacing: CGFloat = 8
     private static let keyboardAvoidancePadding: CGFloat = 12
     private unowned let controller: BrowserViewController
@@ -107,7 +108,7 @@ final class BrowserLayout {
         ui.keyboardAccessoryBottomConstraint = ui.keyboardAccessoryBar.view.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
         ui.keyboardAccessoryTrailingConstraint = ui.keyboardAccessoryBar.view.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12)
         ui.keyboardAccessoryHeightConstraint = ui.keyboardAccessoryBar.view.heightAnchor.constraint(equalToConstant: 36)
-        ui.keyboardAccessoryWidthConstraint = ui.keyboardAccessoryBar.view.widthAnchor.constraint(equalToConstant: 164)
+        ui.keyboardAccessoryWidthConstraint = ui.keyboardAccessoryBar.view.widthAnchor.constraint(equalToConstant: KeyboardAccessoryBar.expandedWidth)
         
         ui.topBar.heightConstraint = ui.topBar.barView.heightAnchor.constraint(equalToConstant: 52)
         ui.topBar.topConstraint = ui.topBar.barView.topAnchor.constraint(equalTo: view.topAnchor)
@@ -258,7 +259,7 @@ final class BrowserLayout {
         ui.keyboardAccessoryBottomConstraint = ui.keyboardAccessoryBar.view.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
         ui.keyboardAccessoryTrailingConstraint = ui.keyboardAccessoryBar.view.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12)
         ui.keyboardAccessoryHeightConstraint = ui.keyboardAccessoryBar.view.heightAnchor.constraint(equalToConstant: 36)
-        ui.keyboardAccessoryWidthConstraint = ui.keyboardAccessoryBar.view.widthAnchor.constraint(equalToConstant: 164)
+        ui.keyboardAccessoryWidthConstraint = ui.keyboardAccessoryBar.view.widthAnchor.constraint(equalToConstant: KeyboardAccessoryBar.expandedWidth)
 
         NSLayoutConstraint.activate([
             ui.geckoLeadingPhoneConstraint,
@@ -548,7 +549,7 @@ final class BrowserLayout {
         let shouldShow = keyboardVisible && shouldAvoidKeyboardAccessory
         let shouldShowSend = shouldShow && controller.shouldShowChatGPTSendAccessory
         controller.browserUI.keyboardAccessoryBar.setShowsSend(shouldShowSend)
-        controller.browserUI.keyboardAccessoryWidthConstraint.constant = shouldShowSend ? 164 : 78
+        controller.browserUI.keyboardAccessoryWidthConstraint.constant = shouldShowSend ? KeyboardAccessoryBar.expandedWidth : KeyboardAccessoryBar.compactWidth
         if shouldShow {
             bar.isHidden = false
         }
@@ -654,6 +655,12 @@ final class BrowserLayout {
                 }
 
                 self.focusedInputBottomRatio = self.focusedTextInputBottomRatio()
+                if Self.chatGPTShellMode {
+                    let nextOffset = self.resolvedGeckoPhoneVerticalOffset(shouldShowGeckoBehindKeyboard: false)
+                    guard nextOffset > self.geckoPhoneVerticalOffset + 1 else {
+                        continue
+                    }
+                }
                 self.applyFocusedInputRelocation(duration: duration, curve: curve)
             }
         }
@@ -748,7 +755,8 @@ final class BrowserLayout {
         
         let focusBottom = geckoFrame.height * bottomRatio
         let visibleBottom = max(0, geckoFrame.height - keyboardOverlap - Self.keyboardAvoidancePadding)
-        return min(keyboardOverlap, max(0, focusBottom - visibleBottom))
+        let offset = min(keyboardOverlap, max(0, focusBottom - visibleBottom))
+        return Self.chatGPTShellMode ? min(offset, Self.shellMaximumGeckoKeyboardOffset) : offset
     }
 
     private var shouldAvoidKeyboardAccessory: Bool {
