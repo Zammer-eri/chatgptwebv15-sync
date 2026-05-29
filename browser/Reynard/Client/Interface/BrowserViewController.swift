@@ -677,6 +677,7 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
     private let androidUASwitch = UISwitch()
     private let saveButton = UIButton(type: .system)
     private var cardSideConstraint: NSLayoutConstraint?
+    private var cardHeightConstraint: NSLayoutConstraint?
     private var saveButtonHeightConstraint: NSLayoutConstraint?
     private var savedAndroidUA = false
     private var showingDownloads = false
@@ -700,7 +701,7 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
         cardView.layer.shadowOpacity = 0.25
         cardView.layer.shadowRadius = 28
         cardView.layer.shadowOffset = CGSize(width: 0, height: 12)
-        cardView.clipsToBounds = false
+        cardView.clipsToBounds = true
 
         addSubview(blurView)
         addSubview(dimView)
@@ -708,6 +709,7 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
         cardView.addSubview(homeContent)
         cardView.addSubview(downloadsContent)
         cardSideConstraint = cardView.widthAnchor.constraint(equalToConstant: 280)
+        cardHeightConstraint = cardView.heightAnchor.constraint(equalToConstant: 188)
 
         NSLayoutConstraint.activate([
             blurView.topAnchor.constraint(equalTo: topAnchor),
@@ -725,7 +727,7 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
             cardView.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 18),
             cardView.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -18),
             cardSideConstraint!,
-            cardView.heightAnchor.constraint(equalTo: cardView.widthAnchor),
+            cardHeightConstraint!,
 
             homeContent.topAnchor.constraint(equalTo: cardView.topAnchor),
             homeContent.bottomAnchor.constraint(equalTo: cardView.bottomAnchor),
@@ -756,6 +758,7 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
         let availableWidth = max(220, bounds.width - 56)
         let availableHeight = max(220, bounds.height - safeAreaInsets.top - safeAreaInsets.bottom - 80)
         cardSideConstraint?.constant = min(336, min(availableWidth, availableHeight))
+        updateCardHeight(animated: false)
     }
 
     func syncControls() {
@@ -777,11 +780,13 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
     func showHome(animated: Bool) {
         showingDownloads = false
         switchContent(to: homeContent, from: downloadsContent, animated: animated)
+        updateCardHeight(animated: animated)
     }
 
     func showDownloads(animated: Bool) {
         showingDownloads = true
         switchContent(to: downloadsContent, from: homeContent, animated: animated)
+        updateCardHeight(animated: animated)
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
@@ -937,6 +942,24 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
         }
     }
 
+    private func updateCardHeight(animated: Bool) {
+        let side = cardSideConstraint?.constant ?? 280
+        let saveHeight: CGFloat = androidUASwitch.isOn != savedAndroidUA ? 60 : 0
+        let homeHeight: CGFloat = 72 + 12 + 72 + saveHeight + 32
+        let targetHeight = showingDownloads ? side : homeHeight
+        let applyHeight = {
+            self.cardHeightConstraint?.constant = min(targetHeight, side)
+        }
+        guard animated else {
+            applyHeight()
+            return
+        }
+        UIView.animate(withDuration: 0.22, delay: 0, options: [.curveEaseInOut]) {
+            applyHeight()
+            self.layoutIfNeeded()
+        }
+    }
+
     private func updateSaveButton(animated: Bool) {
         let changed = androidUASwitch.isOn != savedAndroidUA
         let updates = {
@@ -947,6 +970,8 @@ private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
             self.homeStackView.layoutIfNeeded()
             self.homeContent.layoutIfNeeded()
             self.cardView.layoutIfNeeded()
+            self.updateCardHeight(animated: false)
+            self.layoutIfNeeded()
         }
         guard animated else {
             updates()
