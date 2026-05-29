@@ -177,7 +177,7 @@ final class DownloadStore: NSObject {
     func snapshot() -> DownloadStoreSnapshot {
         stateQueue.sync {
             syncDownloadsDirectoryLocked()
-            makeSnapshotLocked()
+            return makeSnapshotLocked()
         }
     }
     
