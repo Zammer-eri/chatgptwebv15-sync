@@ -616,6 +616,7 @@ javascript:(()=>{const d=document;const v=e=>{const r=e.getBoundingClientRect&&e
         }
 
         tab.session.load(Self.chatGPTSendPromptScript)
+        view.endEditing(true)
     }
 
     private func openExternalLinkInSafari(_ url: URL) {

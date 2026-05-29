@@ -6,17 +6,26 @@
 import UIKit
 
 final class KeyboardAccessoryBar {
-    let view: UIVisualEffectView = {
-        let blur = UIBlurEffect(style: .systemChromeMaterial)
-        let view = UIVisualEffectView(effect: blur)
+    let view: UIView = {
+        let view = UIView()
         view.translatesAutoresizingMaskIntoConstraints = false
         view.alpha = 0
         view.isHidden = true
+        return view
+    }()
+
+    private static func makePill() -> UIVisualEffectView {
+        let blur = UIBlurEffect(style: .systemChromeMaterial)
+        let view = UIVisualEffectView(effect: blur)
+        view.translatesAutoresizingMaskIntoConstraints = false
         view.layer.cornerCurve = .continuous
         view.layer.cornerRadius = 18
         view.clipsToBounds = true
         return view
-    }()
+    }
+
+    private let sendPill = makePill()
+    private let donePill = makePill()
 
     let sendButton: UIButton = {
         let button = UIButton(type: .system)
@@ -37,24 +46,29 @@ final class KeyboardAccessoryBar {
     }()
 
     init() {
-        let separator = UIView()
-        separator.translatesAutoresizingMaskIntoConstraints = false
-        separator.backgroundColor = .separator
-
-        let stack = UIStackView(arrangedSubviews: [sendButton, separator, doneButton])
+        let stack = UIStackView(arrangedSubviews: [sendPill, donePill])
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.axis = .horizontal
         stack.alignment = .fill
-        stack.distribution = .fill
-        view.contentView.addSubview(stack)
+        stack.spacing = 8
+        stack.distribution = .fillEqually
+        view.addSubview(stack)
+        sendPill.contentView.addSubview(sendButton)
+        donePill.contentView.addSubview(doneButton)
 
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: view.contentView.leadingAnchor, constant: 10),
-            stack.trailingAnchor.constraint(equalTo: view.contentView.trailingAnchor, constant: -10),
-            stack.topAnchor.constraint(equalTo: view.contentView.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: view.contentView.bottomAnchor),
-            sendButton.widthAnchor.constraint(equalTo: doneButton.widthAnchor),
-            separator.widthAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale),
+            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: view.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            sendButton.leadingAnchor.constraint(equalTo: sendPill.contentView.leadingAnchor, constant: 14),
+            sendButton.trailingAnchor.constraint(equalTo: sendPill.contentView.trailingAnchor, constant: -14),
+            sendButton.topAnchor.constraint(equalTo: sendPill.contentView.topAnchor),
+            sendButton.bottomAnchor.constraint(equalTo: sendPill.contentView.bottomAnchor),
+            doneButton.leadingAnchor.constraint(equalTo: donePill.contentView.leadingAnchor, constant: 14),
+            doneButton.trailingAnchor.constraint(equalTo: donePill.contentView.trailingAnchor, constant: -14),
+            doneButton.topAnchor.constraint(equalTo: donePill.contentView.topAnchor),
+            doneButton.bottomAnchor.constraint(equalTo: donePill.contentView.bottomAnchor),
         ])
     }
 }
