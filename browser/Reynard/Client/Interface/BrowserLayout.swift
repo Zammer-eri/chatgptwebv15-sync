@@ -32,6 +32,11 @@ final class BrowserLayout {
     }
     
     func configureLayout() {
+        if Self.chatGPTShellMode {
+            configureShellLayout()
+            return
+        }
+
         let ui = controller.browserUI
         let view = controller.view!
         
@@ -237,6 +242,35 @@ final class BrowserLayout {
         
         view.sendSubviewToBack(ui.chromeContainer.bottomSafeAreaFillView)
     }
+
+    private func configureShellLayout() {
+        let ui = controller.browserUI
+        let view = controller.view!
+
+        view.addSubview(ui.geckoView)
+        view.addSubview(ui.keyboardAccessoryBar.view)
+
+        ui.geckoTopPhoneConstraint = ui.geckoView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
+        ui.geckoBottomPhoneConstraint = ui.geckoView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ui.geckoBottomPhoneKeyboardOverlayConstraint = ui.geckoView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ui.geckoLeadingPhoneConstraint = ui.geckoView.leadingAnchor.constraint(equalTo: view.leadingAnchor)
+        ui.geckoTrailingPhoneConstraint = ui.geckoView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ui.keyboardAccessoryBottomConstraint = ui.keyboardAccessoryBar.view.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
+        ui.keyboardAccessoryTrailingConstraint = ui.keyboardAccessoryBar.view.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12)
+        ui.keyboardAccessoryHeightConstraint = ui.keyboardAccessoryBar.view.heightAnchor.constraint(equalToConstant: 36)
+        ui.keyboardAccessoryWidthConstraint = ui.keyboardAccessoryBar.view.widthAnchor.constraint(equalToConstant: 164)
+
+        NSLayoutConstraint.activate([
+            ui.geckoLeadingPhoneConstraint,
+            ui.geckoTrailingPhoneConstraint,
+            ui.geckoTopPhoneConstraint,
+            ui.geckoBottomPhoneConstraint,
+            ui.keyboardAccessoryTrailingConstraint,
+            ui.keyboardAccessoryBottomConstraint,
+            ui.keyboardAccessoryHeightConstraint,
+            ui.keyboardAccessoryWidthConstraint,
+        ])
+    }
     
     func observeKeyboard() {
         NotificationCenter.default.addObserver(
@@ -254,6 +288,11 @@ final class BrowserLayout {
     }
     
     func applyChromeLayout(animated: Bool) {
+        guard !Self.chatGPTShellMode else {
+            controller.view.layoutIfNeeded()
+            return
+        }
+
         updateChromeLayoutState()
         
         let layoutBlock = {
@@ -270,6 +309,12 @@ final class BrowserLayout {
     
     private func updateChromeLayoutState() {
         let ui = controller.browserUI
+        if Self.chatGPTShellMode {
+            ui.geckoTopPhoneConstraint.constant = -geckoPhoneVerticalOffset
+            ui.geckoBottomPhoneConstraint.constant = -geckoPhoneVerticalOffset
+            return
+        }
+
         let pad = controller.usesPadChromeLayout
         let compactPad = controller.usesCompactPadChromeMode
         let shellMode = Self.chatGPTShellMode
@@ -400,6 +445,11 @@ final class BrowserLayout {
     }
     
     func setSearchFocused(_ focused: Bool, animated: Bool) {
+        guard !Self.chatGPTShellMode else {
+            controller.isSearchFocused = focused
+            return
+        }
+
         let ui = controller.browserUI
         let usesPadChromeLayout = controller.usesPadChromeLayout
         
@@ -449,19 +499,21 @@ final class BrowserLayout {
             return
         }
         
-        let ui = controller.browserUI
         updateKeyboardState(screenFrame: frameValue.cgRectValue)
         let duration = info[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval ?? 0.25
         let curveRaw = info[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 7
         let curve = UIView.AnimationOptions(rawValue: curveRaw << 16)
         requestFocusedInputMetricsIfNeeded(duration: duration, curve: curve)
         
-        let shouldDockChromeToKeyboard = !controller.usesPadChromeLayout
-        && controller.isSearchFocused
-        && !controller.tabOverviewPresentation.isVisible
-        && keyboardHeight > 0
-        ui.phoneChromeBottomConstraint.constant = shouldDockChromeToKeyboard ? -keyboardHeight : 0
-        ui.keyboardAccessoryBottomConstraint.constant = -(keyboardHeight + Self.keyboardAccessorySpacing)
+        let shouldDockChromeToKeyboard = !Self.chatGPTShellMode
+            && !controller.usesPadChromeLayout
+            && controller.isSearchFocused
+            && !controller.tabOverviewPresentation.isVisible
+            && keyboardHeight > 0
+        if !Self.chatGPTShellMode {
+            controller.browserUI.phoneChromeBottomConstraint.constant = shouldDockChromeToKeyboard ? -keyboardHeight : 0
+        }
+        controller.browserUI.keyboardAccessoryBottomConstraint.constant = -(keyboardHeight + Self.keyboardAccessorySpacing)
         updateKeyboardAccessoryVisibility(keyboardVisible: keyboardHeight > 0)
         updateChromeLayoutState()
         
@@ -472,12 +524,13 @@ final class BrowserLayout {
     }
     
     @objc private func keyboardWillHide(_ notification: Notification) {
-        let ui = controller.browserUI
         keyboardHeight = 0
         keyboardFrame = .zero
         resetFocusedInputRelocation()
-        ui.phoneChromeBottomConstraint.constant = 0
-        ui.keyboardAccessoryBottomConstraint.constant = 0
+        if !Self.chatGPTShellMode {
+            controller.browserUI.phoneChromeBottomConstraint.constant = 0
+        }
+        controller.browserUI.keyboardAccessoryBottomConstraint.constant = 0
         updateKeyboardAccessoryVisibility(keyboardVisible: false)
         updateChromeLayoutState()
         
@@ -493,6 +546,9 @@ final class BrowserLayout {
     private func updateKeyboardAccessoryVisibility(keyboardVisible: Bool) {
         let bar = controller.browserUI.keyboardAccessoryBar.view
         let shouldShow = keyboardVisible && shouldAvoidKeyboardAccessory
+        let shouldShowSend = shouldShow && controller.shouldShowChatGPTSendAccessory
+        controller.browserUI.keyboardAccessoryBar.setShowsSend(shouldShowSend)
+        controller.browserUI.keyboardAccessoryWidthConstraint.constant = shouldShowSend ? 164 : 78
         if shouldShow {
             bar.isHidden = false
         }
@@ -502,7 +558,15 @@ final class BrowserLayout {
         }
     }
 
+    func refreshKeyboardAccessoryVisibility() {
+        updateKeyboardAccessoryVisibility(keyboardVisible: keyboardHeight > 0)
+    }
+
     private func updatePhoneDismissKeyboardButtonShadowPath() {
+        guard !Self.chatGPTShellMode else {
+            return
+        }
+
         let button = controller.browserUI.keyboardDismissButton.button
         guard !controller.usesPadChromeLayout else {
             button.layer.shadowPath = nil
@@ -545,6 +609,22 @@ final class BrowserLayout {
     }
     
     private func requestFocusedInputMetricsIfNeeded(duration: TimeInterval, curve: UIView.AnimationOptions) {
+        if Self.chatGPTShellMode {
+            guard keyboardHeight > 0 else {
+                focusedInputBottomRatio = nil
+                focusedInputMetricsTask?.cancel()
+                focusedInputMetricsTask = nil
+                applyFocusedInputRelocation(duration: duration, curve: curve)
+                return
+            }
+
+            focusedInputMetricsTask?.cancel()
+            focusedInputBottomRatio = focusedTextInputBottomRatio()
+            applyFocusedInputRelocation(duration: duration, curve: curve)
+            startFocusedInputMetricsPolling(duration: duration, curve: curve)
+            return
+        }
+
         guard !controller.isSearchFocused,
               !controller.tabOverviewPresentation.isVisible,
               keyboardHeight > 0 else {
@@ -569,7 +649,7 @@ final class BrowserLayout {
                       !Task.isCancelled,
                       self.keyboardHeight > 0,
                       !self.controller.isSearchFocused,
-                      !self.controller.tabOverviewPresentation.isVisible else {
+                      (Self.chatGPTShellMode || !self.controller.tabOverviewPresentation.isVisible) else {
                     return
                 }
 
@@ -639,7 +719,7 @@ final class BrowserLayout {
         shouldShowGeckoBehindKeyboard: Bool
     ) -> CGFloat {
         guard !controller.isSearchFocused,
-              !controller.tabOverviewPresentation.isVisible,
+              (Self.chatGPTShellMode || !controller.tabOverviewPresentation.isVisible),
               !shouldShowGeckoBehindKeyboard,
               keyboardHeight > 0,
               let bottomRatio = focusedInputBottomRatio else {
@@ -674,7 +754,7 @@ final class BrowserLayout {
     private var shouldAvoidKeyboardAccessory: Bool {
         keyboardHeight > 0
             && !controller.isSearchFocused
-            && !controller.tabOverviewPresentation.isVisible
+            && (Self.chatGPTShellMode || !controller.tabOverviewPresentation.isVisible)
     }
 
     private var keyboardAccessoryAvoidanceHeight: CGFloat {

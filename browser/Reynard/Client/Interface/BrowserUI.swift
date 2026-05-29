@@ -17,32 +17,38 @@ final class BrowserUI {
         return view
     }()
     
-    let chromeContainer = ChromeContainer()
+    lazy var chromeContainer = ChromeContainer()
     
-    let addressBar: AddressBar = {
+    lazy var addressBar: AddressBar = {
         let bar = AddressBar()
         bar.translatesAutoresizingMaskIntoConstraints = false
+        bar.configure(delegate: self.controller)
         return bar
     }()
     
-    let keyboardDismissButton = KeyboardDismissButton()
+    lazy var keyboardDismissButton = KeyboardDismissButton()
     let keyboardAccessoryBar = KeyboardAccessoryBar()
     
-    let toolbarView: PhoneToolbar = {
+    lazy var toolbarView: PhoneToolbar = {
         let bar = PhoneToolbar()
         bar.translatesAutoresizingMaskIntoConstraints = false
+        bar.delegate = self.controller
         return bar
     }()
     
-    let topBar = PadTopBar()
-    let padTopBarButtons: PadTopBarButtons
-    let padTabBar: PadTabBar
+    lazy var topBar = PadTopBar()
+    lazy var padTopBarButtons = PadTopBarButtons(controller: self.controller)
+    lazy var padTabBar = PadTabBar(tabCollectionHandler: self.tabCollectionHandler)
     
-    let tabOverview = TabOverview()
-    let tabOverviewCollection: TabOverviewCollection
-    let tabOverviewBottomBar = TabOverviewBottomBar()
-    let tabOverviewTopBar = TabOverviewTopBar()
-    let tabOverviewBarButtons: TabOverviewBarButtons
+    lazy var tabOverview = TabOverview()
+    lazy var tabOverviewCollection = TabOverviewCollection(
+        overviewInset: self.overviewInset,
+        overviewSpacing: self.overviewSpacing,
+        tabCollectionHandler: self.tabCollectionHandler
+    )
+    lazy var tabOverviewBottomBar = TabOverviewBottomBar()
+    lazy var tabOverviewTopBar = TabOverviewTopBar()
+    lazy var tabOverviewBarButtons = TabOverviewBarButtons(controller: self.controller)
     
     var geckoTopPhoneConstraint: NSLayoutConstraint!
     var geckoTopPadConstraint: NSLayoutConstraint!
@@ -92,20 +98,7 @@ final class BrowserUI {
         self.overviewInset = overviewInset
         self.overviewSpacing = overviewSpacing
         self.tabCollectionHandler = tabCollectionHandler
-        
-        padTopBarButtons = PadTopBarButtons(controller: controller)
-        padTabBar = PadTabBar(tabCollectionHandler: tabCollectionHandler)
-        tabOverviewCollection = TabOverviewCollection(
-            overviewInset: overviewInset,
-            overviewSpacing: overviewSpacing,
-            tabCollectionHandler: tabCollectionHandler
-        )
-        tabOverviewBarButtons = TabOverviewBarButtons(controller: controller)
-        
-        addressBar.configure(delegate: controller)
-        keyboardDismissButton.button.addTarget(controller, action: #selector(BrowserViewController.dismissKeyboardTapped), for: .touchUpInside)
         keyboardAccessoryBar.sendButton.addTarget(controller, action: #selector(BrowserViewController.sendChatGPTPromptTapped), for: .touchUpInside)
         keyboardAccessoryBar.doneButton.addTarget(controller, action: #selector(BrowserViewController.dismissKeyboardTapped), for: .touchUpInside)
-        toolbarView.delegate = controller
     }
 }

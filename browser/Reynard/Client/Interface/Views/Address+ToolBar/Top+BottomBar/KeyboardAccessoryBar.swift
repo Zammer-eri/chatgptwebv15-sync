@@ -74,6 +74,10 @@ final class KeyboardAccessoryBar {
         ])
     }
 
+    func setShowsSend(_ showsSend: Bool) {
+        sendPill.isHidden = !showsSend
+    }
+
     private func configurePressFeedback(for button: UIButton, pill: UIView) {
         button.addAction(
             UIAction { [weak pill] _ in

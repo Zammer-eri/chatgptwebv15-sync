@@ -9,6 +9,7 @@ import GeckoView
 import UIKit
 
 final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneToolbarDelegate, TabManagerDelegate {
+    private static let chatGPTShellMode = true
     private static let chatGPTSendPromptScript = """
 javascript:(()=>{const d=document;const v=e=>{const r=e.getBoundingClientRect&&e.getBoundingClientRect();return r&&r.width>0&&r.height>0};const ok=e=>!e.disabled&&e.getAttribute("aria-disabled")!=="true";const buttons=[...d.querySelectorAll("button,[role='button']")].filter(e=>v(e)&&ok(e));const byName=buttons.find(e=>{const t=(e.getAttribute("data-testid")||"").toLowerCase();const a=(e.getAttribute("aria-label")||"").toLowerCase();return t.includes("send")||a==="send"||a==="send prompt"||a==="send message"||a.includes("send")});const byForm=buttons.find(e=>e.closest("form")&&(e.type==="submit"||e.getAttribute("type")==="submit"));(byName||byForm)?.click();})()
 """
@@ -37,6 +38,7 @@ javascript:(()=>{const d=document;const v=e=>{const r=e.getBoundingClientRect&&e
     private var utilityPanelVisible = false
     private var isShellRecoveryOverlayVisible = false
     private var shellRecoveryOverlayToken = UUID()
+    private var shellRecoveryOverlayShownAt: Date?
     private let shellRecoveryOverlay = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterialDark))
     private let shellRecoveryPill = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
     private let shellRecoveryLabel: UILabel = {
@@ -90,6 +92,26 @@ javascript:(()=>{const d=document;const v=e=>{const r=e.getBoundingClientRect&&e
 
     var activeAddressBar: AddressBar {
         browserUI.addressBar
+    }
+
+    var shouldShowChatGPTSendAccessory: Bool {
+        guard !utilityPanelVisible else {
+            return false
+        }
+
+        return isChatGPTPageURL(tabManager.selectedTab?.url) ||
+            isChatGPTPageURL(tabManager.selectedTab?.pendingDisplayText) ||
+            isChatGPTPageURL(tabManager.selectedTab?.pendingRestoreURL)
+    }
+
+    private func isChatGPTPageURL(_ value: String?) -> Bool {
+        guard let value,
+              let url = URL(string: value.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let host = url.host?.lowercased() else {
+            return false
+        }
+
+        return host == "chatgpt.com" || host.hasSuffix(".chatgpt.com")
     }
 
     init(actsAsRootContainer: Bool = true) {
@@ -211,6 +233,10 @@ javascript:(()=>{const d=document;const v=e=>{const r=e.getBoundingClientRect&&e
     }
 
     func setTabOverviewVisible(_ visible: Bool, animated: Bool) {
+        guard !Self.chatGPTShellMode else {
+            return
+        }
+
         tabOverviewPresentation.setVisible(visible, animated: animated)
     }
 
@@ -223,6 +249,10 @@ javascript:(()=>{const d=document;const v=e=>{const r=e.getBoundingClientRect&&e
     }
 
     func centerSelectedPadTab(animated: Bool) {
+        guard !Self.chatGPTShellMode else {
+            return
+        }
+
         guard usesPadChromeLayout, tabManager.tabs.indices.contains(tabManager.selectedTabIndex) else {
             return
         }
@@ -254,6 +284,10 @@ javascript:(()=>{const d=document;const v=e=>{const r=e.getBoundingClientRect&&e
     }
 
     func updateNavigationButtons() {
+        guard !Self.chatGPTShellMode else {
+            return
+        }
+
         guard let tab = tabManager.selectedTab else {
             return
         }
@@ -268,6 +302,10 @@ javascript:(()=>{const d=document;const v=e=>{const r=e.getBoundingClientRect&&e
     }
 
     private func syncPadSidebarButtonItem() {
+        guard !Self.chatGPTShellMode else {
+            return
+        }
+
         browserUI.padTopBarButtons.syncSidebarButton(splitViewController: splitViewController)
     }
 
@@ -335,10 +373,18 @@ javascript:(()=>{const d=document;const v=e=>{const r=e.getBoundingClientRect&&e
     }
 
     func syncAddressBarLoadingState(progress: Float, isLoading: Bool) {
+        guard !Self.chatGPTShellMode else {
+            return
+        }
+
         browserUI.addressBar.setLoadingProgress(progress, isLoading: isLoading)
     }
 
     func refreshAddressBar() {
+        guard !Self.chatGPTShellMode else {
+            return
+        }
+
         let selectedTab = tabManager.selectedTab
         let pendingDisplayText = selectedTab?.pendingDisplayText?.trimmingCharacters(in: .whitespacesAndNewlines)
         let hasPendingDisplayText = !(pendingDisplayText?.isEmpty ?? true)
@@ -408,7 +454,7 @@ javascript:(()=>{const d=document;const v=e=>{const r=e.getBoundingClientRect&&e
                 let tab = tabManager.tabs[index]
                 syncAddressBarLoadingState(progress: tab.progress, isLoading: tab.isLoading)
                 if isShellRecoveryOverlayVisible && !tab.isLoading {
-                    setShellRecoveryOverlayVisible(false, animated: true)
+                    hideShellRecoveryOverlayAfterSettleDelay()
                 }
             }
 
@@ -625,12 +671,13 @@ javascript:(()=>{const d=document;const v=e=>{const r=e.getBoundingClientRect&&e
 
         isShellRecoveryOverlayVisible = visible
         if visible {
+            shellRecoveryOverlayShownAt = Date()
             shellRecoveryOverlay.isHidden = false
             view.bringSubviewToFront(shellRecoveryOverlay)
             shellRecoveryPill.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
             let token = UUID()
             shellRecoveryOverlayToken = token
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { [weak self] in
                 guard let self,
                       self.shellRecoveryOverlayToken == token,
                       self.isShellRecoveryOverlayVisible else {
@@ -647,6 +694,7 @@ javascript:(()=>{const d=document;const v=e=>{const r=e.getBoundingClientRect&&e
         let completion: (Bool) -> Void = { _ in
             if !visible {
                 self.shellRecoveryOverlay.isHidden = true
+                self.shellRecoveryOverlayShownAt = nil
             }
         }
 
@@ -661,6 +709,23 @@ javascript:(()=>{const d=document;const v=e=>{const r=e.getBoundingClientRect&&e
         } else {
             animations()
             completion(true)
+        }
+    }
+
+    private func hideShellRecoveryOverlayAfterSettleDelay() {
+        let minimumVisibleDuration: TimeInterval = 2.5
+        let settleDuration: TimeInterval = 0.0
+        let elapsed = shellRecoveryOverlayShownAt.map { Date().timeIntervalSince($0) } ?? minimumVisibleDuration
+        let delay = max(0, minimumVisibleDuration - elapsed) + settleDuration
+        let token = shellRecoveryOverlayToken
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self,
+                  self.shellRecoveryOverlayToken == token,
+                  self.isShellRecoveryOverlayVisible else {
+                return
+            }
+            self.setShellRecoveryOverlayVisible(false, animated: true)
         }
     }
 
@@ -744,6 +809,7 @@ javascript:(()=>{const d=document;const v=e=>{const r=e.getBoundingClientRect&&e
 
     private func setUtilityPanelVisible(_ visible: Bool, animated: Bool) {
         utilityPanelVisible = visible
+        browserLayout.refreshKeyboardAccessoryVisibility()
         utilityPanel.syncControls()
         if visible {
             utilityPanel.showHome(animated: false)
