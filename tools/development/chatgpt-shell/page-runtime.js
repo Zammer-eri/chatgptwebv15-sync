@@ -3,7 +3,7 @@
 
   const win = root.window || root;
   const COMPOSER_SELECTOR =
-    '#prompt-textarea,textarea,[contenteditable="true"][role="textbox"]';
+    'textarea,[contenteditable="true"][role="textbox"],[contenteditable="true"]';
   const COMPOSER_ROOT_SELECTOR =
     'form,[data-testid*="composer"],[class*="composer"],main';
   let doc = null;
@@ -104,10 +104,6 @@
         return true;
       }
 
-      if (insertContentEditableLineBreak(editable)) {
-        return true;
-      }
-
       if (doc.execCommand?.("insertLineBreak")) {
         dispatchInput(editable, "insertLineBreak");
         return true;
@@ -115,6 +111,10 @@
 
       if (doc.execCommand?.("insertParagraph")) {
         dispatchInput(editable, "insertLineBreak");
+        return true;
+      }
+
+      if (insertContentEditableLineBreak(editable)) {
         return true;
       }
     } catch (_) {
@@ -136,10 +136,11 @@
     }
     doc.__reynardChatGPTReturnKeyControlsInstalled = true;
 
-    const syncReturnHint = target => {
-      const editable = editableElement(target) || activeComposerEditable();
-      if (editable && isComposerEditable(editable)) {
-        editable.setAttribute("enterkeyhint", "enter");
+    const syncReturnHint = () => {
+      for (const editable of doc.querySelectorAll(COMPOSER_SELECTOR)) {
+        if (isComposerEditable(editable)) {
+          editable.setAttribute("enterkeyhint", "enter");
+        }
       }
     };
 
@@ -188,7 +189,13 @@
     win.addEventListener("keydown", handleReturn, true);
     win.addEventListener("beforeinput", handleBeforeInput, true);
     win.addEventListener("submit", handleSubmit, true);
-    win.addEventListener("focusin", event => syncReturnHint(event.target), true);
+    doc.addEventListener("keydown", handleReturn, true);
+    doc.addEventListener("beforeinput", handleBeforeInput, true);
+    doc.addEventListener("submit", handleSubmit, true);
+    new win.MutationObserver(syncReturnHint).observe(doc.documentElement, {
+      childList: true,
+      subtree: true,
+    });
     syncReturnHint();
   };
 
