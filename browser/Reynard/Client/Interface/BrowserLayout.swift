@@ -102,7 +102,7 @@ final class BrowserLayout {
         ui.keyboardAccessoryBottomConstraint = ui.keyboardAccessoryBar.view.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
         ui.keyboardAccessoryTrailingConstraint = ui.keyboardAccessoryBar.view.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12)
         ui.keyboardAccessoryHeightConstraint = ui.keyboardAccessoryBar.view.heightAnchor.constraint(equalToConstant: 36)
-        ui.keyboardAccessoryWidthConstraint = ui.keyboardAccessoryBar.view.widthAnchor.constraint(equalToConstant: 78)
+        ui.keyboardAccessoryWidthConstraint = ui.keyboardAccessoryBar.view.widthAnchor.constraint(equalToConstant: 154)
         
         ui.topBar.heightConstraint = ui.topBar.barView.heightAnchor.constraint(equalToConstant: 52)
         ui.topBar.topConstraint = ui.topBar.barView.topAnchor.constraint(equalTo: view.topAnchor)

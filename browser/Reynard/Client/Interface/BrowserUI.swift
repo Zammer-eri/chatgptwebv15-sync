@@ -104,6 +104,7 @@ final class BrowserUI {
         
         addressBar.configure(delegate: controller)
         keyboardDismissButton.button.addTarget(controller, action: #selector(BrowserViewController.dismissKeyboardTapped), for: .touchUpInside)
+        keyboardAccessoryBar.sendButton.addTarget(controller, action: #selector(BrowserViewController.sendChatGPTPromptTapped), for: .touchUpInside)
         keyboardAccessoryBar.doneButton.addTarget(controller, action: #selector(BrowserViewController.dismissKeyboardTapped), for: .touchUpInside)
         toolbarView.delegate = controller
     }

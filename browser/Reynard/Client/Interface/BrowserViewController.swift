@@ -9,6 +9,10 @@ import GeckoView
 import UIKit
 
 final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneToolbarDelegate, TabManagerDelegate {
+    private static let chatGPTSendPromptScript = """
+javascript:(()=>{const d=document;const v=e=>{const r=e.getBoundingClientRect&&e.getBoundingClientRect();return r&&r.width>0&&r.height>0};const ok=e=>!e.disabled&&e.getAttribute("aria-disabled")!=="true";const buttons=[...d.querySelectorAll("button,[role='button']")].filter(e=>v(e)&&ok(e));const byName=buttons.find(e=>{const t=(e.getAttribute("data-testid")||"").toLowerCase();const a=(e.getAttribute("aria-label")||"").toLowerCase();return t.includes("send")||a==="send"||a==="send prompt"||a==="send message"||a.includes("send")});const byForm=buttons.find(e=>e.closest("form")&&(e.type==="submit"||e.getAttribute("type")==="submit"));(byName||byForm)?.click();})()
+"""
+
     let overviewInset: CGFloat = 16
     let overviewSpacing: CGFloat = 16
     private let actsAsRootContainer: Bool
@@ -536,7 +540,7 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         tab.session.stop()
         clearAppCacheForReload { [weak self, weak tab] in
             guard let self, let tab else { return }
-            self.reloadTab(tab)
+            self.tabManager.recover(tab)
         }
     }
 
@@ -604,6 +608,14 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
 
     @objc func dismissKeyboardTapped() {
         view.endEditing(true)
+    }
+
+    @objc func sendChatGPTPromptTapped() {
+        guard let tab = tabManager.selectedTab else {
+            return
+        }
+
+        tab.session.load(Self.chatGPTSendPromptScript)
     }
 
     private func openExternalLinkInSafari(_ url: URL) {

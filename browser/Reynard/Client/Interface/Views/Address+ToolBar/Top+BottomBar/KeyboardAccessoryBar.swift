@@ -18,6 +18,15 @@ final class KeyboardAccessoryBar {
         return view
     }()
 
+    let sendButton: UIButton = {
+        let button = UIButton(type: .system)
+        button.translatesAutoresizingMaskIntoConstraints = false
+        button.setTitle("Send", for: .normal)
+        button.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+        button.tintColor = .label
+        return button
+    }()
+
     let doneButton: UIButton = {
         let button = UIButton(type: .system)
         button.translatesAutoresizingMaskIntoConstraints = false
@@ -28,13 +37,24 @@ final class KeyboardAccessoryBar {
     }()
 
     init() {
-        view.contentView.addSubview(doneButton)
+        let separator = UIView()
+        separator.translatesAutoresizingMaskIntoConstraints = false
+        separator.backgroundColor = .separator
+
+        let stack = UIStackView(arrangedSubviews: [sendButton, separator, doneButton])
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        stack.axis = .horizontal
+        stack.alignment = .fill
+        stack.distribution = .fill
+        view.contentView.addSubview(stack)
 
         NSLayoutConstraint.activate([
-            doneButton.leadingAnchor.constraint(equalTo: view.contentView.leadingAnchor, constant: 14),
-            doneButton.trailingAnchor.constraint(equalTo: view.contentView.trailingAnchor, constant: -14),
-            doneButton.topAnchor.constraint(equalTo: view.contentView.topAnchor),
-            doneButton.bottomAnchor.constraint(equalTo: view.contentView.bottomAnchor),
+            stack.leadingAnchor.constraint(equalTo: view.contentView.leadingAnchor, constant: 10),
+            stack.trailingAnchor.constraint(equalTo: view.contentView.trailingAnchor, constant: -10),
+            stack.topAnchor.constraint(equalTo: view.contentView.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: view.contentView.bottomAnchor),
+            sendButton.widthAnchor.constraint(equalTo: doneButton.widthAnchor),
+            separator.widthAnchor.constraint(equalToConstant: 1 / UIScreen.main.scale),
         ])
     }
 }

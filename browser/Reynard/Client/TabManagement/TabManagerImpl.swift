@@ -56,6 +56,10 @@ final class TabManagerImplementation: NSObject, TabManager {
         GeckoSessionLoadFlags.none
     }
 
+    private var recoveryLoadFlags: Int {
+        GeckoSessionLoadFlags.bypassCache | GeckoSessionLoadFlags.replaceHistory
+    }
+
     private func loadURL(_ url: String, in tab: Tab, flags: Int = GeckoSessionLoadFlags.none) {
         tab.session.updateSettings(UserAgentController.shared.sessionSettings(for: url, tabID: tab.id))
         tab.session.load(url, flags: flags)
@@ -328,6 +332,34 @@ final class TabManagerImplementation: NSObject, TabManager {
 
         tab.session.updateSettings(UserAgentController.shared.sessionSettings(for: target, tabID: tab.id))
         tab.session.reload(flags: reloadFlags)
+    }
+
+    func recover(_ tab: Tab) {
+        guard tabs.contains(where: { $0 === tab }) else {
+            return
+        }
+
+        let target = restoredURL(from: tab.url) ?? Self.shellHomeURL
+        let oldSession = tab.session
+        let newSession = createSession(windowId: nil)
+        newSession.updateSettings(UserAgentController.shared.sessionSettings(for: target, tabID: tab.id))
+
+        tab.session = newSession
+        tab.pendingRestoreURL = nil
+        tab.pendingDisplayText = target
+        tab.suppressInitialNavigation = false
+        tab.canGoBack = false
+        tab.canGoForward = false
+        tab.isLoading = false
+        tab.progress = 0
+
+        if selectedTab === tab {
+            newSession.setActive(true)
+        }
+
+        delegate?.tabManagerDidChangeTabs(self)
+        closeSession(oldSession)
+        load(target, in: tab, flags: recoveryLoadFlags)
     }
 
     func tabIndex(for session: GeckoSession) -> Int? {
