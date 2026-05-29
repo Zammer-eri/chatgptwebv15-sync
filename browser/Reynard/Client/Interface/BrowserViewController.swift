@@ -713,7 +713,7 @@ javascript:(()=>{const d=document;const v=e=>{const r=e.getBoundingClientRect&&e
     }
 
     private func hideShellRecoveryOverlayAfterSettleDelay() {
-        let minimumVisibleDuration: TimeInterval = 2.5
+        let minimumVisibleDuration: TimeInterval = 2.0
         let settleDuration: TimeInterval = 0.0
         let elapsed = shellRecoveryOverlayShownAt.map { Date().timeIntervalSince($0) } ?? minimumVisibleDuration
         let delay = max(0, minimumVisibleDuration - elapsed) + settleDuration
