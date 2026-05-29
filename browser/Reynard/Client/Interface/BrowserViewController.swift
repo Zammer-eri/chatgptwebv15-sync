@@ -30,7 +30,6 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
     var isSearchFocused = false
     private var pendingSelectionAnimation = false
     private let utilityPanel = UtilityPanelView()
-    private var utilityPanelLeadingConstraint: NSLayoutConstraint?
     private var utilityPanelVisible = false
 
     override var shouldAutorotate: Bool {
@@ -589,31 +588,38 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
         utilityPanel.onClose = { [weak self] in
             self?.setUtilityPanelVisible(false, animated: true)
         }
-        utilityPanel.onAndroidUserAgentChanged = { isOn in
-            BrowserPreferences.shared.useAndroidUserAgent = isOn
+        utilityPanel.onSaveUserAgent = { [weak self] useAndroid in
+            guard let self else { return }
+            BrowserPreferences.shared.useAndroidUserAgent = useAndroid
+            self.setUtilityPanelVisible(false, animated: true)
+            guard let tab = self.tabManager.selectedTab else { return }
+            let url = tab.url ?? "https://chatgpt.com"
+            tab.session.updateSettings(UserAgentController.shared.sessionSettings(for: url, tabID: tab.id))
+            self.reloadTab(tab)
         }
         view.addSubview(utilityPanel)
-        let width = utilityPanel.widthAnchor.constraint(equalTo: view.widthAnchor, multiplier: 0.88)
-        width.priority = .defaultHigh
-        utilityPanelLeadingConstraint = utilityPanel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: -380)
         NSLayoutConstraint.activate([
-            utilityPanelLeadingConstraint!,
             utilityPanel.topAnchor.constraint(equalTo: view.topAnchor),
             utilityPanel.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            width,
-            utilityPanel.widthAnchor.constraint(lessThanOrEqualToConstant: 380),
+            utilityPanel.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            utilityPanel.trailingAnchor.constraint(equalTo: view.trailingAnchor),
         ])
         utilityPanel.isHidden = true
+        utilityPanel.alpha = 0
     }
 
     private func setUtilityPanelVisible(_ visible: Bool, animated: Bool) {
         utilityPanelVisible = visible
         utilityPanel.syncControls()
+        if visible {
+            utilityPanel.showHome(animated: false)
+        }
         utilityPanel.isHidden = false
         view.bringSubviewToFront(utilityPanel)
-        utilityPanelLeadingConstraint?.constant = visible ? 0 : -(utilityPanel.bounds.width > 0 ? utilityPanel.bounds.width : 380)
+        utilityPanel.prepareForVisibilityChange(visible)
         let animations = {
-            self.view.layoutIfNeeded()
+            self.utilityPanel.alpha = visible ? 1 : 0
+            self.utilityPanel.applyVisibleState(visible)
         }
         let completion: (Bool) -> Void = { _ in
             self.utilityPanel.isHidden = !visible
@@ -628,26 +634,132 @@ final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneTo
 
 }
 
-private final class UtilityPanelView: UIView {
+private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
     var onClose: (() -> Void)?
-    var onAndroidUserAgentChanged: ((Bool) -> Void)?
+    var onSaveUserAgent: ((Bool) -> Void)?
 
-    private let androidUASwitch = UISwitch()
+    private let blurView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
+    private let dimView = UIView()
+    private let cardView = UIView()
+    private let homeContent = UIView()
+    private let downloadsContent = UIView()
+    private let userAgentControl = UISegmentedControl(items: ["iOS", "Android"])
+    private let saveButton = UIButton(type: .system)
+    private var cardHeightConstraint: NSLayoutConstraint?
+    private var showingDownloads = false
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = .systemGroupedBackground
-        layer.shadowColor = UIColor.black.cgColor
-        layer.shadowOpacity = 0.2
-        layer.shadowRadius = 16
-        layer.shadowOffset = CGSize(width: 3, height: 0)
+        backgroundColor = .clear
 
+        blurView.translatesAutoresizingMaskIntoConstraints = false
+        dimView.translatesAutoresizingMaskIntoConstraints = false
+        cardView.translatesAutoresizingMaskIntoConstraints = false
+        homeContent.translatesAutoresizingMaskIntoConstraints = false
+        downloadsContent.translatesAutoresizingMaskIntoConstraints = false
+
+        dimView.backgroundColor = UIColor.black.withAlphaComponent(0.24)
+
+        cardView.backgroundColor = .secondarySystemBackground
+        cardView.layer.cornerRadius = 22
+        cardView.layer.cornerCurve = .continuous
+        cardView.layer.shadowColor = UIColor.black.cgColor
+        cardView.layer.shadowOpacity = 0.25
+        cardView.layer.shadowRadius = 28
+        cardView.layer.shadowOffset = CGSize(width: 0, height: 12)
+        cardView.clipsToBounds = false
+
+        addSubview(blurView)
+        addSubview(dimView)
+        addSubview(cardView)
+        cardView.addSubview(homeContent)
+        cardView.addSubview(downloadsContent)
+
+        cardHeightConstraint = cardView.heightAnchor.constraint(equalToConstant: 286)
+        cardHeightConstraint?.priority = .defaultHigh
+
+        NSLayoutConstraint.activate([
+            blurView.topAnchor.constraint(equalTo: topAnchor),
+            blurView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            blurView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            blurView.trailingAnchor.constraint(equalTo: trailingAnchor),
+
+            dimView.topAnchor.constraint(equalTo: topAnchor),
+            dimView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            dimView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            dimView.trailingAnchor.constraint(equalTo: trailingAnchor),
+
+            cardView.centerXAnchor.constraint(equalTo: centerXAnchor),
+            cardView.centerYAnchor.constraint(equalTo: centerYAnchor),
+            cardView.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 18),
+            cardView.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -18),
+            cardView.widthAnchor.constraint(lessThanOrEqualToConstant: 430),
+            cardView.widthAnchor.constraint(equalTo: widthAnchor, constant: -36).withPriority(.defaultHigh),
+            cardView.heightAnchor.constraint(lessThanOrEqualTo: safeAreaLayoutGuide.heightAnchor, multiplier: 0.82),
+            cardHeightConstraint!,
+
+            homeContent.topAnchor.constraint(equalTo: cardView.topAnchor),
+            homeContent.bottomAnchor.constraint(equalTo: cardView.bottomAnchor),
+            homeContent.leadingAnchor.constraint(equalTo: cardView.leadingAnchor),
+            homeContent.trailingAnchor.constraint(equalTo: cardView.trailingAnchor),
+
+            downloadsContent.topAnchor.constraint(equalTo: cardView.topAnchor),
+            downloadsContent.bottomAnchor.constraint(equalTo: cardView.bottomAnchor),
+            downloadsContent.leadingAnchor.constraint(equalTo: cardView.leadingAnchor),
+            downloadsContent.trailingAnchor.constraint(equalTo: cardView.trailingAnchor),
+        ])
+
+        configureHomeContent()
+        configureDownloadsContent()
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(backgroundTapped))
+        tapGesture.delegate = self
+        addGestureRecognizer(tapGesture)
+        syncControls()
+        showHome(animated: false)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        updateCardHeight(animated: false)
+    }
+
+    func syncControls() {
+        userAgentControl.selectedSegmentIndex = BrowserPreferences.shared.useAndroidUserAgent ? 1 : 0
+    }
+
+    func prepareForVisibilityChange(_ visible: Bool) {
+        if visible {
+            cardView.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
+        }
+    }
+
+    func applyVisibleState(_ visible: Bool) {
+        cardView.transform = visible ? .identity : CGAffineTransform(scaleX: 0.96, y: 0.96)
+    }
+
+    func showHome(animated: Bool) {
+        showingDownloads = false
+        switchContent(to: homeContent, from: downloadsContent, animated: animated)
+        updateCardHeight(animated: animated)
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        guard let touchedView = touch.view else { return true }
+        return !touchedView.isDescendant(of: cardView)
+    }
+
+    private func configureHomeContent() {
         let titleLabel = UILabel()
-        titleLabel.text = "Downloads"
-        titleLabel.font = .systemFont(ofSize: 22, weight: .semibold)
+        titleLabel.text = "ChatGPT"
+        titleLabel.font = .systemFont(ofSize: 24, weight: .semibold)
 
         let closeButton = UIButton(type: .system)
         closeButton.setImage(UIImage(systemName: "xmark"), for: .normal)
+        closeButton.tintColor = .label
         closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
 
         let header = UIStackView(arrangedSubviews: [titleLabel, closeButton])
@@ -657,61 +769,179 @@ private final class UtilityPanelView: UIView {
         header.spacing = 12
 
         let uaLabel = UILabel()
-        uaLabel.text = "Use Android User Agent"
-        uaLabel.font = .systemFont(ofSize: 16, weight: .regular)
+        uaLabel.text = "User Agent"
+        uaLabel.font = .systemFont(ofSize: 17, weight: .medium)
 
-        androidUASwitch.addTarget(self, action: #selector(androidUASwitchChanged), for: .valueChanged)
+        userAgentControl.translatesAutoresizingMaskIntoConstraints = false
 
-        let uaRow = UIStackView(arrangedSubviews: [uaLabel, androidUASwitch])
+        let uaRow = UIView()
         uaRow.translatesAutoresizingMaskIntoConstraints = false
-        uaRow.axis = .horizontal
-        uaRow.alignment = .center
-        uaRow.spacing = 12
-        uaRow.layoutMargins = UIEdgeInsets(top: 10, left: 16, bottom: 10, right: 16)
-        uaRow.isLayoutMarginsRelativeArrangement = true
-        uaRow.backgroundColor = .secondarySystemGroupedBackground
-        uaRow.layer.cornerRadius = 10
+        uaRow.backgroundColor = .tertiarySystemBackground
+        uaRow.layer.cornerRadius = 14
+        uaRow.layer.cornerCurve = .continuous
+        uaRow.addSubview(uaLabel)
+        uaRow.addSubview(userAgentControl)
+        uaLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        let downloadsView = DownloadsManagerView()
+        saveButton.setTitle("Save", for: .normal)
+        saveButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+        saveButton.backgroundColor = .label
+        saveButton.tintColor = .systemBackground
+        saveButton.layer.cornerRadius = 14
+        saveButton.layer.cornerCurve = .continuous
+        saveButton.addTarget(self, action: #selector(saveUserAgentTapped), for: .touchUpInside)
 
-        addSubview(header)
-        addSubview(uaRow)
-        addSubview(downloadsView)
+        let downloadsButton = UIButton(type: .system)
+        downloadsButton.contentHorizontalAlignment = .fill
+        downloadsButton.backgroundColor = .tertiarySystemBackground
+        downloadsButton.layer.cornerRadius = 14
+        downloadsButton.layer.cornerCurve = .continuous
+        downloadsButton.addTarget(self, action: #selector(downloadsTapped), for: .touchUpInside)
+        downloadsButton.setTitle("Downloads", for: .normal)
+        downloadsButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .medium)
+        downloadsButton.setImage(UIImage(systemName: "chevron.right"), for: .normal)
+        downloadsButton.semanticContentAttribute = .forceRightToLeft
+        downloadsButton.imageEdgeInsets = UIEdgeInsets(top: 0, left: 8, bottom: 0, right: -8)
+        downloadsButton.titleEdgeInsets = UIEdgeInsets(top: 0, left: -8, bottom: 0, right: 8)
+        downloadsButton.tintColor = .label
+
+        homeContent.addSubview(header)
+        homeContent.addSubview(uaRow)
+        homeContent.addSubview(saveButton)
+        homeContent.addSubview(downloadsButton)
 
         NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo: safeAreaLayoutGuide.topAnchor, constant: 14),
-            header.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 16),
-            header.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -16),
+            header.topAnchor.constraint(equalTo: homeContent.topAnchor, constant: 20),
+            header.leadingAnchor.constraint(equalTo: homeContent.leadingAnchor, constant: 20),
+            header.trailingAnchor.constraint(equalTo: homeContent.trailingAnchor, constant: -20),
             closeButton.widthAnchor.constraint(equalToConstant: 34),
             closeButton.heightAnchor.constraint(equalToConstant: 34),
 
-            uaRow.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 14),
-            uaRow.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-            uaRow.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            uaRow.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 18),
+            uaRow.leadingAnchor.constraint(equalTo: homeContent.leadingAnchor, constant: 16),
+            uaRow.trailingAnchor.constraint(equalTo: homeContent.trailingAnchor, constant: -16),
+            uaRow.heightAnchor.constraint(equalToConstant: 72),
 
-            downloadsView.topAnchor.constraint(equalTo: uaRow.bottomAnchor, constant: 8),
-            downloadsView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            downloadsView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            downloadsView.bottomAnchor.constraint(equalTo: bottomAnchor),
+            uaLabel.leadingAnchor.constraint(equalTo: uaRow.leadingAnchor, constant: 16),
+            uaLabel.centerYAnchor.constraint(equalTo: uaRow.centerYAnchor),
+            userAgentControl.trailingAnchor.constraint(equalTo: uaRow.trailingAnchor, constant: -14),
+            userAgentControl.centerYAnchor.constraint(equalTo: uaRow.centerYAnchor),
+            userAgentControl.leadingAnchor.constraint(greaterThanOrEqualTo: uaLabel.trailingAnchor, constant: 14),
+            userAgentControl.widthAnchor.constraint(greaterThanOrEqualToConstant: 150),
+
+            saveButton.topAnchor.constraint(equalTo: uaRow.bottomAnchor, constant: 14),
+            saveButton.leadingAnchor.constraint(equalTo: homeContent.leadingAnchor, constant: 16),
+            saveButton.trailingAnchor.constraint(equalTo: homeContent.trailingAnchor, constant: -16),
+            saveButton.heightAnchor.constraint(equalToConstant: 50),
+
+            downloadsButton.topAnchor.constraint(equalTo: saveButton.bottomAnchor, constant: 12),
+            downloadsButton.leadingAnchor.constraint(equalTo: homeContent.leadingAnchor, constant: 16),
+            downloadsButton.trailingAnchor.constraint(equalTo: homeContent.trailingAnchor, constant: -16),
+            downloadsButton.heightAnchor.constraint(equalToConstant: 50),
         ])
-
-        syncControls()
     }
 
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+    private func configureDownloadsContent() {
+        let backButton = UIButton(type: .system)
+        backButton.setImage(UIImage(systemName: "chevron.left"), for: .normal)
+        backButton.tintColor = .label
+        backButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
+
+        let titleLabel = UILabel()
+        titleLabel.text = "Downloads"
+        titleLabel.font = .systemFont(ofSize: 22, weight: .semibold)
+
+        let closeButton = UIButton(type: .system)
+        closeButton.setImage(UIImage(systemName: "xmark"), for: .normal)
+        closeButton.tintColor = .label
+        closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
+
+        let header = UIStackView(arrangedSubviews: [backButton, titleLabel, closeButton])
+        header.translatesAutoresizingMaskIntoConstraints = false
+        header.axis = .horizontal
+        header.alignment = .center
+        header.spacing = 10
+
+        let downloadsView = DownloadsManagerView()
+        downloadsView.translatesAutoresizingMaskIntoConstraints = false
+
+        downloadsContent.addSubview(header)
+        downloadsContent.addSubview(downloadsView)
+
+        NSLayoutConstraint.activate([
+            header.topAnchor.constraint(equalTo: downloadsContent.topAnchor, constant: 18),
+            header.leadingAnchor.constraint(equalTo: downloadsContent.leadingAnchor, constant: 14),
+            header.trailingAnchor.constraint(equalTo: downloadsContent.trailingAnchor, constant: -14),
+            backButton.widthAnchor.constraint(equalToConstant: 34),
+            backButton.heightAnchor.constraint(equalToConstant: 34),
+            closeButton.widthAnchor.constraint(equalToConstant: 34),
+            closeButton.heightAnchor.constraint(equalToConstant: 34),
+
+            downloadsView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 8),
+            downloadsView.leadingAnchor.constraint(equalTo: downloadsContent.leadingAnchor),
+            downloadsView.trailingAnchor.constraint(equalTo: downloadsContent.trailingAnchor),
+            downloadsView.bottomAnchor.constraint(equalTo: downloadsContent.bottomAnchor),
+        ])
     }
 
-    func syncControls() {
-        androidUASwitch.isOn = BrowserPreferences.shared.useAndroidUserAgent
+    private func switchContent(to incoming: UIView, from outgoing: UIView, animated: Bool) {
+        incoming.isHidden = false
+        incoming.alpha = animated ? 0 : 1
+        incoming.transform = animated ? CGAffineTransform(scaleX: 0.98, y: 0.98) : .identity
+        let animations = {
+            incoming.alpha = 1
+            incoming.transform = .identity
+            outgoing.alpha = 0
+            outgoing.transform = CGAffineTransform(scaleX: 1.02, y: 1.02)
+        }
+        let completion: (Bool) -> Void = { _ in
+            outgoing.isHidden = true
+            outgoing.transform = .identity
+        }
+        if animated {
+            UIView.animate(withDuration: 0.22, delay: 0, options: [.curveEaseInOut], animations: animations, completion: completion)
+        } else {
+            animations()
+            completion(true)
+        }
+    }
+
+    private func updateCardHeight(animated: Bool) {
+        let maxHeight = max(286, bounds.height - safeAreaInsets.top - safeAreaInsets.bottom - 44)
+        cardHeightConstraint?.constant = showingDownloads ? min(620, maxHeight) : 286
+        guard animated else { return }
+        UIView.animate(withDuration: 0.22, delay: 0, options: [.curveEaseInOut]) {
+            self.layoutIfNeeded()
+        }
     }
 
     @objc private func closeTapped() {
         onClose?()
     }
 
-    @objc private func androidUASwitchChanged() {
-        onAndroidUserAgentChanged?(androidUASwitch.isOn)
+    @objc private func backgroundTapped() {
+        onClose?()
+    }
+
+    @objc private func saveUserAgentTapped() {
+        onSaveUserAgent?(userAgentControl.selectedSegmentIndex == 1)
+    }
+
+    @objc private func downloadsTapped() {
+        showingDownloads = true
+        switchContent(to: downloadsContent, from: homeContent, animated: true)
+        updateCardHeight(animated: true)
+    }
+
+    @objc private func backTapped() {
+        showHome(animated: true)
+    }
+}
+
+private extension NSLayoutConstraint {
+    func withPriority(_ priority: UILayoutPriority) -> NSLayoutConstraint {
+        self.priority = priority
+        return self
     }
 }
 
