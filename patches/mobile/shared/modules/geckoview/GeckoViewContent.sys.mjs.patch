@@ -2,36 +2,28 @@ diff --git a/mobile/shared/modules/geckoview/GeckoViewContent.sys.mjs b/mobile/s
 index ec258b459893..87c69dd4781c 100644
 --- a/mobile/shared/modules/geckoview/GeckoViewContent.sys.mjs
 +++ b/mobile/shared/modules/geckoview/GeckoViewContent.sys.mjs
-@@ -14,6 +14,8 @@ export class GeckoViewContent extends GeckoViewModule {
+@@ -14,6 +14,7 @@ export class GeckoViewContent extends GeckoViewModule {
        "GeckoView:HasCookieBannerRuleForBrowsingContextTree",
        "GeckoView:RestoreState",
        "GeckoView:ContainsFormData",
-+      "GeckoView:EmbeddedGPTKeyboardInset",
 +      "GeckoView:GetFocusedInputMetrics",
        "GeckoView:ProcessBackPressed",
        "GeckoView:ScrollBy",
        "GeckoView:ScrollTo",
-@@ -279,6 +281,12 @@ export class GeckoViewContent extends GeckoViewModule {
+@@ -279,6 +280,9 @@ export class GeckoViewContent extends GeckoViewModule {
        case "GeckoView:ContainsFormData":
          this._containsFormData(aCallback);
          break;
-+      case "GeckoView:EmbeddedGPTKeyboardInset":
-+        this._setEmbeddedGPTKeyboardInset(aData);
-+        break;
 +      case "GeckoView:GetFocusedInputMetrics":
 +        this._getFocusedInputMetrics(aCallback);
 +        break;
        case "GeckoView:GetWebCompatInfo":
          this._getWebCompatInfo(aCallback);
          break;
-@@ -467,6 +475,29 @@ export class GeckoViewContent extends GeckoViewModule {
+@@ -467,6 +471,26 @@ export class GeckoViewContent extends GeckoViewModule {
      aCallback.onSuccess(await this.actor.containsFormData());
    }
  
-+  _setEmbeddedGPTKeyboardInset(aData) {
-+    this.actor?.setEmbeddedGPTKeyboardInset?.(aData || {});
-+  }
-+
 +  async _getFocusedInputMetrics(aCallback) {
 +    try {
 +      if (this.window.windowUtils.isMozAfterPaintPending) {
