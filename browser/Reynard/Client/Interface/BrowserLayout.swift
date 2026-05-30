@@ -23,11 +23,6 @@ final class BrowserLayout {
     }
     
     func configureLayout() {
-        if Self.chatGPTShellMode {
-            configureShellLayout()
-            return
-        }
-
         let ui = controller.browserUI
         let view = controller.view!
         
@@ -223,24 +218,6 @@ final class BrowserLayout {
         view.sendSubviewToBack(ui.chromeContainer.bottomSafeAreaFillView)
     }
 
-    private func configureShellLayout() {
-        let ui = controller.browserUI
-        let view = controller.view!
-
-        view.addSubview(ui.geckoView)
-        ui.geckoTopPhoneConstraint = ui.geckoView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
-        ui.geckoBottomPhoneConstraint = ui.geckoView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-        ui.geckoBottomPhoneKeyboardOverlayConstraint = ui.geckoView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-        ui.geckoLeadingPhoneConstraint = ui.geckoView.leadingAnchor.constraint(equalTo: view.leadingAnchor)
-        ui.geckoTrailingPhoneConstraint = ui.geckoView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
-        NSLayoutConstraint.activate([
-            ui.geckoLeadingPhoneConstraint,
-            ui.geckoTrailingPhoneConstraint,
-            ui.geckoTopPhoneConstraint,
-            ui.geckoBottomPhoneConstraint,
-        ])
-    }
-    
     func observeKeyboard() {
         NotificationCenter.default.addObserver(
             self,
@@ -257,11 +234,6 @@ final class BrowserLayout {
     }
     
     func applyChromeLayout(animated: Bool) {
-        guard !Self.chatGPTShellMode else {
-            controller.view.layoutIfNeeded()
-            return
-        }
-
         updateChromeLayoutState()
         
         let layoutBlock = {
@@ -278,12 +250,6 @@ final class BrowserLayout {
     
     private func updateChromeLayoutState() {
         let ui = controller.browserUI
-        if Self.chatGPTShellMode {
-            ui.geckoTopPhoneConstraint.constant = 0
-            ui.geckoBottomPhoneConstraint.constant = 0
-            return
-        }
-
         let pad = controller.usesPadChromeLayout
         let compactPad = controller.usesCompactPadChromeMode
         let shellMode = Self.chatGPTShellMode
