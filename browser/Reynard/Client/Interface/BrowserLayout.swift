@@ -421,9 +421,6 @@ final class BrowserLayout {
         let usesPadChromeLayout = controller.usesPadChromeLayout
         
         controller.isSearchFocused = focused
-        if focused {
-            resetFocusedInputRelocation()
-        }
         if !usesPadChromeLayout {
             ui.phoneToolbarHeightConstraint.constant = focused ? 0 : 30
             ui.phoneChromeHeightConstraint.constant = focused ? 58 : 94
