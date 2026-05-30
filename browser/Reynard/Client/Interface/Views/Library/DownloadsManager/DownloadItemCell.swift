@@ -8,6 +8,7 @@
 import UIKit
 import QuickLookThumbnailing
 import UniformTypeIdentifiers
+import MobileCoreServices
 
 final class DownloadItemCell: UITableViewCell {
     static let reuseIdentifier = "DownloadItemCell"
@@ -25,15 +26,13 @@ final class DownloadItemCell: UITableViewCell {
         view.translatesAutoresizingMaskIntoConstraints = false
         view.contentMode = .scaleAspectFit
         view.tintColor = .label
-        view.layer.cornerRadius = 6
-        view.clipsToBounds = true
         return view
     }()
     
     private let fileNameLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.font = .systemFont(ofSize: 14, weight: .medium)
+        label.font = .preferredFont(forTextStyle: .body)
         label.textColor = .label
         label.numberOfLines = 1
         return label
@@ -42,9 +41,9 @@ final class DownloadItemCell: UITableViewCell {
     private let detailsLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.font = .systemFont(ofSize: 11, weight: .regular)
+        label.font = .preferredFont(forTextStyle: .subheadline)
         label.textColor = .secondaryLabel
-        label.numberOfLines = 1
+        label.numberOfLines = 2
         return label
     }()
     
@@ -63,16 +62,13 @@ final class DownloadItemCell: UITableViewCell {
     
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
-        selectionStyle = .default
-        backgroundColor = .secondarySystemBackground
-        contentView.backgroundColor = .secondarySystemBackground
-        layoutMargins = UIEdgeInsets(top: 0, left: 12, bottom: 0, right: 12)
+        selectionStyle = .none
         
         let labelsStack = UIStackView(arrangedSubviews: [fileNameLabel, detailsLabel, progressView])
         labelsStack.translatesAutoresizingMaskIntoConstraints = false
         labelsStack.axis = .vertical
         labelsStack.alignment = .fill
-        labelsStack.spacing = 2
+        labelsStack.spacing = 4
         
         contentView.addSubview(iconView)
         contentView.addSubview(labelsStack)
@@ -80,19 +76,19 @@ final class DownloadItemCell: UITableViewCell {
         NSLayoutConstraint.activate([
             iconView.leadingAnchor.constraint(equalTo: contentView.layoutMarginsGuide.leadingAnchor),
             iconView.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            iconView.topAnchor.constraint(greaterThanOrEqualTo: contentView.topAnchor, constant: 6),
-            iconView.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -6),
-            iconView.widthAnchor.constraint(equalToConstant: 32),
-            iconView.heightAnchor.constraint(equalToConstant: 32),
+            iconView.topAnchor.constraint(greaterThanOrEqualTo: contentView.topAnchor, constant: 8),
+            iconView.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -8),
+            iconView.widthAnchor.constraint(equalToConstant: 44),
+            iconView.heightAnchor.constraint(equalToConstant: 44),
             
-            labelsStack.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 10),
+            labelsStack.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 13),
             labelsStack.trailingAnchor.constraint(equalTo: contentView.layoutMarginsGuide.trailingAnchor),
             labelsStack.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
-            labelsStack.topAnchor.constraint(greaterThanOrEqualTo: contentView.topAnchor, constant: 8),
-            labelsStack.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -8),
+            labelsStack.topAnchor.constraint(greaterThanOrEqualTo: contentView.topAnchor, constant: 13),
+            labelsStack.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -13),
         ])
         
-        separatorInset.left = 58
+        separatorInset.left = 73
     }
     
     required init?(coder: NSCoder) {
@@ -118,6 +114,9 @@ final class DownloadItemCell: UITableViewCell {
         representedFileURL = nil
         representedItemID = nil
         lastDetailsLabelUpdateTime = 0
+        contentView.alpha = 1
+        fileNameLabel.textColor = .label
+        detailsLabel.textColor = .secondaryLabel
         iconView.image = nil
         iconView.transform = .identity
         iconView.tintColor = .label
@@ -125,6 +124,10 @@ final class DownloadItemCell: UITableViewCell {
     
     func apply(item: DownloadItemSnapshot) {
         fileNameLabel.text = item.fileName
+        let isDeleted = item.state == .completed && !item.fileExists
+        contentView.alpha = isDeleted ? 0.45 : 1
+        fileNameLabel.textColor = isDeleted ? .secondaryLabel : .label
+        detailsLabel.textColor = .secondaryLabel
         
         switch item.state {
         case .downloading:
@@ -167,11 +170,18 @@ final class DownloadItemCell: UITableViewCell {
         case .completed:
             representedItemID = item.id
             lastDetailsLabelUpdateTime = 0
-            detailsLabel.text = item.totalBytes.map { Self.formattedByteCount($0) } ?? "Unknown size"
+            detailsLabel.text = item.fileExists ? (item.totalBytes.map { Self.formattedByteCount($0) } ?? "Unknown size") : "Deleted"
             progressView.isHidden = true
             progressView.progress = 0
             iconView.transform = .identity
             iconView.tintColor = nil
+            
+            guard item.fileExists else {
+                representedFileURL = nil
+                iconView.image = Self.iconProvider.genericPlaceholderIcon()
+                return
+            }
+            
             representedFileURL = item.fileURL
             iconView.image = item.fileURL.flatMap { Self.iconProvider.cachedIcon(for: $0) } ?? Self.iconProvider.genericPlaceholderIcon()
             
@@ -179,11 +189,8 @@ final class DownloadItemCell: UITableViewCell {
                 return
             }
             
-            let expectedItemID = item.id
-            Self.iconProvider.icon(for: fileURL, size: CGSize(width: 40, height: 40)) { [weak self] image in
-                guard let self,
-                      self.representedFileURL == fileURL,
-                      self.representedItemID == expectedItemID else {
+            Self.iconProvider.icon(for: fileURL, size: CGSize(width: 56, height: 56)) { [weak self] image in
+                guard let self, self.representedFileURL == fileURL else {
                     return
                 }
                 
@@ -220,7 +227,7 @@ private final class DownloadFileIconProvider {
     static let shared = DownloadFileIconProvider()
     
     private let generator = QLThumbnailGenerator.shared
-    private let cache = NSCache<NSString, UIImage>()
+    private let cache = NSCache<NSURL, UIImage>()
     private let genericCache = NSCache<NSString, UIImage>()
     private let fileManager = FileManager.default
     
@@ -252,7 +259,7 @@ private final class DownloadFileIconProvider {
         guard let placeholderURL = placeholderURL(fileName: "generic-file", mimeType: nil),
               let image = documentInteractionIcon(
                 for: placeholderURL,
-                uti: UTType.data.identifier,
+                uti: kUTTypeData as String,
                 name: "Downloading"
               ) else {
             return nil
@@ -263,15 +270,14 @@ private final class DownloadFileIconProvider {
     }
     
     func icon(for fileURL: URL, size: CGSize, completion: @escaping (UIImage?) -> Void) {
-        let cacheKey = thumbnailCacheKey(for: fileURL)
-        if let cachedImage = cache.object(forKey: cacheKey) {
+        if let cachedImage = cache.object(forKey: fileURL as NSURL) {
             completion(cachedImage)
             return
         }
         
-        generateIcon(for: fileURL, size: size, contentType: nil) { [weak self] image in
+        generateIcon(for: fileURL, size: size, contentTypeIdentifier: nil) { [weak self] image in
             if let image {
-                self?.cache.setObject(image, forKey: cacheKey)
+                self?.cache.setObject(image, forKey: fileURL as NSURL)
                 completion(image)
                 return
             }
@@ -281,20 +287,13 @@ private final class DownloadFileIconProvider {
     }
     
     func cachedIcon(for fileURL: URL) -> UIImage? {
-        cache.object(forKey: thumbnailCacheKey(for: fileURL))
-    }
-
-    private func thumbnailCacheKey(for fileURL: URL) -> NSString {
-        let values = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey])
-        let modifiedAt = values?.contentModificationDate?.timeIntervalSince1970 ?? 0
-        let fileSize = values?.fileSize ?? -1
-        return "\(fileURL.standardizedFileURL.path)|\(fileSize)|\(modifiedAt)" as NSString
+        cache.object(forKey: fileURL as NSURL)
     }
     
     private func generateIcon(
         for fileURL: URL,
         size: CGSize,
-        contentType: UTType?,
+        contentTypeIdentifier: String?,
         representationTypes: QLThumbnailGenerator.Request.RepresentationTypes = .all,
         completion: @escaping (UIImage?) -> Void
     ) {
@@ -305,7 +304,9 @@ private final class DownloadFileIconProvider {
             representationTypes: representationTypes
         )
         request.iconMode = true
-        if let contentType {
+        if #available(iOS 14.0, *),
+           let contentTypeIdentifier,
+           let contentType = UTType(contentTypeIdentifier) {
             request.contentType = contentType
         }
         
@@ -332,7 +333,7 @@ private final class DownloadFileIconProvider {
         generateIcon(
             for: placeholderURL,
             size: size,
-            contentType: resolvedContentType(fileName: fileName, mimeType: nil),
+            contentTypeIdentifier: resolvedContentTypeIdentifier(fileName: fileName, mimeType: nil),
             representationTypes: .icon
         ) { [weak self] image in
             let resolvedImage = image ?? self?.documentInteractionIcon(for: placeholderURL)
@@ -358,9 +359,11 @@ private final class DownloadFileIconProvider {
             return nil
         }
         
-        let contentType = resolvedContentType(fileName: fileName, mimeType: mimeType)
+        let contentTypeIdentifier = resolvedContentTypeIdentifier(fileName: fileName, mimeType: mimeType)
         let existingExtension = URL(fileURLWithPath: fileName).pathExtension.lowercased()
-        let preferredExtension = existingExtension.isEmpty ? (contentType?.preferredFilenameExtension ?? "") : existingExtension
+        let preferredExtension = existingExtension.isEmpty
+        ? (preferredFilenameExtension(from: contentTypeIdentifier) ?? "")
+        : existingExtension
         let placeholderName = preferredExtension.isEmpty ? "generic-file" : "generic-file.\(preferredExtension)"
         let placeholderURL = placeholderDirectory.appendingPathComponent(placeholderName)
         
@@ -382,9 +385,15 @@ private final class DownloadFileIconProvider {
         return "generic"
     }
     
-    private func resolvedContentType(fileName: String, mimeType: String?) -> UTType? {
-        if let mimeType, let contentType = UTType(mimeType: mimeType) {
-            return contentType
+    private func resolvedContentTypeIdentifier(fileName: String, mimeType: String?) -> String? {
+        if let mimeType {
+            if let uti = UTTypeCreatePreferredIdentifierForTag(
+                kUTTagClassMIMEType,
+                mimeType as CFString,
+                nil
+            )?.takeRetainedValue() {
+                return uti as String
+            }
         }
         
         let pathExtension = URL(fileURLWithPath: fileName).pathExtension
@@ -392,7 +401,21 @@ private final class DownloadFileIconProvider {
             return nil
         }
         
-        return UTType(filenameExtension: pathExtension)
+        return UTTypeCreatePreferredIdentifierForTag(
+            kUTTagClassFilenameExtension,
+            pathExtension as CFString,
+            nil
+        )?.takeRetainedValue() as String?
+    }
+    
+    private func preferredFilenameExtension(from contentTypeIdentifier: String?) -> String? {
+        guard let contentTypeIdentifier else {
+            return nil
+        }
+        return UTTypeCopyPreferredTagWithClass(
+            contentTypeIdentifier as CFString,
+            kUTTagClassFilenameExtension
+        )?.takeRetainedValue() as String?
     }
     
     private func documentInteractionIcon(for fileURL: URL, uti: String? = nil, name: String? = nil) -> UIImage? {

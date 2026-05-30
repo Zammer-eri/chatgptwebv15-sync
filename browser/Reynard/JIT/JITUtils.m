@@ -7,11 +7,6 @@
 
 #import "JITUtils.h"
 
-#import <Security/SecCertificate.h>
-#import <Security/SecIdentity.h>
-#import <Security/SecItem.h>
-#import <Security/SecKey.h>
-
 #include <errno.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -51,12 +46,12 @@ NSString *packetField(NSString *packet, NSString *fieldName) {
     NSString *needle = [fieldName stringByAppendingString:@":"];
     NSRange startRange = [packet rangeOfString:needle];
     if (startRange.location == NSNotFound) return nil;
-
+    
     NSUInteger valueStart = NSMaxRange(startRange);
     NSRange searchRange = NSMakeRange(valueStart, packet.length - valueStart);
     NSRange endRange = [packet rangeOfString:@";" options:0 range:searchRange];
     if (endRange.location == NSNotFound) return nil;
-
+    
     return [packet substringWithRange:NSMakeRange(valueStart, endRange.location - valueStart)];
 }
 
@@ -82,21 +77,21 @@ NSString *secureTransportStatusDescription(OSStatus status) {
         CFRelease(errorString);
         return description;
     }
-
+    
     return [NSString stringWithFormat:@"OSStatus %d", (int)status];
 }
 
 NSData *decodePEMData(NSData *sourceData, NSString *beginMarker, NSString *endMarker) {
     if (!sourceData || sourceData.length == 0) return nil;
-
+    
     NSString *rawString = [[NSString alloc] initWithData:sourceData encoding:NSUTF8StringEncoding];
     if (!rawString) return sourceData;
-
+    
     NSRange beginRange = [rawString rangeOfString:beginMarker];
     NSRange endRange = [rawString rangeOfString:endMarker options:NSBackwardsSearch];
     if (beginRange.location == NSNotFound || endRange.location == NSNotFound) return sourceData;
     if (endRange.location <= beginRange.location) return sourceData;
-
+    
     NSUInteger payloadStart = NSMaxRange(beginRange);
     NSUInteger payloadLength = endRange.location - payloadStart;
     NSString *base64Body = [rawString substringWithRange:NSMakeRange(payloadStart, payloadLength)];
@@ -106,25 +101,25 @@ NSData *decodePEMData(NSData *sourceData, NSString *beginMarker, NSString *endMa
         unichar character = [base64Body characterAtIndex:idx];
         if ([validBase64Chars characterIsMember:character]) [filteredBase64 appendFormat:@"%C", character];
     }
-
+    
     NSData *decodedData = [[NSData alloc] initWithBase64EncodedString:filteredBase64 options:0];
     return decodedData ?: sourceData;
 }
 
 NSData *decodeRawBase64Data(NSData *sourceData) {
     if (!sourceData || sourceData.length == 0) return sourceData;
-
+    
     NSString *rawString = [[NSString alloc] initWithData:sourceData encoding:NSUTF8StringEncoding];
     if (!rawString) return sourceData;
-
+    
     NSString *trimmed = [[rawString componentsSeparatedByCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] componentsJoinedByString:@""];
     if (trimmed.length == 0) return sourceData;
-
+    
     NSCharacterSet *validBase64Chars = [NSCharacterSet characterSetWithCharactersInString:@"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="];
     for (NSUInteger idx = 0; idx < trimmed.length; idx++) {
         if (![validBase64Chars characterIsMember:[trimmed characterAtIndex:idx]]) return sourceData;
     }
-
+    
     NSData *decodedData = [[NSData alloc] initWithBase64EncodedString:trimmed options:0];
     return (decodedData.length > 0) ? decodedData : sourceData;
 }
@@ -134,7 +129,7 @@ NSData *asn1EncodeLength(NSUInteger length) {
         uint8_t singleByte = (uint8_t)length;
         return [NSData dataWithBytes:&singleByte length:1];
     }
-
+    
     uint8_t lengthBytes[sizeof(NSUInteger)] = {0};
     NSUInteger cursor = sizeof(NSUInteger);
     NSUInteger value = length;
@@ -143,7 +138,7 @@ NSData *asn1EncodeLength(NSUInteger length) {
         lengthBytes[cursor] = (uint8_t)(value & 0xFF);
         value >>= 8;
     }
-
+    
     NSUInteger usedBytes = sizeof(NSUInteger) - cursor;
     NSMutableData *encoded = [NSMutableData dataWithCapacity:usedBytes + 1];
     uint8_t firstByte = (uint8_t)(0x80 | usedBytes);
@@ -154,22 +149,22 @@ NSData *asn1EncodeLength(NSUInteger length) {
 
 BOOL decodeASN1Length(const uint8_t *bytes, NSUInteger totalLength, NSUInteger *offset, NSUInteger *decodedLength) {
     if (!bytes || !offset || !decodedLength || *offset >= totalLength) return NO;
-
+    
     uint8_t firstByte = bytes[(*offset)++];
     if ((firstByte & 0x80) == 0) {
         *decodedLength = firstByte;
         return YES;
     }
-
+    
     uint8_t lengthBytesCount = (uint8_t)(firstByte & 0x7F);
     if (lengthBytesCount == 0 || lengthBytesCount > sizeof(NSUInteger)) return NO;
     if (*offset + lengthBytesCount > totalLength) return NO;
-
+    
     NSUInteger value = 0;
     for (uint8_t idx = 0; idx < lengthBytesCount; idx++) {
         value = (value << 8) | bytes[*offset + idx];
     }
-
+    
     *offset += lengthBytesCount;
     *decodedLength = value;
     return YES;
@@ -186,7 +181,7 @@ NSData *asn1Wrap(uint8_t tag, NSData *payload) {
 
 NSData *wrapRSAPKCS1PrivateKeyAsPKCS8(NSData *pkcs1Key) {
     if (!pkcs1Key || pkcs1Key.length == 0) return nil;
-
+    
     static const uint8_t version0[] = { 0x02, 0x01, 0x00 };
     static const uint8_t rsaAlgorithmIdentifier[] = {
         0x30, 0x0D, 0x06, 0x09,
@@ -194,173 +189,71 @@ NSData *wrapRSAPKCS1PrivateKeyAsPKCS8(NSData *pkcs1Key) {
         0xF7, 0x0D, 0x01, 0x01,
         0x01, 0x05, 0x00
     };
-
+    
     NSMutableData *pkcs8Body = [NSMutableData data];
     [pkcs8Body appendBytes:version0 length:sizeof(version0)];
     [pkcs8Body appendBytes:rsaAlgorithmIdentifier length:sizeof(rsaAlgorithmIdentifier)];
     [pkcs8Body appendData:asn1Wrap(0x04, pkcs1Key)];
-
+    
     return asn1Wrap(0x30, pkcs8Body);
 }
 
 NSData *extractPKCS1PrivateKeyFromPKCS8(NSData *pkcs8Key) {
     if (!pkcs8Key || pkcs8Key.length < 16) return nil;
-
+    
     const uint8_t *bytes = pkcs8Key.bytes;
     NSUInteger totalLength = pkcs8Key.length;
     NSUInteger offset = 0;
     NSUInteger fieldLength = 0;
-
+    
     if (bytes[offset++] != 0x30) return nil;
     if (!decodeASN1Length(bytes, totalLength, &offset, &fieldLength)) return nil;
     if (offset + fieldLength > totalLength) return nil;
     NSUInteger sequenceEnd = offset + fieldLength;
-
+    
     if (offset >= sequenceEnd || bytes[offset++] != 0x02) return nil;
     if (!decodeASN1Length(bytes, sequenceEnd, &offset, &fieldLength)) return nil;
     if (offset + fieldLength > sequenceEnd) return nil;
     offset += fieldLength;
-
+    
     if (offset >= sequenceEnd || bytes[offset++] != 0x30) return nil;
     if (!decodeASN1Length(bytes, sequenceEnd, &offset, &fieldLength)) return nil;
     if (offset + fieldLength > sequenceEnd) return nil;
     offset += fieldLength;
-
+    
     if (offset >= sequenceEnd || bytes[offset++] != 0x04) return nil;
     if (!decodeASN1Length(bytes, sequenceEnd, &offset, &fieldLength)) return nil;
     if (offset + fieldLength > sequenceEnd) return nil;
-
+    
     return [NSData dataWithBytes:bytes + offset length:fieldLength];
 }
 
-static NSString * const legacyPairingIdentityLabel = @"com.minh-ton.Reynard.LegacyPairingIdentity";
-
 SecKeyRef createPrivateKeyFromPairingData(NSData *privateKeyData) {
     if (!privateKeyData || privateKeyData.length == 0) return NULL;
-
+    
     NSData *rsaPrivateKeyCandidate = extractPKCS1PrivateKeyFromPKCS8(privateKeyData) ?: privateKeyData;
-
+    
     NSDictionary *rsaAttributes = @{ (id)kSecAttrKeyType: (id)kSecAttrKeyTypeRSA, (id)kSecAttrKeyClass: (id)kSecAttrKeyClassPrivate };
-
+    
     CFErrorRef createError = NULL;
     SecKeyRef privateKey = SecKeyCreateWithData((__bridge CFDataRef)rsaPrivateKeyCandidate, (__bridge CFDictionaryRef)rsaAttributes, &createError);
     if (privateKey || !createError) return privateKey;
     CFRelease(createError);
-
+    
     NSData *pkcs8WrappedData = wrapRSAPKCS1PrivateKeyAsPKCS8(privateKeyData);
     if (pkcs8WrappedData.length > 0) {
         privateKey = SecKeyCreateWithData((__bridge CFDataRef)pkcs8WrappedData, (__bridge CFDictionaryRef)rsaAttributes, NULL);
         if (privateKey) return privateKey;
     }
-
+    
     NSDictionary *ecAttributes = @{ (id)kSecAttrKeyType: (id)kSecAttrKeyTypeECSECPrimeRandom, (id)kSecAttrKeyClass: (id)kSecAttrKeyClassPrivate };
-
+    
     CFErrorRef ecCreateError = NULL;
     privateKey = SecKeyCreateWithData((__bridge CFDataRef)privateKeyData, (__bridge CFDictionaryRef)ecAttributes, &ecCreateError);
     if (privateKey || !ecCreateError) return privateKey;
-
+    
     CFRelease(ecCreateError);
     return NULL;
-}
-
-static NSData *legacyPairingKeyTag(void) {
-    return [legacyPairingIdentityLabel dataUsingEncoding:NSUTF8StringEncoding];
-}
-
-static BOOL storeLegacyPairingItems(SecCertificateRef certificate, SecKeyRef privateKey) {
-    NSData *keyTag = legacyPairingKeyTag();
-    if (!certificate || !privateKey || keyTag.length == 0) return NO;
-
-    NSDictionary *privateKeyDelete = @{
-        (id)kSecClass: (id)kSecClassKey,
-        (id)kSecAttrApplicationTag: keyTag
-    };
-    SecItemDelete((__bridge CFDictionaryRef)privateKeyDelete);
-
-    NSMutableDictionary *privateKeyAdd = [@{
-        (id)kSecClass: (id)kSecClassKey,
-        (id)kSecValueRef: (__bridge id)privateKey,
-        (id)kSecAttrApplicationTag: keyTag,
-        (id)kSecAttrLabel: legacyPairingIdentityLabel,
-        (id)kSecAttrAccessible: (id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-        (id)kSecAttrIsPermanent: @YES
-    } mutableCopy];
-
-    CFDictionaryRef copiedKeyAttributes = SecKeyCopyAttributes(privateKey);
-    if (copiedKeyAttributes) {
-        NSDictionary *keyAttributes = (__bridge NSDictionary *)copiedKeyAttributes;
-        id keyType = keyAttributes[(id)kSecAttrKeyType];
-        if (keyType) privateKeyAdd[(id)kSecAttrKeyType] = keyType;
-        CFRelease(copiedKeyAttributes);
-    }
-
-    OSStatus status = SecItemAdd((__bridge CFDictionaryRef)privateKeyAdd, NULL);
-    if (status != errSecSuccess && status != errSecDuplicateItem) return NO;
-
-    NSDictionary *certificateDelete = @{
-        (id)kSecClass: (id)kSecClassCertificate,
-        (id)kSecAttrLabel: legacyPairingIdentityLabel
-    };
-    SecItemDelete((__bridge CFDictionaryRef)certificateDelete);
-
-    NSDictionary *certificateAdd = @{
-        (id)kSecClass: (id)kSecClassCertificate,
-        (id)kSecValueRef: (__bridge id)certificate,
-        (id)kSecAttrLabel: legacyPairingIdentityLabel
-    };
-
-    status = SecItemAdd((__bridge CFDictionaryRef)certificateAdd, NULL);
-    return status == errSecSuccess || status == errSecDuplicateItem;
-}
-
-static SecIdentityRef copyStoredLegacyPairingIdentity(SecCertificateRef targetCertificate) {
-    if (!targetCertificate) return NULL;
-
-    CFDataRef targetDataRef = SecCertificateCopyData(targetCertificate);
-    if (!targetDataRef) return NULL;
-
-    NSDictionary *identityQuery = @{
-        (id)kSecClass: (id)kSecClassIdentity,
-        (id)kSecReturnRef: @YES,
-        (id)kSecMatchLimit: (id)kSecMatchLimitAll
-    };
-
-    CFTypeRef result = NULL;
-    OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)identityQuery, &result);
-    if (status != errSecSuccess || !result) {
-        CFRelease(targetDataRef);
-        return NULL;
-    }
-
-    NSArray *identities = nil;
-    if (CFGetTypeID(result) == CFArrayGetTypeID()) {
-        identities = (__bridge NSArray *)result;
-    } else {
-        identities = @[(__bridge id)result];
-    }
-
-    SecIdentityRef matchedIdentity = NULL;
-    NSData *targetData = (__bridge NSData *)targetDataRef;
-    for (id item in identities) {
-        SecIdentityRef candidate = (__bridge SecIdentityRef)item;
-        SecCertificateRef candidateCertificate = NULL;
-        if (SecIdentityCopyCertificate(candidate, &candidateCertificate) != errSecSuccess || !candidateCertificate) continue;
-
-        CFDataRef candidateDataRef = SecCertificateCopyData(candidateCertificate);
-        CFRelease(candidateCertificate);
-        if (!candidateDataRef) continue;
-
-        BOOL matches = [(__bridge NSData *)candidateDataRef isEqualToData:targetData];
-        CFRelease(candidateDataRef);
-        if (!matches) continue;
-
-        matchedIdentity = (SecIdentityRef)CFRetain(candidate);
-        break;
-    }
-
-    CFRelease(result);
-    CFRelease(targetDataRef);
-    return matchedIdentity;
 }
 
 SecIdentityRef copyLegacyPairingIdentity(NSError **error) {
@@ -369,95 +262,92 @@ SecIdentityRef copyLegacyPairingIdentity(NSError **error) {
         if (error) *error = MakeError(PairingFilePathUnavailable);
         return NULL;
     }
-
+    
     NSDictionary *pairingDictionary = [NSDictionary dictionaryWithContentsOfFile:resolvedPairingFilePath];
     if (![pairingDictionary isKindOfClass:[NSDictionary class]]) {
         if (error) *error = MakeError(PairingFileLoadFailed);
         return NULL;
     }
-
+    
     NSData *hostCertificateRaw = pairingDictionary[@"HostCertificate"];
     NSData *hostPrivateKeyRaw = pairingDictionary[@"HostPrivateKey"];
     if (![hostCertificateRaw isKindOfClass:[NSData class]] || ![hostPrivateKeyRaw isKindOfClass:[NSData class]]) {
         if (error) *error = MakeError(PairingFileMissingCredentials);
         return NULL;
     }
-
+    
     NSData *hostCertificateData = decodePEMData(hostCertificateRaw, @"-----BEGIN CERTIFICATE-----",  @"-----END CERTIFICATE-----");
     NSData *hostPrivateKeyData = decodePEMData(hostPrivateKeyRaw, @"-----BEGIN PRIVATE KEY-----", @"-----END PRIVATE KEY-----");
     if ([hostPrivateKeyData isEqual:hostPrivateKeyRaw]) hostPrivateKeyData = decodePEMData(hostPrivateKeyRaw, @"-----BEGIN RSA PRIVATE KEY-----", @"-----END RSA PRIVATE KEY-----");
     if ([hostPrivateKeyData isEqual:hostPrivateKeyRaw]) hostPrivateKeyData = decodePEMData(hostPrivateKeyRaw, @"-----BEGIN EC PRIVATE KEY-----", @"-----END EC PRIVATE KEY-----");
     if ([hostPrivateKeyData isEqual:hostPrivateKeyRaw]) hostPrivateKeyData = decodeRawBase64Data(hostPrivateKeyRaw);
-
+    
     SecCertificateRef hostCertificate = SecCertificateCreateWithData(NULL, (__bridge CFDataRef)hostCertificateData);
     if (!hostCertificate) {
         if (error) *error = MakeError(HostCertificateParseFailed);
         return NULL;
     }
-
+    
     SecKeyRef privateKey = createPrivateKeyFromPairingData(hostPrivateKeyData);
     if (!privateKey) {
         if (error) *error = MakeError(HostPrivateKeyParseFailed);
         CFRelease(hostCertificate);
         return NULL;
     }
-
-    SecIdentityRef identity = NULL;
-    if (storeLegacyPairingItems(hostCertificate, privateKey)) {
-        identity = copyStoredLegacyPairingIdentity(hostCertificate);
-    }
+    
+    SecIdentityRef identity = SecIdentityCreate(NULL, hostCertificate, privateKey);
     CFRelease(privateKey);
     CFRelease(hostCertificate);
-
+    
     if (!identity) {
         if (error) *error = MakeError(TLSIdentityCreateFailed);
         return NULL;
     }
-
+    
     return identity;
 }
 
 OSStatus legacySSLRead(SSLConnectionRef connection, void *data, size_t *dataLength) {
     if (!connection || !data || !dataLength) return errSecParam;
-
+    
     int socketFD = *(int *)connection;
     ssize_t result = recv(socketFD, data, *dataLength, 0);
     if (result > 0) {
         *dataLength = (size_t)result;
         return noErr;
     }
-
+    
     if (result == 0) {
         *dataLength = 0;
         return errSSLClosedGraceful;
     }
-
+    
     if (errno == EINTR) return legacySSLRead(connection, data, dataLength);
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
         *dataLength = 0;
         return errSSLWouldBlock;
     }
-
+    
     *dataLength = 0;
     return errSecIO;
 }
 
 OSStatus legacySSLWrite(SSLConnectionRef connection, const void *data, size_t *dataLength) {
     if (!connection || !data || !dataLength) return errSecParam;
-
+    
     int socketFD = *(int *)connection;
     ssize_t result = send(socketFD, data, *dataLength, 0);
     if (result >= 0) {
         *dataLength = (size_t)result;
         return noErr;
     }
-
+    
     if (errno == EINTR) return legacySSLWrite(connection, data, dataLength);
     if (errno == EAGAIN || errno == EWOULDBLOCK) {
         *dataLength = 0;
         return errSSLWouldBlock;
     }
-
+    
     *dataLength = 0;
     return errSecIO;
 }

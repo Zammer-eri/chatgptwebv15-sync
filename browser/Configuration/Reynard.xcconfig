@@ -1,14 +1,13 @@
-CURRENT_VERSION = 1.0
+CURRENT_VERSION = 0.4.0
 CURRENT_BUILD = UNKNOWN
 
-IPHONEOS_DEPLOYMENT_TARGET = 14.0
+IPHONEOS_DEPLOYMENT_TARGET = 13.0
 ARCHS = arm64
 VALID_ARCHS = arm64
 
 ENABLE_BITCODE = NO
 
-GECKO_VERSION = 150.0
-GECKO_DIST = $(SRCROOT)/../engine/prebuilt-gecko/obj-aarch64-apple-ios/dist
+GECKO_DIST = $(SRCROOT)/../engine/firefox/obj-aarch64-apple-ios/dist
 
 HEADER_SEARCH_PATHS = $(inherited) $(GECKO_DIST)/include $(GECKO_DIST)/include/GeckoView $(SRCROOT)/GeckoView
 LIBRARY_SEARCH_PATHS = $(inherited) $(GECKO_DIST)/bin

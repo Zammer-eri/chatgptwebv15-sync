@@ -6,9 +6,22 @@
 //
 
 #import "JITEnabler.h"
-#import "JITErrors.h"
+#import "JITSupport.h"
+#import "JITUtils.h"
 #import "TSRoot.h"
 #import "TSUtils.h"
+#include <sys/stat.h>
+#include <errno.h>
+
+@interface JITEnabler ()
+
+@property(nonatomic, assign) DeviceProvider *sharedProvider;
+@property(nonatomic, strong) dispatch_queue_t providerQueue;
+@property(nonatomic, assign) BOOL didEnsureDDIMounted;
+
+- (DeviceProvider *)getProvider:(NSError **)error;
+
+@end
 
 @implementation JITEnabler
 
@@ -22,38 +35,214 @@
 }
 
 - (instancetype)init {
-    return [super init];
+    self = [super init];
+    if (self) {
+        _sharedProvider = NULL;
+        _providerQueue = dispatch_queue_create("me.minh-ton.jit.enabler.provider", DISPATCH_QUEUE_SERIAL);
+        _didEnsureDDIMounted = NO;
+    }
+    return self;
 }
 
 - (BOOL)enableJITForPID:(int32_t)pid hasTXM26:(BOOL)hasTXM26 error:(NSError **)error {
-    (void)hasTXM26;
-    if (!getEntitlementValue(@"com.apple.private.security.no-sandbox")) {
-        if (error) *error = MakeError(TSPtraceHelperAttachFailed);
-        return NO;
+    // TrollStore or jailbroken devices
+    if (getEntitlementValue(@"com.apple.private.security.no-sandbox")) {
+        NSBundle *bundle = NSBundle.mainBundle;
+        NSString *helperPath = [bundle.bundlePath stringByAppendingPathComponent:@"ptrace_jit"];
+        if (![[NSFileManager defaultManager] fileExistsAtPath:helperPath]) {
+            NSString *resourceCandidate = [bundle.resourcePath stringByAppendingPathComponent:@"ptrace_jit"];
+            if ([[NSFileManager defaultManager] fileExistsAtPath:resourceCandidate]) helperPath = resourceCandidate;
+        }
+        if (![[NSFileManager defaultManager] fileExistsAtPath:helperPath]) {
+            NSURL *auxURL = [bundle URLForAuxiliaryExecutable:@"ptrace_jit"];
+            if (auxURL.path.length > 0) helperPath = auxURL.path;
+        }
+        
+        int result = spawnRoot(helperPath, @[[NSString stringWithFormat:@"%d", pid]]);
+        logger([NSString stringWithFormat:@"ptrace_jit result %d", result]);
+        
+        if (result != 0 && result != EACCES && result != ENOENT && result != ENOEXEC && result != 126 && result != 127) {
+            // keep existing behavior for non-permission failures
+        } else if (result == EACCES || result == ENOENT || result == ENOEXEC || result == 126 || result == 127) {
+            NSString *tempPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"ptrace_jit"];
+            NSError *copyError = nil;
+            [[NSFileManager defaultManager] removeItemAtPath:tempPath error:nil];
+            if ([[NSFileManager defaultManager] copyItemAtPath:helperPath toPath:tempPath error:&copyError]) {
+                chmod(tempPath.UTF8String, 0755);
+                if ([[NSFileManager defaultManager] isExecutableFileAtPath:tempPath]) {
+                    logger([NSString stringWithFormat:@"Retrying ptrace_jit from temp path %@", tempPath]);
+                    result = spawnRoot(tempPath, @[[NSString stringWithFormat:@"%d", pid]]);
+                }
+            } else {
+                logger([NSString stringWithFormat:@"Failed to copy ptrace_jit to temp path: %@", copyError.localizedDescription ?: @"unknown"]);
+            }
+        }
+        if (result >= 128) {
+            if (error) *error = MakeError(TSPtraceHelperTerminated);
+            return NO;
+        }
+        
+        if (result != 0) {
+            if (error) *error = MakeError(TSPtraceHelperAttachFailed);
+            return NO;
+        }
+        
+        return YES;
     }
-
-    NSString *helperPath = [NSBundle.mainBundle.resourcePath stringByAppendingPathComponent:@"ptrace_jit"];
-    if (![[NSFileManager defaultManager] isExecutableFileAtPath:helperPath]) {
-        if (error) *error = MakeError(TSPtraceHelperMissing);
-        return NO;
+    
+    if (@available(iOS 17.4, *)) {
+        // For iOS 17.4 and later
+        // Thanks StikDebug!
+        // https://github.com/StephenDev0/StikDebug
+        
+        DeviceProvider *provider = [self getProvider:error];
+        if (!provider) return NO;
+        
+        DebugSession session = {0};
+        IdeviceFfiError *ffiError = NULL;
+        
+        if (!connectDebugSession(provider, &session, @"10.7.0.1", error)) return NO;
+        
+        ProcessControlHandle *processControl = NULL;
+        ffiError = process_control_new(session.remoteServer, &processControl);
+        if (ffiError) {
+            if (error) *error = MakeError(ProcessControlCreateFailed);
+            idevice_error_free(ffiError);
+            freeDebugSession(&session);
+            return NO;
+        }
+        
+        ffiError = process_control_disable_memory_limit(processControl, (uint64_t)pid);
+        process_control_free(processControl);
+        if (ffiError) {
+            logger([NSString stringWithFormat:@"disable_memory_limit failed for pid %d: %s", pid, ffiError->message ?: "unknown error"]);
+            idevice_error_free(ffiError);
+        }
+        
+        NSError *commandError = nil;
+        NSString *noAckResponse = nil;
+        if (!configureNoAckMode(session.debugProxy, &noAckResponse, &commandError)) {
+            if (error) *error = commandError ?: MakeError(NoAckConfigureFailed);
+            freeDebugSession(&session);
+            return NO;
+        }
+        
+        logger([NSString stringWithFormat:@"QStartNoAckMode result for pid %d: %@", pid, noAckResponse ?: @"<no response>"]);
+        
+        NSString *attachCommand = [NSString stringWithFormat:@"vAttach;%X", pid];
+        NSString *attachResponse = nil;
+        if (!sendDebugCommand(session.debugProxy, attachCommand, &attachResponse, &commandError)) {
+            if (error) *error = commandError ?: MakeError(AttachDebugProxyFailed);
+            freeDebugSession(&session);
+            return NO;
+        }
+        
+        logger([NSString stringWithFormat:@"Attach response for pid %d: %@", pid, attachResponse.length > 0 ? @"<stop packet>" : @"<no response>"]);
+        
+        if (hasTXM26) {
+            registerJITEndpointForPID(pid, @"10.7.0.1", 49152);
+            
+            DebugSession *persistentSession = malloc(sizeof(*persistentSession));
+            if (!persistentSession) {
+                freeDebugSession(&session);
+                if (error) *error = MakeError(SessionAllocationFailed);
+                return NO;
+            }
+            
+            *persistentSession = session;
+            session.adapter = NULL;
+            session.handshake = NULL;
+            session.remoteServer = NULL;
+            session.debugProxy = NULL;
+            
+            // TXM iOS 26+ workaround
+            dispatch_async(debugServiceQueue(), ^{
+                runDebugService(pid, persistentSession);
+            });
+            
+            logger([NSString stringWithFormat:@"Debug session started for pid %d", pid]);
+        } else {
+            // detach immediately
+            detachDebuggerSession(session.debugProxy, pid);
+            freeDebugSession(&session);
+        }
+        
+        return YES;
+    } else {
+        DeviceProvider *provider = [self getProvider:error];
+        if (!provider) return NO;
+        
+        uint16_t debugPort = 0;
+        if (!startLegacyDebugService(provider, &debugPort, error)) return NO;
+        
+        LegacyDebugConnection connection = {
+            .socketFD = -1,
+            .sslContext = NULL,
+        };
+        
+        if (!connectLegacyDebugSocket(@"10.7.0.1", debugPort, &connection, error)) {
+            return NO;
+        }
+        
+        NSString *attachResponse = nil;
+        NSString *attachCommand = [NSString stringWithFormat:@"vAttach;%08X", (uint32_t)pid];
+        if (!sendLegacyDebugCommand(&connection, attachCommand, &attachResponse, error)) {
+            closeLegacyDebugConnection(&connection);
+            return NO;
+        }
+        
+        logger([NSString stringWithFormat:@"Legacy attach response for pid %d: %@", pid, attachResponse.length > 0 ? attachResponse : @"<no response>"]);
+        
+        // detach immediately
+        if (!detachLegacyDebuggerSession(&connection, pid)) {
+            closeLegacyDebugConnection(&connection);
+        }
+        return YES;
     }
-
-    int result = spawnRoot(helperPath, @[[NSString stringWithFormat:@"%d", pid]]);
-    if (result >= 128) {
-        if (error) *error = MakeError(TSPtraceHelperTerminated);
-        return NO;
-    }
-
-    if (result != 0) {
-        if (error) *error = MakeError(TSPtraceHelperAttachFailed);
-        return NO;
-    }
-
-    return YES;
+    
+    return NO;
 }
 
 - (void)detachAllJITSessions {
-    // TrollStore ptrace JIT attaches and exits; there is no persistent session to detach.
+    resetJITEndpointMonitor();
+    dispatch_sync(debugSessionStateQueue(), ^{
+        NSMutableSet<NSNumber *> *active = activeDebugSessionPIDs();
+        NSMutableSet<NSNumber *> *detachRequested = detachRequestedDebugSessionPIDs();
+        [detachRequested unionSet:active];
+    });
+}
+
+- (DeviceProvider *)getProvider:(NSError **)error {
+    __block DeviceProvider *provider = NULL;
+    __block NSError *providerError = nil;
+    
+    dispatch_sync(self.providerQueue, ^{
+        if (!self.sharedProvider) {
+            self.sharedProvider = createDeviceProvider(pairingFilePath(), @"10.7.0.1", &providerError);
+            self.didEnsureDDIMounted = NO;
+        }
+        
+        if (self.sharedProvider && !self.didEnsureDDIMounted) {
+            if (!ensureDDIMounted(self.sharedProvider, &providerError)) {
+                provider = NULL;
+                return;
+            }
+            self.didEnsureDDIMounted = YES;
+        }
+        
+        provider = self.sharedProvider;
+    });
+    
+    if (!provider && error) *error = providerError;
+    return provider;
+}
+
+- (void)dealloc {
+    resetJITEndpointMonitor();
+    if (_sharedProvider) {
+        freeDeviceProvider(_sharedProvider);
+        _sharedProvider = NULL;
+    }
 }
 
 @end

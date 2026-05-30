@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>application-identifier</key>
-    <string>com.chatgpt.shell</string>
+    <string>com.minh-ton.Reynard</string>
 	<key>com.apple.developer.kernel.extended-virtual-addressing</key>
     <true/>
 	<key>com.apple.developer.kernel.increased-memory-limit</key>
@@ -37,6 +37,7 @@
         <string>com.apple.nsurlstorage-cache</string>
     </array>
 
+	<!-- I'm not sure if this will work, but anyways -->
 	<key>com.apple.developer.web-browser</key>
 	<true/>
 </dict>

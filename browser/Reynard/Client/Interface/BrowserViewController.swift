@@ -8,1328 +8,359 @@
 import GeckoView
 import UIKit
 
-final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneToolbarDelegate, TabManagerDelegate {
-    private static let chatGPTShellMode = false
-
-    let overviewInset: CGFloat = 16
-    let overviewSpacing: CGFloat = 16
-    private let actsAsRootContainer: Bool
-    private var embeddedSplitController: BrowserSplitViewController?
-
-    lazy var tabCollectionCoordinator = TabCollectionCoordinator(controller: self)
-
-    lazy var browserUI = BrowserUI(
-        controller: self,
-        overviewInset: overviewInset,
-        overviewSpacing: overviewSpacing,
-        tabCollectionHandler: tabCollectionCoordinator
-    )
-
+final class BrowserViewController: UIViewController {
     lazy var tabManager: TabManager = TabManagerImplementation(delegate: self)
-    lazy var browserLayout = BrowserLayout(controller: self)
-    lazy var tabOverviewPresentation = TabOverviewPresentation(controller: self)
-
-    var isSearchFocused = false
-    private var pendingSelectionAnimation = false
-    private let utilityPanel = UtilityPanelView()
-    private var utilityPanelVisible = false
-    private var isShellRecoveryOverlayVisible = false
-    private var shellRecoveryOverlayToken = UUID()
-    private var shellRecoveryOverlayShownAt: Date?
-    private let shellRecoveryOverlay = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterialDark))
-    private let shellRecoveryPill = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
-    private let shellRecoveryLabel: UILabel = {
-        let label = UILabel()
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "Refreshing"
-        label.font = .systemFont(ofSize: 16, weight: .semibold)
-        label.textColor = .label
-        return label
-    }()
-
-    override var shouldAutorotate: Bool {
-        false
-    }
-
-    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
-        .portrait
-    }
-
-    var isLibrarySidebarVisible: Bool {
-        (splitViewController as? BrowserSplitViewController)?.isLibrarySidebarVisible ?? false
-    }
-
-    var isPadLayout: Bool {
-        traitCollection.userInterfaceIdiom == .pad
-    }
-
-    var usesCompactPadChromeMode: Bool {
-        if isPadLayout && traitCollection.horizontalSizeClass == .compact { return true }
-        return usesPhoneTopAddressBarLayout
-    }
-
-    var usesPadChromeLayout: Bool {
-        if isPadLayout { return true }
-        if usesPhoneTopAddressBarLayout { return true }
-        if let orientation = view.window?.windowScene?.interfaceOrientation {
-            return orientation.isLandscape
-        }
-        return view.bounds.width > view.bounds.height
-    }
-
-
-    var usesPhoneTopAddressBarLayout: Bool {
-        false
-    }
-
-    var usesPhoneBottomOverviewLayout: Bool {
-        guard !isPadLayout else { return false }
-        return usesPhoneTopAddressBarLayout || !usesPadChromeLayout
-    }
-
-    var activeAddressBar: AddressBar {
-        browserUI.addressBar
-    }
-
-    init(actsAsRootContainer: Bool = true) {
-        self.actsAsRootContainer = actsAsRootContainer
+    private(set) var isInFullscreenMedia = false
+    private var orientationBeforeFullscreen: UIInterfaceOrientation?
+    
+    init(isSidebarContainerHost: Bool = true) {
         super.init(nibName: nil, bundle: nil)
+        self.isSidebarContainerHost = isSidebarContainerHost
     }
-
+    
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
-
+    
     deinit {
+        if isInFullscreenMedia {
+            UIApplication.shared.isIdleTimerDisabled = false
+        }
         NotificationCenter.default.removeObserver(self)
     }
-
-    private var usesEmbeddedSplitRoot: Bool {
-        false
-    }
-
+    
     override func viewDidLoad() {
         super.viewDidLoad()
-
         view.backgroundColor = .systemBackground
-
-        if usesEmbeddedSplitRoot {
-            configureEmbeddedSplitRoot()
+        
+        if shouldEmbedSidebarContainer {
+            setupEmbeddedSidebarContainer()
             return
         }
-
-        browserLayout.configureLayout()
-        configureShellRecoveryOverlay()
-        configureUtilityPanel()
+        
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(addressBarPositionDidChange),
+            name: Notification.Name("addressBarPositionChanged"),
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(landscapeTabBarDidChange),
+            name: Notification.Name("landscapeTabBarChanged"),
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(changeWebsiteModeRequested),
+            name: AddressBarMenu.changeWebsiteModeNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(presentAddonSettingsRequested(_:)),
+            name: AddressBarMenu.presentAddonSettingsNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(presentAddBookmarkRequested(_:)),
+            name: AddressBarMenu.addBookmarkNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(applyUpdateMenuButtonBadge),
+            name: AppUpdates.updateAvailableNotification,
+            object: nil
+        )
+        
+        configureContextMenu()
+        observeDownloadState()
+        syncDownloadButtonState()
+        browserUI.configureLayout()
+        browserUI.observeKeyboard()
+        addressBarGestures.configureGestures()
+        restoreTabOverviewMode()
         syncBrowserNavigationChrome(animated: false)
-        syncPadSidebarButtonItem()
-        configureChatGPTShellGestures()
-        browserLayout.observeKeyboard()
-
+        syncSidebarButtonItem()
+        
+        if AppUpdates.shared.hasUpdate {
+            applyUpdateMenuButtonBadge()
+        }
+        
         tabManager.createInitialTab()
         refreshAddressBar()
-        browserLayout.applyChromeLayout(animated: false)
+        
+        Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+            
+            await self.addonController.start()
+            self.tabManager.selectedTab?.session.setAddonTabActive(true)
+        }
+        
+        browserUI.applyChromeLayout(animated: false)
     }
-
+    
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        guard !usesEmbeddedSplitRoot else {
+        guard !shouldEmbedSidebarContainer else {
             return
         }
         syncBrowserNavigationChrome(animated: animated)
     }
-
+    
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        guard !usesEmbeddedSplitRoot else {
+        guard !shouldEmbedSidebarContainer else {
             return
         }
         view.endEditing(true)
     }
-
+    
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        guard !usesEmbeddedSplitRoot else {
+        guard !shouldEmbedSidebarContainer else {
             return
         }
         syncBrowserNavigationChrome(animated: false)
-        syncPadSidebarButtonItem()
-        browserLayout.applyChromeLayout(animated: false)
+        syncSidebarButtonItem()
+        syncDownloadButtonState()
+        browserUI.applyChromeLayout(animated: false)
     }
-
+    
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
-        guard !usesEmbeddedSplitRoot else {
+        guard !shouldEmbedSidebarContainer else {
             embeddedSplitController?.refreshSidebarVisibility()
             return
         }
         syncBrowserNavigationChrome(animated: false)
-        syncPadSidebarButtonItem()
+        syncSidebarButtonItem()
         refreshAddressBar()
-        browserLayout.applyChromeLayout(animated: false)
+        browserUI.applyChromeLayout(animated: false)
+        browserUI.tabOverviewCollection.tabsCollection.collectionViewLayout.invalidateLayout()
+        browserUI.tabOverviewCollection.privateTabsCollection.collectionViewLayout.invalidateLayout()
+        browserUI.tabBar.collectionView.collectionViewLayout.invalidateLayout()
+        tabOverviewPresentation.refreshForCurrentOrientation()
     }
-
+    
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
         super.viewWillTransition(to: size, with: coordinator)
-        guard !usesEmbeddedSplitRoot else {
+        guard !shouldEmbedSidebarContainer else {
             return
         }
-
+        
         coordinator.animate { _ in
             self.syncBrowserNavigationChrome(animated: false)
-            self.syncPadSidebarButtonItem()
+            self.syncSidebarButtonItem()
+            self.browserUI.tabOverviewCollection.tabsCollection.collectionViewLayout.invalidateLayout()
+            self.browserUI.tabOverviewCollection.privateTabsCollection.collectionViewLayout.invalidateLayout()
+            self.browserUI.tabBar.collectionView.collectionViewLayout.invalidateLayout()
         } completion: { _ in
             self.syncBrowserNavigationChrome(animated: false)
-            self.syncPadSidebarButtonItem()
+            self.syncSidebarButtonItem()
             self.browserUI.geckoView.transform = .identity
+            self.addressBarGestures.resetHorizontalTransition()
+            self.tabOverviewPresentation.refreshForCurrentOrientation()
             DispatchQueue.main.async {
                 guard self.isViewLoaded, self.view.window != nil else {
                     return
                 }
-                self.browserLayout.applyChromeLayout(animated: false)
+                self.browserUI.applyChromeLayout(animated: false)
             }
         }
     }
-
+    
     @discardableResult
-    func createTab(selecting: Bool, windowId: String? = nil, at index: Int? = nil) -> Int {
-        tabManager.addTab(selecting: selecting, windowId: windowId, at: index)
+    func createTab(selecting: Bool, windowId: String? = nil, at index: Int? = nil, isPrivate: Bool? = nil) -> Int {
+        let shouldCreatePrivate = isPrivate ?? (tabManager.selectedTabMode == .private)
+        let createdIndex = tabManager.addTab(selecting: selecting, windowId: windowId, at: index, isPrivate: shouldCreatePrivate)
+        pendingExpandedTabBarIndex = selecting ? createdIndex : nil
+        return createdIndex
     }
-
+    
     func selectTab(at index: Int, animated: Bool) {
         pendingSelectionAnimation = animated
-        tabManager.selectTab(at: index)
+        tabManager.selectTab(at: index, mode: nil)
     }
-
+    
+    func moveTab(from sourceIndex: Int, to destinationIndex: Int) {
+        tabManager.moveTab(from: sourceIndex, to: destinationIndex, mode: nil)
+    }
+    
     func closeTab(at index: Int) {
-        tabManager.removeTab(at: index)
+        pendingExpandedTabBarIndex = nil
+        tabManager.removeTab(at: index, mode: nil)
     }
-
+    
     func clearAllTabs() {
-        tabManager.removeAllTabs()
+        pendingExpandedTabBarIndex = nil
+        tabManager.removeAllTabs(mode: nil)
     }
-
-    func setTabOverviewVisible(_ visible: Bool, animated: Bool) {
-        guard !Self.chatGPTShellMode else {
-            return
-        }
-
-        tabOverviewPresentation.setVisible(visible, animated: animated)
-    }
-
-    func setSearchFocused(_ focused: Bool, animated: Bool) {
-        browserLayout.setSearchFocused(focused, animated: animated)
-    }
-
-    func applyChromeLayout(animated: Bool) {
-        browserLayout.applyChromeLayout(animated: animated)
-    }
-
-    func centerSelectedPadTab(animated: Bool) {
-        guard !Self.chatGPTShellMode else {
-            return
-        }
-
-        guard usesPadChromeLayout, tabManager.tabs.indices.contains(tabManager.selectedTabIndex) else {
-            return
-        }
-
-        let indexPath = IndexPath(item: tabManager.selectedTabIndex, section: 0)
-        browserUI.padTabBar.collectionView.scrollToItem(at: indexPath, at: .centeredHorizontally, animated: animated)
-    }
-
+    
     func browse(to term: String) {
         tabManager.browse(to: term)
     }
-
+    
     func openExternalURL(_ url: URL) {
-        let targetController = activeContentBrowserViewController
+        let targetController = activeContentController
         targetController.loadViewIfNeeded()
-        targetController.prepareTabForExternalLoad()
-        targetController.browse(to: url.absoluteString)
+        let targetTab = targetController.prepareTabForExternalLoad()
+        targetController.tabManager.browse(to: url.absoluteString, in: targetTab)
     }
-
-    private var activeContentBrowserViewController: BrowserViewController {
+    
+    private var activeContentController: BrowserViewController {
         embeddedSplitController?.contentBrowserViewController ?? self
     }
-
-    private func prepareTabForExternalLoad() {
-        guard !tabManager.tabs.isEmpty else {
-            tabManager.createInitialTab()
+    
+    private func prepareTabForExternalLoad() -> Tab {
+        let targetMode = tabManager.selectedTabMode
+        let targetIsPrivate = targetMode == .private
+        let activeTabs = targetIsPrivate ? tabManager.privateTabs : tabManager.regularTabs
+        
+        guard !activeTabs.isEmpty else {
+            let createdIndex = createTab(selecting: true, at: 0, isPrivate: targetIsPrivate)
+            let updatedTabs = targetIsPrivate ? tabManager.privateTabs : tabManager.regularTabs
+            return updatedTabs[createdIndex]
+        }
+        
+        if let selectedTab = tabManager.selectedTab,
+           selectedTab.isPrivate == targetIsPrivate,
+           isBlankTab(selectedTab) {
+            return selectedTab
+        }
+        
+        let createdIndex = createTab(selecting: true, at: activeTabs.count, isPrivate: targetIsPrivate)
+        let updatedTabs = targetIsPrivate ? tabManager.privateTabs : tabManager.regularTabs
+        return updatedTabs[createdIndex]
+    }
+    
+    private func isBlankTab(_ tab: Tab) -> Bool {
+        guard let url = tab.url?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !url.isEmpty else {
+            return true
+        }
+        
+        return url.lowercased().hasPrefix("about:blank")
+    }
+    
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        if isInFullscreenMedia && !isPad {
+            return .landscape
+        }
+        
+        return isPad ? .all : .allButUpsideDown
+    }
+    
+    override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation {
+        if isInFullscreenMedia && !isPad {
+            return .landscapeRight
+        }
+        
+        return .portrait
+    }
+    
+    func applyFullscreenState(_ fullScreen: Bool, for session: GeckoSession?) {
+        if fullScreen {
+            activeFullscreenSession = session
+        } else if activeFullscreenSession === session || session == nil {
+            activeFullscreenSession = nil
+        }
+        
+        guard isInFullscreenMedia != fullScreen else {
             return
         }
-    }
-
-    func updateNavigationButtons() {
-        guard !Self.chatGPTShellMode else {
-            return
-        }
-
-        guard let tab = tabManager.selectedTab else {
-            return
-        }
-
-        browserUI.toolbarView.updateBackButton(canGoBack: tab.canGoBack)
-        browserUI.toolbarView.updateForwardButton(canGoForward: tab.canGoForward)
-        let shareEnabled = tabManager.shareableURL(for: tab) != nil
-        browserUI.toolbarView.updateShareButton(isEnabled: shareEnabled)
-        browserUI.padTopBarButtons.shareButton.isEnabled = shareEnabled
-        browserUI.padTopBarButtons.backButton.isEnabled = tab.canGoBack
-        browserUI.padTopBarButtons.forwardButton.isEnabled = tab.canGoForward
-    }
-
-    private func syncPadSidebarButtonItem() {
-        guard !Self.chatGPTShellMode else {
-            return
-        }
-
-        browserUI.padTopBarButtons.syncSidebarButton(splitViewController: splitViewController)
-    }
-
-    private func syncBrowserNavigationChrome(animated: Bool) {
-        navigationController?.setNavigationBarHidden(true, animated: animated)
-        navigationItem.leftItemsSupplementBackButton = false
-        navigationItem.hidesBackButton = true
-        navigationItem.leftBarButtonItems = []
-        navigationItem.leftBarButtonItem = nil
-    }
-
-    private func configureEmbeddedSplitRoot() {
-        guard embeddedSplitController == nil else {
-            return
-        }
-
-        let splitController = BrowserSplitViewController(browserViewController: BrowserViewController(actsAsRootContainer: false))
-        addChild(splitController)
-        splitController.view.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(splitController.view)
-        NSLayoutConstraint.activate([
-            splitController.view.topAnchor.constraint(equalTo: view.topAnchor),
-            splitController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            splitController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            splitController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-        ])
-        splitController.didMove(toParent: self)
-        embeddedSplitController = splitController
-    }
-
-    func setLibrarySidebarVisible(_ visible: Bool, animated: Bool) {
-        setUtilityPanelVisible(visible, animated: animated)
-    }
-
-    private func activeTabStripHeight() -> CGFloat {
-        0
-    }
-
-    func tabPreviewAspectRatio() -> CGFloat {
-        let bounds = browserUI.geckoView.bounds
-        let width = max(bounds.width, 1)
-        let height = max(bounds.height + activeTabStripHeight(), 1)
-        return height / width
-    }
-
-    func captureThumbnail(for index: Int) {
-        tabManager.updateThumbnail(nil, forTabAt: index)
-    }
-
-    func dismissalContentFrame() -> CGRect {
-        let frame = browserUI.geckoView.frame
-        let stripHeight = activeTabStripHeight()
-        guard stripHeight > 0,
-              usesPadChromeLayout,
-              tabOverviewPresentation.isVisible else {
-            return frame
-        }
-
-        return CGRect(
-            x: frame.minX,
-            y: frame.minY + stripHeight,
-            width: frame.width,
-            height: max(1, frame.height - stripHeight)
-        )
-    }
-
-    func syncAddressBarLoadingState(progress: Float, isLoading: Bool) {
-        guard !Self.chatGPTShellMode else {
-            return
-        }
-
-        browserUI.addressBar.setLoadingProgress(progress, isLoading: isLoading)
-    }
-
-    func refreshAddressBar() {
-        guard !Self.chatGPTShellMode else {
-            return
-        }
-
-        let selectedTab = tabManager.selectedTab
-        let pendingDisplayText = selectedTab?.pendingDisplayText?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let hasPendingDisplayText = !(pendingDisplayText?.isEmpty ?? true)
-        let selectedURL = selectedTab?.url
-        let displayedText = hasPendingDisplayText ? pendingDisplayText : selectedURL
-        if !browserUI.addressBar.isEditingText {
-            browserUI.addressBar.setText(
-                displayedText,
-                locationText: selectedURL,
-                locationTitle: selectedTab?.title,
-                showsBarMenu: !hasPendingDisplayText && selectedURL?.isEmpty == false
-            )
-        }
-        browserUI.addressBar.setLoadingProgress(selectedTab?.progress ?? 0, isLoading: selectedTab?.isLoading ?? false)
-        browserUI.addressBar.setLocationMenu(nil)
-    }
-
-    func tabManagerDidChangeTabs(_ tabManager: TabManager) {
-        if let selectedTab = tabManager.selectedTab {
-            if browserUI.geckoView.session !== selectedTab.session {
-                browserUI.geckoView.session = selectedTab.session
+        
+        if fullScreen {
+            if tabOverviewPresentation.isVisible {
+                tabOverviewPresentation.setVisible(false, animated: false)
             }
+            setSearchFocused(false, animated: false)
+            view.endEditing(true)
+        }
+        
+        isInFullscreenMedia = fullScreen
+        browserUI.applyChromeLayout(animated: true)
+        updateFullscreenOrientation(fullScreen)
+        UIApplication.shared.isIdleTimerDisabled = fullScreen
+    }
+    
+    private func updateFullscreenOrientation(_ fullScreen: Bool) {
+        guard !isPad else {
+            return
+        }
+        
+        if #available(iOS 16.0, *) {
+            setNeedsUpdateOfSupportedInterfaceOrientations()
+        }
+        
+        if fullScreen {
+            if let currentOrientation = view.window?.windowScene?.interfaceOrientation,
+               currentOrientation != .unknown {
+                orientationBeforeFullscreen = currentOrientation
+            } else if orientationBeforeFullscreen == nil {
+                orientationBeforeFullscreen = .portrait
+            }
+            
+            let targetOrientation: UIInterfaceOrientation
+            if let currentOrientation = view.window?.windowScene?.interfaceOrientation,
+               currentOrientation.isLandscape {
+                targetOrientation = currentOrientation
+            } else {
+                targetOrientation = .landscapeRight
+            }
+            forceInterfaceOrientation(targetOrientation)
         } else {
-            browserUI.geckoView.session = nil
+            let targetOrientation = orientationBeforeFullscreen ?? .portrait
+            forceInterfaceOrientation(targetOrientation)
+            orientationBeforeFullscreen = nil
         }
-        refreshAddressBar()
-
-        browserLayout.applyChromeLayout(animated: false)
     }
-
-    func tabManager(_ tabManager: TabManager, didSelectTabAt index: Int, previousIndex: Int?) {
-        guard tabManager.tabs.indices.contains(index) else {
+    
+    private func forceInterfaceOrientation(_ orientation: UIInterfaceOrientation) {
+        let orientationMask: UIInterfaceOrientationMask
+        switch orientation {
+        case .portrait:
+            orientationMask = .portrait
+        case .portraitUpsideDown:
+            orientationMask = .portraitUpsideDown
+        case .landscapeLeft:
+            orientationMask = .landscapeLeft
+        case .landscapeRight:
+            orientationMask = .landscapeRight
+        default:
             return
         }
-
-        let selectedTab = tabManager.tabs[index]
-        browserUI.geckoView.session = selectedTab.session
-        syncAddressBarLoadingState(progress: selectedTab.progress, isLoading: selectedTab.isLoading)
-        refreshAddressBar()
-
-        updateNavigationButtons()
-        pendingSelectionAnimation = false
-    }
-
-    func tabManager(_ tabManager: TabManager, didUpdateTabAt index: Int, reason: TabManagerUpdateReason) {
-        guard tabManager.tabs.indices.contains(index) else {
-            return
-        }
-
-        switch reason {
-        case .title:
-            break
-
-        case .location:
-            if index == tabManager.selectedTabIndex {
-                refreshAddressBar()
-                updateNavigationButtons()
-            }
-
-        case .navigationState:
-            if index == tabManager.selectedTabIndex {
-                updateNavigationButtons()
-            }
-
-        case .loading:
-            if index == tabManager.selectedTabIndex {
-                let tab = tabManager.tabs[index]
-                syncAddressBarLoadingState(progress: tab.progress, isLoading: tab.isLoading)
-                if isShellRecoveryOverlayVisible && !tab.isLoading {
-                    hideShellRecoveryOverlayAfterSettleDelay()
-                }
-            }
-
-        case .thumbnail:
-            break
-        }
-    }
-
-    func tabManager(_ tabManager: TabManager, animateNewTabSelectionAt index: Int, completion: @escaping () -> Void) {
-        completion()
-    }
-
-    func tabManager(_ tabManager: TabManager, didRequestExternalOpen url: URL) {
-        openExternalLinkInSafari(url)
-    }
-
-    func tabManager(_ tabManager: TabManager, shouldHandleExternalResponse response: ExternalResponseInfo, for session: GeckoSession) -> Bool {
-        guard let download = DownloadStore.shared.prepareDownload(from: response) else {
-            return false
-        }
-
-        presentDownloadPrompt(download)
-        return true
-    }
-
-    func tabManager(_ tabManager: TabManager, shouldHandleSavePdf request: SavePdfInfo, for session: GeckoSession) -> Bool {
-        guard let download = DownloadStore.shared.prepareDownload(from: request) else {
-            return false
-        }
-
-        presentDownloadPrompt(download)
-        return true
-    }
-
-    private func presentDownloadPrompt(_ download: DownloadStore.PendingDownload) {
-        let alert = UIAlertController(
-            title: "Download File?",
-            message: download.fileName,
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Download", style: .default) { [weak self] _ in
-            guard let self else { return }
-            DownloadStore.shared.startDownload(download)
-            self.setUtilityPanelVisible(true, animated: true)
-            self.utilityPanel.showDownloads(animated: true)
-        })
-
-        DispatchQueue.main.async { [weak self] in
-            guard let self, self.view.window != nil else { return }
-            let presenter = self.presentedViewController ?? self
-            presenter.present(alert, animated: true)
-        }
-    }
-
-    func backButtonClicked() {
-    }
-
-    func forwardButtonClicked() {
-    }
-
-    func shareButtonClicked() {
-    }
-
-    func menuButtonClicked() {
-        setUtilityPanelVisible(true, animated: true)
-    }
-
-    func downloadsButtonClicked() {
-        setUtilityPanelVisible(true, animated: true)
-    }
-
-    func addressBarDidSubmit(_ searchTerm: String) {
-        browse(to: searchTerm)
-        view.endEditing(true)
-    }
-
-    func addressBarDidBeginEditing(_ addressBar: AddressBar) {
-        refreshAddressBar()
-        setSearchFocused(true, animated: true)
-    }
-
-    func addressBarDidEndEditing(_ addressBar: AddressBar) {
-        refreshAddressBar()
-        if !browserUI.addressBar.isEditingText {
-            setSearchFocused(false, animated: true)
-        }
-    }
-
-    func addressBarDidTapTrailingButton(_ addressBar: AddressBar) {
-        guard let selectedTab = tabManager.selectedTab else {
-            return
-        }
-
-        if selectedTab.isLoading {
-            selectedTab.session.stop()
-            return
-        }
-
-        reloadTab(selectedTab)
-    }
-
-    private func configureChatGPTShellGestures() {
-        let reloadGesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleShellReloadGesture(_:)))
-        reloadGesture.edges = .left
-        reloadGesture.cancelsTouchesInView = false
-        view.addGestureRecognizer(reloadGesture)
-
-        let keyboardDismissGesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleShellKeyboardDismissGesture(_:)))
-        keyboardDismissGesture.edges = .right
-        keyboardDismissGesture.cancelsTouchesInView = false
-        view.addGestureRecognizer(keyboardDismissGesture)
-
-        let utilityGesture = UITapGestureRecognizer(target: self, action: #selector(handleUtilityPanelTap(_:)))
-        utilityGesture.numberOfTouchesRequired = 2
-        utilityGesture.numberOfTapsRequired = 1
-        utilityGesture.cancelsTouchesInView = false
-        view.addGestureRecognizer(utilityGesture)
-    }
-
-    @objc private func handleShellReloadGesture(_ gesture: UIScreenEdgePanGestureRecognizer) {
-        guard gesture.state == .ended || gesture.state == .recognized else {
-            return
-        }
-
-        guard gesture.translation(in: view).x > 24 else {
-            return
-        }
-
-        guard let tab = tabManager.selectedTab else { return }
-        setShellRecoveryOverlayVisible(true, animated: true)
-        reloadTabAfterClearingAppCache(tab)
-    }
-
-    @objc private func handleShellKeyboardDismissGesture(_ gesture: UIScreenEdgePanGestureRecognizer) {
-        guard gesture.state == .ended || gesture.state == .recognized else {
-            return
-        }
-
-        guard gesture.translation(in: view).x < -24 else {
-            return
-        }
-
-        view.endEditing(true)
-    }
-
-    @objc private func handleUtilityPanelTap(_ gesture: UITapGestureRecognizer) {
-        guard gesture.state == .ended || gesture.state == .recognized else {
-            return
-        }
-
-        setUtilityPanelVisible(true, animated: true)
-    }
-
-    private func reloadTab(_ tab: Tab) {
-        tabManager.reload(tab)
-    }
-
-    private func reloadTabAfterClearingAppCache(_ tab: Tab) {
-        tab.session.stop()
-        clearAppCacheForReload { [weak self, weak tab] in
-            guard let self, let tab else { return }
-            self.tabManager.recover(tab)
-        }
-    }
-
-    private func clearAppCacheForReload(completion: @escaping () -> Void) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            let fileManager = FileManager.default
-            let cacheURLs = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)
-            let temporaryURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-
-            URLCache.shared.removeAllCachedResponses()
-
-            for directoryURL in cacheURLs + [temporaryURL] {
-                guard let contents = try? fileManager.contentsOfDirectory(
-                    at: directoryURL,
-                    includingPropertiesForKeys: nil,
-                    options: [.skipsSubdirectoryDescendants]
-                ) else {
-                    continue
-                }
-
-                for itemURL in contents {
-                    try? fileManager.removeItem(at: itemURL)
-                }
-            }
-
-            DispatchQueue.main.async {
-                completion()
-            }
-        }
-    }
-
-    private func configureShellRecoveryOverlay() {
-        shellRecoveryOverlay.translatesAutoresizingMaskIntoConstraints = false
-        shellRecoveryOverlay.alpha = 0
-        shellRecoveryOverlay.isHidden = true
-        shellRecoveryOverlay.isUserInteractionEnabled = false
-
-        shellRecoveryPill.translatesAutoresizingMaskIntoConstraints = false
-        shellRecoveryPill.layer.cornerCurve = .continuous
-        shellRecoveryPill.layer.cornerRadius = 18
-        shellRecoveryPill.clipsToBounds = true
-        shellRecoveryPill.contentView.addSubview(shellRecoveryLabel)
-
-        shellRecoveryOverlay.contentView.addSubview(shellRecoveryPill)
-        view.addSubview(shellRecoveryOverlay)
-
-        NSLayoutConstraint.activate([
-            shellRecoveryOverlay.topAnchor.constraint(equalTo: view.topAnchor),
-            shellRecoveryOverlay.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            shellRecoveryOverlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            shellRecoveryOverlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            shellRecoveryPill.centerXAnchor.constraint(equalTo: shellRecoveryOverlay.contentView.centerXAnchor),
-            shellRecoveryPill.centerYAnchor.constraint(equalTo: shellRecoveryOverlay.contentView.centerYAnchor),
-            shellRecoveryLabel.leadingAnchor.constraint(equalTo: shellRecoveryPill.contentView.leadingAnchor, constant: 18),
-            shellRecoveryLabel.trailingAnchor.constraint(equalTo: shellRecoveryPill.contentView.trailingAnchor, constant: -18),
-            shellRecoveryLabel.topAnchor.constraint(equalTo: shellRecoveryPill.contentView.topAnchor, constant: 10),
-            shellRecoveryLabel.bottomAnchor.constraint(equalTo: shellRecoveryPill.contentView.bottomAnchor, constant: -10),
-        ])
-    }
-
-    private func setShellRecoveryOverlayVisible(_ visible: Bool, animated: Bool) {
-        guard visible != isShellRecoveryOverlayVisible || shellRecoveryOverlay.isHidden else {
-            return
-        }
-
-        isShellRecoveryOverlayVisible = visible
-        if visible {
-            shellRecoveryOverlayShownAt = Date()
-            shellRecoveryOverlay.isHidden = false
-            view.bringSubviewToFront(shellRecoveryOverlay)
-            shellRecoveryPill.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
-            let token = UUID()
-            shellRecoveryOverlayToken = token
-            DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { [weak self] in
-                guard let self,
-                      self.shellRecoveryOverlayToken == token,
-                      self.isShellRecoveryOverlayVisible else {
-                    return
-                }
-                self.setShellRecoveryOverlayVisible(false, animated: true)
-            }
-        }
-
-        let animations = {
-            self.shellRecoveryOverlay.alpha = visible ? 1 : 0
-            self.shellRecoveryPill.transform = visible ? .identity : CGAffineTransform(scaleX: 0.98, y: 0.98)
-        }
-        let completion: (Bool) -> Void = { _ in
-            if !visible {
-                self.shellRecoveryOverlay.isHidden = true
-                self.shellRecoveryOverlayShownAt = nil
-            }
-        }
-
-        if animated {
-            UIView.animate(
-                withDuration: visible ? 0.18 : 0.22,
-                delay: 0,
-                options: [.beginFromCurrentState, .allowUserInteraction],
-                animations: animations,
-                completion: completion
-            )
-        } else {
-            animations()
-            completion(true)
-        }
-    }
-
-    private func hideShellRecoveryOverlayAfterSettleDelay() {
-        let minimumVisibleDuration: TimeInterval = 2.0
-        let settleDuration: TimeInterval = 0.0
-        let elapsed = shellRecoveryOverlayShownAt.map { Date().timeIntervalSince($0) } ?? minimumVisibleDuration
-        let delay = max(0, minimumVisibleDuration - elapsed) + settleDuration
-        let token = shellRecoveryOverlayToken
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard let self,
-                  self.shellRecoveryOverlayToken == token,
-                  self.isShellRecoveryOverlayVisible else {
+        
+        if #available(iOS 16.0, *) {
+            guard let windowScene = view.window?.windowScene else {
                 return
             }
-            self.setShellRecoveryOverlayVisible(false, animated: true)
-        }
-    }
-
-    @objc func tabsTapped() {
-        setUtilityPanelVisible(true, animated: true)
-    }
-
-    @objc func doneTapped() {
-    }
-
-    @objc func newTabTapped() {
-    }
-
-    @objc func clearAllTabsTapped() {
-    }
-
-    @objc func shareTapped() {
-    }
-
-    @objc func librarySidebarTapped() {
-        setUtilityPanelVisible(!utilityPanelVisible, animated: true)
-    }
-
-    @objc func padBackTapped() {
-    }
-
-    @objc func padForwardTapped() {
-    }
-
-    @objc func topBarMenuTapped() {
-        setUtilityPanelVisible(true, animated: true)
-    }
-
-    @objc func topBarDownloadsTapped() {
-        setUtilityPanelVisible(true, animated: true)
-    }
-
-    private func openExternalLinkInSafari(_ url: URL) {
-        DispatchQueue.main.async {
-            UIApplication.shared.open(url, options: [:], completionHandler: nil)
-        }
-    }
-
-    private func configureUtilityPanel() {
-        utilityPanel.translatesAutoresizingMaskIntoConstraints = false
-        utilityPanel.onClose = { [weak self] in
-            self?.setUtilityPanelVisible(false, animated: true)
-        }
-        utilityPanel.onSaveUserAgent = { [weak self] useAndroid in
-            guard let self else { return }
-            BrowserPreferences.shared.useAndroidUserAgent = useAndroid
-            self.setUtilityPanelVisible(false, animated: true)
-            guard let tab = self.tabManager.selectedTab else { return }
-            let url = tab.url ?? "https://chatgpt.com"
-            tab.session.updateSettings(UserAgentController.shared.sessionSettings(for: url, tabID: tab.id))
-            self.reloadTab(tab)
-        }
-        view.addSubview(utilityPanel)
-        NSLayoutConstraint.activate([
-            utilityPanel.topAnchor.constraint(equalTo: view.topAnchor),
-            utilityPanel.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            utilityPanel.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            utilityPanel.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-        ])
-        utilityPanel.isHidden = true
-        utilityPanel.alpha = 0
-    }
-
-    private func setUtilityPanelVisible(_ visible: Bool, animated: Bool) {
-        utilityPanelVisible = visible
-        utilityPanel.syncControls()
-        if visible {
-            utilityPanel.showHome(animated: false)
-        }
-        utilityPanel.isHidden = false
-        view.bringSubviewToFront(utilityPanel)
-        utilityPanel.prepareForVisibilityChange(visible)
-        let animations = {
-            self.utilityPanel.alpha = visible ? 1 : 0
-            self.utilityPanel.applyVisibleState(visible)
-        }
-        let completion: (Bool) -> Void = { _ in
-            self.utilityPanel.isHidden = !visible
-        }
-        if animated {
-            UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseOut], animations: animations, completion: completion)
-        } else {
-            animations()
-            completion(true)
-        }
-    }
-
-}
-
-private final class UtilityPanelView: UIView, UIGestureRecognizerDelegate {
-    var onClose: (() -> Void)?
-    var onSaveUserAgent: ((Bool) -> Void)?
-
-    private let blurView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
-    private let dimView = UIView()
-    private let cardView = UIView()
-    private let homeContent = UIView()
-    private let downloadsContent = UIView()
-    private let homeStackView = UIStackView()
-    private let downloadsRow = UIControl()
-    private let androidUASwitch = UISwitch()
-    private let saveButton = UIButton(type: .system)
-    private var cardSideConstraint: NSLayoutConstraint?
-    private var cardHeightConstraint: NSLayoutConstraint?
-    private var saveButtonHeightConstraint: NSLayoutConstraint?
-    private var savedAndroidUA = false
-    private var activePanel: Panel = .home
-
-    private enum Panel {
-        case home
-        case downloads
-    }
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        backgroundColor = .clear
-
-        blurView.translatesAutoresizingMaskIntoConstraints = false
-        dimView.translatesAutoresizingMaskIntoConstraints = false
-        cardView.translatesAutoresizingMaskIntoConstraints = false
-        homeContent.translatesAutoresizingMaskIntoConstraints = false
-        downloadsContent.translatesAutoresizingMaskIntoConstraints = false
-
-        dimView.backgroundColor = UIColor.black.withAlphaComponent(0.24)
-
-        cardView.backgroundColor = .secondarySystemBackground
-        cardView.layer.cornerRadius = 22
-        cardView.layer.cornerCurve = .continuous
-        cardView.layer.shadowColor = UIColor.black.cgColor
-        cardView.layer.shadowOpacity = 0.25
-        cardView.layer.shadowRadius = 28
-        cardView.layer.shadowOffset = CGSize(width: 0, height: 12)
-        cardView.clipsToBounds = true
-
-        addSubview(blurView)
-        addSubview(dimView)
-        addSubview(cardView)
-        cardView.addSubview(homeContent)
-        cardView.addSubview(downloadsContent)
-        cardSideConstraint = cardView.widthAnchor.constraint(equalToConstant: 280)
-        cardHeightConstraint = cardView.heightAnchor.constraint(equalToConstant: 188)
-
-        NSLayoutConstraint.activate([
-            blurView.topAnchor.constraint(equalTo: topAnchor),
-            blurView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            blurView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            blurView.trailingAnchor.constraint(equalTo: trailingAnchor),
-
-            dimView.topAnchor.constraint(equalTo: topAnchor),
-            dimView.bottomAnchor.constraint(equalTo: bottomAnchor),
-            dimView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            dimView.trailingAnchor.constraint(equalTo: trailingAnchor),
-
-            cardView.centerXAnchor.constraint(equalTo: centerXAnchor),
-            cardView.centerYAnchor.constraint(equalTo: centerYAnchor),
-            cardView.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 18),
-            cardView.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -18),
-            cardSideConstraint!,
-            cardHeightConstraint!,
-
-            homeContent.topAnchor.constraint(equalTo: cardView.topAnchor),
-            homeContent.bottomAnchor.constraint(equalTo: cardView.bottomAnchor),
-            homeContent.leadingAnchor.constraint(equalTo: cardView.leadingAnchor),
-            homeContent.trailingAnchor.constraint(equalTo: cardView.trailingAnchor),
-
-            downloadsContent.topAnchor.constraint(equalTo: cardView.topAnchor),
-            downloadsContent.bottomAnchor.constraint(equalTo: cardView.bottomAnchor),
-            downloadsContent.leadingAnchor.constraint(equalTo: cardView.leadingAnchor),
-            downloadsContent.trailingAnchor.constraint(equalTo: cardView.trailingAnchor),
-        ])
-
-        configureHomeContent()
-        configureDownloadsContent()
-        downloadsContent.isHidden = true
-        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(backgroundTapped))
-        tapGesture.delegate = self
-        addGestureRecognizer(tapGesture)
-        syncControls()
-        showHome(animated: false)
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        let availableWidth = max(220, bounds.width - 56)
-        let availableHeight = max(220, bounds.height - safeAreaInsets.top - safeAreaInsets.bottom - 80)
-        cardSideConstraint?.constant = min(336, min(availableWidth, availableHeight))
-        updateCardHeight(animated: false)
-    }
-
-    func syncControls() {
-        savedAndroidUA = BrowserPreferences.shared.useAndroidUserAgent
-        androidUASwitch.isOn = savedAndroidUA
-        updateSaveButton(animated: false)
-    }
-
-    func prepareForVisibilityChange(_ visible: Bool) {
-        if visible {
-            cardView.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
-        }
-    }
-
-    func applyVisibleState(_ visible: Bool) {
-        cardView.transform = visible ? .identity : CGAffineTransform(scaleX: 0.96, y: 0.96)
-    }
-
-    func showHome(animated: Bool) {
-        let previous = contentView(for: activePanel)
-        activePanel = .home
-        switchContent(to: homeContent, from: previous, animated: animated)
-        updateCardHeight(animated: animated)
-    }
-
-    func showDownloads(animated: Bool) {
-        let previous = contentView(for: activePanel)
-        activePanel = .downloads
-        switchContent(to: downloadsContent, from: previous, animated: animated)
-        updateCardHeight(animated: animated)
-    }
-
-    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        guard let touchedView = touch.view else { return true }
-        return !touchedView.isDescendant(of: cardView)
-    }
-
-    private func configureHomeContent() {
-        homeStackView.translatesAutoresizingMaskIntoConstraints = false
-        homeStackView.axis = .vertical
-        homeStackView.spacing = 12
-
-        let uaLabel = UILabel()
-        uaLabel.text = "Android User Agent"
-        uaLabel.font = .systemFont(ofSize: 17, weight: .medium)
-        uaLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        androidUASwitch.addTarget(self, action: #selector(androidUASwitchChanged), for: .valueChanged)
-        androidUASwitch.translatesAutoresizingMaskIntoConstraints = false
-
-        let uaRow = UIView()
-        uaRow.translatesAutoresizingMaskIntoConstraints = false
-        uaRow.backgroundColor = .tertiarySystemBackground
-        uaRow.layer.cornerRadius = 14
-        uaRow.layer.cornerCurve = .continuous
-        uaRow.addSubview(uaLabel)
-        uaRow.addSubview(androidUASwitch)
-
-        downloadsRow.translatesAutoresizingMaskIntoConstraints = false
-        downloadsRow.backgroundColor = .tertiarySystemBackground
-        downloadsRow.layer.cornerRadius = 14
-        downloadsRow.layer.cornerCurve = .continuous
-        downloadsRow.addTarget(self, action: #selector(downloadsTapped), for: .touchUpInside)
-
-        let downloadsLabel = UILabel()
-        downloadsLabel.text = "Downloads"
-        downloadsLabel.font = .systemFont(ofSize: 17, weight: .medium)
-        downloadsLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        let chevronView = UIImageView(image: UIImage(systemName: "chevron.right"))
-        chevronView.translatesAutoresizingMaskIntoConstraints = false
-        chevronView.tintColor = .secondaryLabel
-        chevronView.contentMode = .scaleAspectFit
-        downloadsRow.addSubview(downloadsLabel)
-        downloadsRow.addSubview(chevronView)
-
-        saveButton.translatesAutoresizingMaskIntoConstraints = false
-        saveButton.setTitle("Save", for: .normal)
-        saveButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
-        saveButton.backgroundColor = .label
-        saveButton.tintColor = .systemBackground
-        saveButton.layer.cornerRadius = 14
-        saveButton.layer.cornerCurve = .continuous
-        saveButton.addTarget(self, action: #selector(saveUserAgentTapped), for: .touchUpInside)
-        saveButton.isEnabled = false
-        saveButton.alpha = 0
-        saveButtonHeightConstraint = saveButton.heightAnchor.constraint(equalToConstant: 0)
-
-        homeStackView.addArrangedSubview(uaRow)
-        homeStackView.addArrangedSubview(downloadsRow)
-        homeStackView.addArrangedSubview(saveButton)
-        homeStackView.setCustomSpacing(12, after: uaRow)
-        homeStackView.setCustomSpacing(0, after: downloadsRow)
-        homeContent.addSubview(homeStackView)
-
-        NSLayoutConstraint.activate([
-            homeStackView.leadingAnchor.constraint(equalTo: homeContent.leadingAnchor, constant: 16),
-            homeStackView.trailingAnchor.constraint(equalTo: homeContent.trailingAnchor, constant: -16),
-            homeStackView.centerYAnchor.constraint(equalTo: homeContent.centerYAnchor),
-
-            uaRow.heightAnchor.constraint(equalToConstant: 72),
-
-            uaLabel.leadingAnchor.constraint(equalTo: uaRow.leadingAnchor, constant: 16),
-            uaLabel.centerYAnchor.constraint(equalTo: uaRow.centerYAnchor),
-            androidUASwitch.trailingAnchor.constraint(equalTo: uaRow.trailingAnchor, constant: -16),
-            androidUASwitch.centerYAnchor.constraint(equalTo: uaRow.centerYAnchor),
-            androidUASwitch.leadingAnchor.constraint(greaterThanOrEqualTo: uaLabel.trailingAnchor, constant: 14),
-
-            downloadsRow.heightAnchor.constraint(equalToConstant: 72),
-            downloadsLabel.leadingAnchor.constraint(equalTo: downloadsRow.leadingAnchor, constant: 16),
-            downloadsLabel.centerYAnchor.constraint(equalTo: downloadsRow.centerYAnchor),
-            chevronView.trailingAnchor.constraint(equalTo: downloadsRow.trailingAnchor, constant: -18),
-            chevronView.centerYAnchor.constraint(equalTo: downloadsRow.centerYAnchor),
-            chevronView.widthAnchor.constraint(equalToConstant: 14),
-            chevronView.heightAnchor.constraint(equalToConstant: 18),
-
-            saveButtonHeightConstraint!,
-        ])
-    }
-
-    private func configureDownloadsContent() {
-        let backButton = UIButton(type: .system)
-        backButton.setImage(UIImage(systemName: "chevron.left"), for: .normal)
-        backButton.tintColor = .label
-        backButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
-
-        let titleLabel = UILabel()
-        titleLabel.text = "Downloads"
-        titleLabel.font = .systemFont(ofSize: 22, weight: .semibold)
-
-        let closeButton = UIButton(type: .system)
-        closeButton.setImage(UIImage(systemName: "xmark"), for: .normal)
-        closeButton.tintColor = .label
-        closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
-
-        let header = UIStackView(arrangedSubviews: [backButton, titleLabel, closeButton])
-        header.translatesAutoresizingMaskIntoConstraints = false
-        header.axis = .horizontal
-        header.alignment = .center
-        header.spacing = 10
-
-        let downloadsView = DownloadsManagerView()
-        downloadsView.translatesAutoresizingMaskIntoConstraints = false
-
-        downloadsContent.addSubview(header)
-        downloadsContent.addSubview(downloadsView)
-
-        NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo: downloadsContent.topAnchor, constant: 18),
-            header.leadingAnchor.constraint(equalTo: downloadsContent.leadingAnchor, constant: 14),
-            header.trailingAnchor.constraint(equalTo: downloadsContent.trailingAnchor, constant: -14),
-            backButton.widthAnchor.constraint(equalToConstant: 34),
-            backButton.heightAnchor.constraint(equalToConstant: 34),
-            closeButton.widthAnchor.constraint(equalToConstant: 34),
-            closeButton.heightAnchor.constraint(equalToConstant: 34),
-
-            downloadsView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 8),
-            downloadsView.leadingAnchor.constraint(equalTo: downloadsContent.leadingAnchor),
-            downloadsView.trailingAnchor.constraint(equalTo: downloadsContent.trailingAnchor),
-            downloadsView.bottomAnchor.constraint(equalTo: downloadsContent.bottomAnchor),
-        ])
-    }
-
-    private func switchContent(to incoming: UIView, from outgoing: UIView, animated: Bool) {
-        guard incoming !== outgoing else {
-            incoming.isHidden = false
-            incoming.alpha = 1
-            incoming.transform = .identity
+            
+            let geometryPreferences = UIWindowScene.GeometryPreferences.iOS(interfaceOrientations: orientationMask)
+            windowScene.requestGeometryUpdate(geometryPreferences)
+            UIViewController.attemptRotationToDeviceOrientation()
             return
         }
-
-        incoming.isHidden = false
-        incoming.alpha = animated ? 0 : 1
-        incoming.transform = animated ? CGAffineTransform(scaleX: 0.98, y: 0.98) : .identity
-        let animations = {
-            incoming.alpha = 1
-            incoming.transform = .identity
-            outgoing.alpha = 0
-            outgoing.transform = CGAffineTransform(scaleX: 1.02, y: 1.02)
-        }
-        let completion: (Bool) -> Void = { _ in
-            outgoing.isHidden = true
-            outgoing.transform = .identity
-        }
-        if animated {
-            UIView.animate(withDuration: 0.22, delay: 0, options: [.curveEaseInOut], animations: animations, completion: completion)
-        } else {
-            animations()
-            completion(true)
-        }
-    }
-
-    private func updateCardHeight(animated: Bool) {
-        let side = cardSideConstraint?.constant ?? 280
-        let saveHeight: CGFloat = androidUASwitch.isOn != savedAndroidUA ? 60 : 0
-        let homeHeight: CGFloat = 72 + 12 + 72 + saveHeight + 32
-        let targetHeight: CGFloat
-        switch activePanel {
-        case .home:
-            targetHeight = homeHeight
-        case .downloads:
-            targetHeight = side
-        }
-        let applyHeight = {
-            self.cardHeightConstraint?.constant = min(targetHeight, side)
-        }
-        guard animated else {
-            applyHeight()
+        
+        let deviceOrientation: UIDeviceOrientation
+        switch orientation {
+        case .portrait:
+            deviceOrientation = .portrait
+        case .portraitUpsideDown:
+            deviceOrientation = .portraitUpsideDown
+        case .landscapeLeft:
+            deviceOrientation = .landscapeRight
+        case .landscapeRight:
+            deviceOrientation = .landscapeLeft
+        default:
             return
         }
-        UIView.animate(withDuration: 0.22, delay: 0, options: [.curveEaseInOut]) {
-            applyHeight()
-            self.layoutIfNeeded()
-        }
-    }
-
-    private func updateSaveButton(animated: Bool) {
-        let changed = androidUASwitch.isOn != savedAndroidUA
-        let updates = {
-            self.saveButton.alpha = changed ? 1 : 0
-            self.saveButton.isEnabled = changed
-            self.saveButtonHeightConstraint?.constant = changed ? 48 : 0
-            self.homeStackView.setCustomSpacing(changed ? 12 : 0, after: self.downloadsRow)
-            self.homeStackView.layoutIfNeeded()
-            self.homeContent.layoutIfNeeded()
-            self.cardView.layoutIfNeeded()
-            self.updateCardHeight(animated: false)
-            self.layoutIfNeeded()
-        }
-        guard animated else {
-            updates()
-            return
-        }
-        UIView.animate(withDuration: 0.22, delay: 0, options: [.curveEaseInOut], animations: updates)
-    }
-
-    @objc private func closeTapped() {
-        onClose?()
-    }
-
-    @objc private func backgroundTapped() {
-        onClose?()
-    }
-
-    @objc private func saveUserAgentTapped() {
-        savedAndroidUA = androidUASwitch.isOn
-        updateSaveButton(animated: true)
-        onSaveUserAgent?(androidUASwitch.isOn)
-    }
-
-    @objc private func downloadsTapped() {
-        showDownloads(animated: true)
-    }
-
-    @objc private func backTapped() {
-        showHome(animated: true)
-    }
-
-    @objc private func androidUASwitchChanged() {
-        updateSaveButton(animated: true)
-    }
-
-    private func contentView(for panel: Panel) -> UIView {
-        switch panel {
-        case .home:
-            return homeContent
-        case .downloads:
-            return downloadsContent
-        }
-    }
-}
-
-final class BrowserSplitViewController: UISplitViewController, UISplitViewControllerDelegate {
-    private let browserViewController: BrowserViewController
-    private var sidebarVisible = false
-    private lazy var libraryViewController = UIViewController()
-
-    override var shouldAutorotate: Bool {
-        false
-    }
-
-    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
-        .portrait
-    }
-
-    var contentBrowserViewController: BrowserViewController {
-        browserViewController
-    }
-
-    private lazy var browserNavigationController: UINavigationController = {
-        let navigationController = UINavigationController(rootViewController: browserViewController)
-        navigationController.setNavigationBarHidden(true, animated: false)
-        return navigationController
-    }()
-
-    private lazy var libraryNavigationController: UINavigationController = {
-        let navigationController = UINavigationController(rootViewController: libraryViewController)
-        navigationController.navigationBar.tintColor = .label
-        return navigationController
-    }()
-
-    init(browserViewController: BrowserViewController) {
-        self.browserViewController = browserViewController
-        super.init(style: .doubleColumn)
-        preferredDisplayMode = .secondaryOnly
-        preferredSplitBehavior = .tile
-        preferredPrimaryColumnWidth = 320
-        minimumPrimaryColumnWidth = 280
-        maximumPrimaryColumnWidth = 360
-        presentsWithGesture = false
-        showsSecondaryOnlyButton = false
-        if #available(iOS 14.5, *) {
-            displayModeButtonVisibility = .never
-        }
-        delegate = self
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(applicationDidBecomeActive),
-            name: UIApplication.didBecomeActiveNotification,
-            object: nil
-        )
-        setViewController(libraryNavigationController, for: .primary)
-        setViewController(browserNavigationController, for: .secondary)
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    deinit {
-        NotificationCenter.default.removeObserver(self)
-    }
-
-    func setLibrarySidebarVisible(_ visible: Bool) {
-        sidebarVisible = visible
-        if visible {
-            show(.primary)
-        } else {
-            hide(.primary)
-        }
-        if browserViewController.isViewLoaded {
-            browserViewController.applyChromeLayout(animated: false)
-        }
-    }
-
-    func collapseLibrarySidebar(from sourceView: UIView?) {
-        guard let sourceView,
-              browserViewController.isViewLoaded,
-              let containerView = viewIfLoaded,
-              let snapshot = sourceView.snapshotView(afterScreenUpdates: false) else {
-            setLibrarySidebarVisible(false)
-            return
-        }
-
-        let destinationButton = browserViewController.browserUI.padTopBarButtons.sidebarButton
-        let sourceFrame = sourceView.convert(sourceView.bounds, to: containerView)
-        snapshot.frame = sourceFrame
-        containerView.addSubview(snapshot)
-
-        sourceView.isHidden = true
-        setLibrarySidebarVisible(false)
-        containerView.layoutIfNeeded()
-        browserViewController.view.layoutIfNeeded()
-
-        let destinationFrame = destinationButton.convert(destinationButton.bounds, to: containerView)
-        destinationButton.alpha = 0
-        destinationButton.isHidden = false
-
-        UIView.animate(withDuration: 0.14, delay: 0, options: [.curveEaseOut]) {
-            snapshot.frame = destinationFrame
-            destinationButton.alpha = 1
-        } completion: { _ in
-            sourceView.isHidden = false
-            destinationButton.alpha = 1
-            snapshot.removeFromSuperview()
-        }
-    }
-
-    func showLibrarySection(_ section: LibrarySection) {
-    }
-
-    var isLibrarySidebarVisible: Bool {
-        sidebarVisible
-    }
-
-    func refreshSidebarVisibility() {
-        sidebarVisible = displayMode != .secondaryOnly
-        if browserViewController.isViewLoaded {
-            browserViewController.applyChromeLayout(animated: false)
-        }
-    }
-
-    func splitViewController(_ svc: UISplitViewController, willChangeTo displayMode: UISplitViewController.DisplayMode) {
-        sidebarVisible = displayMode != .secondaryOnly
-        if browserViewController.isViewLoaded {
-            browserViewController.applyChromeLayout(animated: false)
-        }
-    }
-
-    @objc private func applicationDidBecomeActive() {
-        refreshSidebarVisibility()
-    }
-}
-
-enum SidebarToggleButtonConfiguration {
-    private static let fallbackImage = UIImage(systemName: "sidebar.left")
-
-    static func configure(_ button: UIButton, in splitViewController: UISplitViewController?) {
-        button.setImage(resolvedImage(in: splitViewController), for: .normal)
-        button.accessibilityLabel = resolvedAccessibilityLabel(in: splitViewController)
-    }
-
-    private static func resolvedImage(in splitViewController: UISplitViewController?) -> UIImage? {
-        splitViewController?.displayModeButtonItem.image ?? fallbackImage
-    }
-
-    private static func resolvedAccessibilityLabel(in splitViewController: UISplitViewController?) -> String? {
-        splitViewController?.displayModeButtonItem.accessibilityLabel
+        
+        UIDevice.current.setValue(deviceOrientation.rawValue, forKey: "orientation")
+        UIViewController.attemptRotationToDeviceOrientation()
     }
 }

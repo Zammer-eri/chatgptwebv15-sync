@@ -7,6 +7,7 @@
 
 import UIKit
 import UniformTypeIdentifiers
+import MobileCoreServices
 
 final class OpenInViewController: UIViewController {
     private var hasStartedOpenFlow = false
@@ -40,12 +41,17 @@ final class OpenInViewController: UIViewController {
                 return
             }
             
-            guard sharedURL != nil else {
+            guard let sharedURL else {
                 self.finishWithError(message: "No link was provided.")
                 return
             }
             
-            self.finishWithError(message: "Open in ChatGPT is unavailable.")
+            guard let browserURL = self.browserOpenURL(for: sharedURL) else {
+                self.finishWithError(message: "Unable to open Reynard.")
+                return
+            }
+            
+            self.openHostApp(with: browserURL)
         }
     }
     
@@ -53,8 +59,9 @@ final class OpenInViewController: UIViewController {
         let inputItems = extensionContext?.inputItems.compactMap { $0 as? NSExtensionItem } ?? []
         let providers = inputItems.flatMap { $0.attachments ?? [] }
         
-        if let urlProvider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(UTType.url.identifier) }) {
-            urlProvider.loadItem(forTypeIdentifier: UTType.url.identifier, options: nil) { item, _ in
+        let urlTypeIdentifier = kUTTypeURL as String
+        if let urlProvider = providers.first(where: { $0.hasItemConformingToTypeIdentifier(urlTypeIdentifier) }) {
+            urlProvider.loadItem(forTypeIdentifier: urlTypeIdentifier, options: nil) { item, _ in
                 let sharedURL = (item as? URL) ?? (item as? NSURL as URL?)
                 DispatchQueue.main.async {
                     completion(sharedURL)
@@ -64,6 +71,17 @@ final class OpenInViewController: UIViewController {
         }
         
         completion(nil)
+    }
+    
+    private func browserOpenURL(for sharedURL: URL) -> URL? {
+        guard var components = URLComponents(string: "reynard://open") else {
+            return nil
+        }
+        
+        components.queryItems = [
+            URLQueryItem(name: "url", value: sharedURL.absoluteString)
+        ]
+        return components.url
     }
     
     private func openHostApp(with url: URL) {
@@ -88,7 +106,7 @@ final class OpenInViewController: UIViewController {
             responder = r.next
         }
 
-        finishWithError(message: "Unable to open ChatGPT.")
+        finishWithError(message: "Unable to open Reynard.")
     }
     
     private func clearBackgrounds(startingAt view: UIView?) {

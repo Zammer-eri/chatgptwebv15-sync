@@ -17,7 +17,7 @@ public struct GeckoSessionSettings {
     public let userAgentOverride: String?
     public let userAgentMode: Int
     public let viewportMode: Int
-
+    
     public init(userAgentOverride: String?, userAgentMode: Int, viewportMode: Int) {
         self.userAgentOverride = userAgentOverride
         self.userAgentMode = userAgentMode
@@ -27,7 +27,6 @@ public struct GeckoSessionSettings {
 
 public enum GeckoSessionLoadFlags {
     public static let none = 0
-    public static let bypassCache = 1 << 0
     public static let replaceHistory = 1 << 6
 }
 
@@ -35,26 +34,20 @@ public class GeckoSession {
     let dispatcher: GeckoEventDispatcherWrapper = GeckoEventDispatcherWrapper()
     var window: GeckoViewWindow?
     var id: String?
+    public var isAddonPopup = false
+    public var isPrivateMode = false
+    lazy var addonSessionListener = AddonSessionListener(session: self)
     public var userAgentOverride: String?
     public var userAgentMode = 0
     public var viewportMode = 0
-
-    public func updateUserAgent(_ ua: String?) {
-        updateSettings(
-            GeckoSessionSettings(
-                userAgentOverride: ua,
-                userAgentMode: userAgentMode,
-                viewportMode: viewportMode
-            )
-        )
-    }
-
+    
     public func updateSettings(_ settings: GeckoSessionSettings) {
         userAgentOverride = settings.userAgentOverride
         userAgentMode = settings.userAgentMode
         viewportMode = settings.viewportMode
-
+        
         guard isOpen() else { return }
+        
         let uaValue: Any = settings.userAgentOverride ?? NSNull()
         dispatcher.dispatch(
             type: "GeckoView:UpdateSettings",
@@ -64,7 +57,7 @@ public class GeckoSession {
                 "viewportMode": settings.viewportMode,
             ])
     }
-
+    
     lazy var contentHandler = newContentHandler(self)
     lazy var processHangHandler = newProcessHangHandler(self)
     public var contentDelegate: ContentDelegate? {
@@ -74,103 +67,106 @@ public class GeckoSession {
             processHangHandler.setDelegate(newValue)
         }
     }
-
+    
     lazy var navigationHandler = newNavigationHandler(self)
     public var navigationDelegate: NavigationDelegate? {
         get { navigationHandler.delegate(as: NavigationDelegate.self) }
         set { navigationHandler.setDelegate(newValue) }
     }
-
+    
     lazy var progressHandler = newProgressHandler(self)
     public var progressDelegate: ProgressDelegate? {
         get { progressHandler.delegate(as: ProgressDelegate.self) }
         set { progressHandler.setDelegate(newValue) }
     }
-
+    
     lazy var promptHandler: GeckoSessionHandler = {
         let handler = newPromptHandler(self)
         handler.setDelegate(true as AnyObject)
         return handler
     }()
-
+    
+    lazy var mediaSessionHandler = newMediaSessionHandler(self)
+    public var mediaSessionDelegate: MediaSessionDelegate? {
+        get { mediaSessionHandler.delegate(as: MediaSessionDelegate.self) }
+        set { mediaSessionHandler.setDelegate(newValue) }
+    }
     public lazy var mediaSession = MediaSession(session: self)
-
+    
     lazy var sessionHandlers: [GeckoSessionHandlerCommon] = [
         contentHandler,
         processHangHandler,
         navigationHandler,
         progressHandler,
         promptHandler,
+        mediaSessionHandler,
     ]
-
+    
     public init() {
         for sessionHandler in sessionHandlers {
             for type in sessionHandler.events {
                 dispatcher.addListener(type: type, listener: sessionHandler)
             }
         }
+        
+        AddonRuntime.shared.register(sessionListener: addonSessionListener)
     }
-
+    
     public func open(windowId: String? = nil) {
         if isOpen() {
             fatalError("cannot open a GeckoSession twice")
         }
-
-        let sessionID = windowId ?? UUID().uuidString.replacingOccurrences(of: "-", with: "")
-        id = sessionID
-
-        let settings: [String: Any] = [
-            "chromeUri": NSNull(),
+        
+        id = windowId ?? UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        
+        let settings: [String: Any?] = [
+            "chromeUri": nil,
             "screenId": 0,
             "useTrackingProtection": false,
             "userAgentMode": userAgentMode,
-            "userAgentOverride": userAgentOverride ?? NSNull(),
+            "userAgentOverride": userAgentOverride,
             "viewportMode": viewportMode,
             "displayMode": 0,
             "suspendMediaWhenInactive": false,
             "allowJavascript": true,
             "fullAccessibilityTree": false,
-            "isExtensionPopup": false,
-            "sessionContextId": NSNull(),
-            "unsafeSessionContextId": NSNull(),
+            "isExtensionPopup": isAddonPopup,
+            "sessionContextId": nil,
+            "unsafeSessionContextId": nil,
         ]
-
+        
         let modules = Dictionary(uniqueKeysWithValues: sessionHandlers.map {
             ($0.moduleName, $0.enabled)
         })
-
+        
         window = GeckoViewOpenWindow(
-            sessionID,
+            id,
             dispatcher,
             [
                 "settings": settings,
                 "modules": modules,
             ],
-            false
+            isPrivateMode
         )
     }
-
+    
     public func isOpen() -> Bool { window != nil }
-
+    
     public func close() {
         guard let window else {
             return
         }
-
+        
         contentDelegate = nil
         navigationDelegate = nil
         progressDelegate = nil
-
+        
         window.close()
         self.window = nil
         id = nil
     }
-
+    
     public func load(_ url: String, flags: Int = GeckoSessionLoadFlags.none) {
-        dispatchLoad(url, flags: flags)
-    }
-
-    private func dispatchLoad(_ url: String, flags: Int) {
         dispatcher.dispatch(
             type: "GeckoView:LoadUri",
             message: [
@@ -179,19 +175,19 @@ public class GeckoSession {
                 "headerFilter": 1,
             ])
     }
-
-    public func reload(flags: Int = GeckoSessionLoadFlags.none) {
+    
+    public func reload() {
         dispatcher.dispatch(
             type: "GeckoView:Reload",
             message: [
-                "flags": flags
+                "flags": 0
             ])
     }
-
+    
     public func stop() {
         dispatcher.dispatch(type: "GeckoView:Stop")
     }
-
+    
     public func goBack(userInteraction: Bool = true) {
         dispatcher.dispatch(
             type: "GeckoView:GoBack",
@@ -199,7 +195,7 @@ public class GeckoSession {
                 "userInteraction": userInteraction
             ])
     }
-
+    
     public func goForward(userInteraction: Bool = true) {
         dispatcher.dispatch(
             type: "GeckoView:GoForward",
@@ -207,34 +203,34 @@ public class GeckoSession {
                 "userInteraction": userInteraction
             ])
     }
-
+    
     public func setActive(_ active: Bool) {
         dispatcher.dispatch(type: "GeckoView:SetActive", message: ["active": active])
     }
-
+    
     public func setFocused(_ focused: Bool) {
         dispatcher.dispatch(type: "GeckoView:SetFocused", message: ["focused": focused])
     }
-
+    
     public func focusedInputBottomRatio() async -> CGFloat? {
         let response = try? await dispatcher.query(type: "GeckoView:GetFocusedInputMetrics")
         guard let values = response as? [AnyHashable: Any],
               let bottomRatioValue = values["bottomRatio"] else {
             return nil
         }
-
+        
         if let number = bottomRatioValue as? NSNumber {
             return CGFloat(truncating: number)
         }
-
+        
         if let value = bottomRatioValue as? Double {
             return CGFloat(value)
         }
-
+        
         if let value = bottomRatioValue as? CGFloat {
             return value
         }
-
+        
         return nil
     }
 }

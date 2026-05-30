@@ -5,11 +5,10 @@
 //  Created by Minh Ton on 9/3/26.
 //
 
+import GeckoView
 import UIKit
 
 class SettingsTableViewController: UITableViewController {
-    let preferences = BrowserPreferences.shared
-    
     override func viewDidLoad() {
         super.viewDidLoad()
         tableView.alwaysBounceVertical = true
@@ -22,14 +21,46 @@ class SettingsTableViewController: UITableViewController {
 
 final class SettingsRootViewController: SettingsTableViewController {
     enum Section: Int, CaseIterable {
+        case updates
+        case jit
+        case general
+        case about
+    }
+    
+    enum GeneralRow: CaseIterable {
+        case addons
+        case browsing
+        case search
+        case appearance
         case compatibility
     }
     
     var visibleSections: [Section] {
-        Section.allCases
+        var hiddenSections: Set<Section> = []
+        let unsandboxed = getEntitlementValue("com.apple.private.security.no-sandbox")
+        
+        if !AppUpdates.shared.hasUpdate || (unsandboxed && !installedThroughTrollStore) {
+            hiddenSections.insert(.updates)
+        }
+        
+        // if using Trollstore or jailbroken, hide JIT section
+        if unsandboxed {
+            hiddenSections.insert(.jit)
+        }
+        
+        return Section.allCases.filter { !hiddenSections.contains($0) }
     }
     
-    let androidUASwitch = UISwitch()
+    var hasEntitledJIT: Bool {
+        getEntitlementValue("com.apple.private.security.no-sandbox")
+    }
+    
+    let jitSwitch = UISwitch()
+    let backgroundQueue = DispatchQueue(label: "com.minh-ton.settings-background-queue", qos: .userInitiated)
+    var isJITLessModeActive = false
+    var activeDDIDownloadToken: UUID?
+    var activeUpdateTask: URLSessionDownloadTask?
+    var updateProgressObservation: NSKeyValueObservation?
     
     init() {
         super.init(style: .insetGrouped)
@@ -42,7 +73,13 @@ final class SettingsRootViewController: SettingsTableViewController {
     
     override func viewDidLoad() {
         super.viewDidLoad()
-        androidUASwitch.addTarget(self, action: #selector(androidUASwitchChanged), for: .valueChanged)
+        jitSwitch.addTarget(self, action: #selector(jitSwitchChanged(_:)), for: .valueChanged)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleJITLessModeActivated(_:)),
+            name: Notification.Name(rawValue: "me.minh-ton.reynard.jitless-mode-activated"),
+            object: nil
+        )
         refreshControls()
     }
     
@@ -53,7 +90,9 @@ final class SettingsRootViewController: SettingsTableViewController {
     }
     
     func refreshControls() {
-        androidUASwitch.isOn = preferences.useAndroidUserAgent
+        jitSwitch.isEnabled = Prefs.JITSettings.hasPairingFile
+        jitSwitch.isOn = Prefs.JITSettings.isJITEnabled
+        isJITLessModeActive = JITController.shared.isJITLessModeActive
     }
     
     override func numberOfSections(in tableView: UITableView) -> Int {
@@ -63,18 +102,68 @@ final class SettingsRootViewController: SettingsTableViewController {
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         guard visibleSections.indices.contains(section) else { return 0 }
         switch visibleSections[section] {
-        case .compatibility: return 1
+        case .updates: return 2
+        case .jit: return 2
+        case .general: return GeneralRow.allCases.count
+        case .about: return 5
         }
     }
     
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         guard visibleSections.indices.contains(indexPath.section) else { return UITableViewCell() }
         switch visibleSections[indexPath.section] {
-        case .compatibility:
+        case .updates where indexPath.row == 0:
+            return makeReleaseNotesCell()
+        case .updates:
+            return makeUpdateNowCell()
+        case .jit where indexPath.row == 0:
             let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
-            cell.textLabel?.text = "Use Android User Agent"
+            cell.textLabel?.text = "Enable JIT"
             cell.selectionStyle = .none
-            cell.accessoryView = androidUASwitch
+            cell.accessoryView = jitSwitch
+            return cell
+        case .jit:
+            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            cell.textLabel?.text = "Import Pairing File..."
+            cell.textLabel?.textColor = view.tintColor
+            // if on 16.6 to 17.3.1, disable the cell.
+            if #available(iOS 16.6, *) {
+                if #unavailable(iOS 17.4) {
+                    cell.textLabel?.textColor = .secondaryLabel
+                    cell.selectionStyle = .none
+                    cell.isUserInteractionEnabled = false
+                }
+            }
+            return cell
+        case .general:
+            return makeGeneralCell(for: indexPath)
+        case .about:
+            let cell = UITableViewCell(style: .value1, reuseIdentifier: nil)
+            switch indexPath.row {
+            case 0:
+                let info = Bundle.main.infoDictionary
+                let version = info?["CFBundleShortVersionString"] as? String ?? "Unknown"
+                let build = info?["CFBundleVersion"] as? String ?? "Unknown"
+                cell.textLabel?.text = "Reynard Browser"
+                cell.detailTextLabel?.text = "\(version) (\(build))"
+                cell.detailTextLabel?.textColor = .secondaryLabel
+                cell.selectionStyle = .none
+                cell.accessoryType = .none
+                return cell
+            case 1:
+                cell.textLabel?.text = "Engine Version"
+                cell.detailTextLabel?.text = GeckoRuntime.version
+                cell.detailTextLabel?.textColor = .secondaryLabel
+                cell.selectionStyle = .none
+                cell.accessoryType = .none
+                return cell
+            case 2: cell.textLabel?.text = "View Source Code"
+            case 3: cell.textLabel?.text = "Support The Project"
+            case 4: cell.textLabel?.text = "GitHub - @minh-ton"
+            default: cell.textLabel?.text = nil
+            }
+            cell.textLabel?.textColor = .systemBlue
+            cell.accessoryType = .disclosureIndicator
             return cell
         }
     }
@@ -83,30 +172,106 @@ final class SettingsRootViewController: SettingsTableViewController {
         defer { tableView.deselectRow(at: indexPath, animated: true) }
         guard visibleSections.indices.contains(indexPath.section) else { return }
         switch visibleSections[indexPath.section] {
-        case .compatibility:
-            break
+        case .updates:
+            if indexPath.row == 1 { presentUpdateAlert() }
+        case .jit where indexPath.row == 1:
+            presentPairingFilePicker()
+        case .general:
+            handleGeneralSelection(at: indexPath)
+        case .about:
+            let url: URL?
+            switch indexPath.row {
+            case 2: url = sourceCodeURL
+            case 3: url = supportProjectURL
+            case 4: url = githubProfileURL
+            default: url = nil
+            }
+            guard let url else { return }
+            UIApplication.shared.open(url, options: [:], completionHandler: nil)
+        default:
+            return
         }
     }
     
     override func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         guard visibleSections.indices.contains(section) else { return nil }
         switch visibleSections[section] {
-        case .compatibility: return "Compatibility"
-        }
-    }
-    
-    override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-        guard visibleSections.indices.contains(section) else { return nil }
-        switch visibleSections[section] {
-        case .compatibility:
-            return preferences.useAndroidUserAgent
-            ? "ChatGPT will see Firefox for Android."
-            : "ChatGPT will see Gecko's default iOS user agent."
+        case .updates: return "Update Available"
+        case .jit: return "JIT"
+        case .general: return "General"
+        case .about: return "About"
         }
     }
     
     override func tableView(_ tableView: UITableView, viewForFooterInSection section: Int) -> UIView? {
-        nil
+        guard visibleSections.indices.contains(section) else { return nil }
+        switch visibleSections[section] {
+        case .updates where installedThroughTrollStore:
+            return makeTrollStoreUpdateFooterView()
+        case .jit:
+            return makeJITFooterView()
+        default:
+            return nil
+        }
+    }
+}
+
+private extension SettingsRootViewController {
+    func makeGeneralCell(for indexPath: IndexPath) -> UITableViewCell {
+        let rows = GeneralRow.allCases
+        guard rows.indices.contains(indexPath.row) else {
+            return UITableViewCell()
+        }
+        
+        let row = rows[indexPath.row]
+        switch row {
+        case .addons:
+            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            cell.textLabel?.text = "Add-ons"
+            cell.accessoryType = .disclosureIndicator
+            return cell
+        case .browsing:
+            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            cell.textLabel?.text = "Browsing"
+            cell.accessoryType = .disclosureIndicator
+            return cell
+        case .search:
+            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            cell.textLabel?.text = "Search"
+            cell.accessoryType = .disclosureIndicator
+            return cell
+        case .appearance:
+            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            cell.textLabel?.text = "Appearance"
+            cell.accessoryType = .disclosureIndicator
+            return cell
+        case .compatibility:
+            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            cell.textLabel?.text = "Compatibility"
+            cell.accessoryType = .disclosureIndicator
+            return cell
+        }
+    }
+    
+    func handleGeneralSelection(at indexPath: IndexPath) {
+        let rows = GeneralRow.allCases
+        guard rows.indices.contains(indexPath.row) else {
+            return
+        }
+        
+        let row = rows[indexPath.row]
+        switch row {
+        case .addons:
+            navigationController?.pushViewController(AddonsPreferencesViewController(), animated: true)
+        case .browsing:
+            navigationController?.pushViewController(BrowsingPreferencesViewController(), animated: true)
+        case .search:
+            navigationController?.pushViewController(SearchPreferencesViewController(), animated: true)
+        case .appearance:
+            navigationController?.pushViewController(AppearancePreferencesViewController(), animated: true)
+        case .compatibility:
+            navigationController?.pushViewController(CompatibilityPreferencesViewController(), animated: true)
+        }
     }
 }
 
@@ -146,42 +311,8 @@ final class SettingsView: UIView {
     }
 }
 
-extension SettingsRootViewController {
-    func attachProgressView(_ progressView: UIProgressView, to alert: UIAlertController) {
-        guard let messageText = alert.message,
-              let messageLabel = alert.view.firstDescendantLabel(withText: messageText) else { return }
-        alert.view.addSubview(progressView)
-        let cancelAnchorView: UIView? = {
-            if let button = alert.view.firstDescendantButton(withTitle: "Cancel") { return button }
-            return alert.view.firstDescendantView(containingLabelText: "Cancel")
-        }()
-        var constraints = [
-            progressView.widthAnchor.constraint(equalTo: messageLabel.widthAnchor),
-            progressView.centerXAnchor.constraint(equalTo: messageLabel.centerXAnchor),
-            progressView.topAnchor.constraint(greaterThanOrEqualTo: messageLabel.bottomAnchor, constant: 12),
-        ]
-        if let cancelAnchorView {
-            let verticalGuide = UILayoutGuide()
-            alert.view.addLayoutGuide(verticalGuide)
-            constraints.append(contentsOf: [
-                verticalGuide.topAnchor.constraint(equalTo: messageLabel.bottomAnchor, constant: 16),
-                verticalGuide.bottomAnchor.constraint(equalTo: cancelAnchorView.topAnchor, constant: -16),
-                progressView.centerYAnchor.constraint(equalTo: verticalGuide.centerYAnchor),
-            ])
-        } else {
-            constraints.append(progressView.topAnchor.constraint(equalTo: messageLabel.bottomAnchor, constant: 20))
-        }
-        NSLayoutConstraint.activate(constraints)
-    }
-
-    func dismissAlertIfPresented(_ alert: UIAlertController, completion: @escaping () -> Void) {
-        guard presentedViewController === alert else { completion(); return }
-        alert.dismiss(animated: true, completion: completion)
-    }
-}
-
 extension UIViewController {
-    func presentAlert(title: String, message: String) {
+    func presentAlert(title: String?, message: String) {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         present(alert, animated: true)

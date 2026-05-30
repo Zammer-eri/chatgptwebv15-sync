@@ -118,7 +118,7 @@ static void startHeartbeat(DeviceProvider *provider) {
     provider->heartbeatRunning = YES;
     
     dispatch_async(heartbeatQueue, ^{
-        uint64_t currentInterval = 15;
+        uint64_t currentInterval = 2;
         while (provider->heartbeatRunning) {
             uint64_t newInterval = 0;
             IdeviceFfiError *ffiError = heartbeat_get_marco(provider->heartbeatClient, currentInterval, &newInterval);
@@ -135,8 +135,6 @@ static void startHeartbeat(DeviceProvider *provider) {
                 idevice_error_free(ffiError);
                 break;
             }
-            
-            currentInterval = (newInterval > 0) ? (newInterval + 5) : 15;
         }
     });
 }
@@ -445,7 +443,7 @@ DeviceProvider *createDeviceProvider(NSString *pairingFilePath, NSString *target
         }
         
         uint64_t nextInterval = 0;
-        ffiError = heartbeat_get_marco(heartbeatClient, 15, &nextInterval);
+        ffiError = heartbeat_get_marco(heartbeatClient, 2, &nextInterval);
         if (!ffiError) ffiError = heartbeat_send_polo(heartbeatClient);
         
         DeviceProvider *provider = calloc(1, sizeof(*provider));
@@ -895,13 +893,13 @@ BOOL detachLegacyDebuggerSession(LegacyDebugConnection *connection, int32_t pid)
 // of the logic from there with only a few modifications here.
 
 static NSURL *ddiDirectoryURL(NSError **error) {
-    NSURL *documentsDirectory = [[NSFileManager defaultManager] URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask].firstObject;
-    if (!documentsDirectory) {
+    NSURL *applicationSupportDirectory = [[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject;
+    if (!applicationSupportDirectory) {
         if (error) *error = MakeError(DDIMountPathResolveFailed);
         return nil;
     }
     
-    return [documentsDirectory URLByAppendingPathComponent:@"DDI" isDirectory:YES];
+    return [applicationSupportDirectory URLByAppendingPathComponent:@"DDI" isDirectory:YES];
 }
 
 static NSData *ddiFileData(NSURL *ddiDirectory, NSString *fileName, NSError **error) {

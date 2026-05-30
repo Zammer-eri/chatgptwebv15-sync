@@ -1,9 +1,9 @@
 diff --git a/widget/uikit/GeckoEditableSupport.mm b/widget/uikit/GeckoEditableSupport.mm
 new file mode 100644
-index 000000000000..1959769ddc3e
+index 000000000000..8dc6b96d479d
 --- /dev/null
 +++ b/widget/uikit/GeckoEditableSupport.mm
-@@ -0,0 +1,2713 @@
+@@ -0,0 +1,2715 @@
 +/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 +/* vim: set ts=2 sw=2 et tw=80: */
 +/* This Source Code Form is subject to the terms of the Mozilla Public
@@ -1876,7 +1876,6 @@ index 000000000000..1959769ddc3e
 +  handler->ReplaceRange(replacementRange, aText ?: @"");
 +  [mEditable.mTextInputDelegate textDidChange:self];
 +  [mEditable.mTextInputDelegate selectionDidChange:self];
-+  [self scheduleEditSelectionUpdate];
 +}
 +
 +// Reports which edit actions should appear in the menu.
@@ -1963,7 +1962,6 @@ index 000000000000..1959769ddc3e
 +  [mEditable.mTextInputDelegate selectionWillChange:self];
 +  handler->SetSelectedRange(NSMakeRange(0, length));
 +  [mEditable.mTextInputDelegate selectionDidChange:self];
-+  [self scheduleEditSelectionUpdate];
 +}
 +
 +// MARK: - UITextInput (Shared)
@@ -2285,11 +2283,8 @@ index 000000000000..1959769ddc3e
 +  // Somehow there's a non-owned UITextSelectionInteraction subclass causing
 +  // overlapping duplicated selections on modern path CJK. So we allow only our
 +  // owned interactions to trigger handle tracking.
-+  const BOOL isOwnedInteraction =
-+      aInteraction == mEditable.mEditableTextInteraction ||
-+      aInteraction == mEditable.mNonEditableTextInteraction;
-+
-+  if (mEditable.mSelectionDisplayInteraction != nil && !isOwnedInteraction) {
++  if (aInteraction != mEditable.mEditableTextInteraction &&
++      aInteraction != mEditable.mNonEditableTextInteraction) {
 +    return NO;
 +  }
 +
@@ -2300,8 +2295,6 @@ index 000000000000..1959769ddc3e
 +}
 +
 +- (void)interactionWillBegin:(UITextInteraction*)aInteraction {
-+  (void)aInteraction;
-+  // Prevent ChildView from replaying this touch as a Gecko tap.
 +  mEditable.mTextInteractionInProgress = YES;
 +  [[UIMenuController sharedMenuController] hideMenuFromView:self];
 +  [self becomeFirstResponder];
@@ -2310,11 +2303,15 @@ index 000000000000..1959769ddc3e
 +  } else {
 +    [self setLegacyGrabbersHidden:NO];
 +  }
++
++  if (aInteraction != mEditable.mEditableTextInteraction &&
++      aInteraction != mEditable.mNonEditableTextInteraction) {
++    return;
++  }
 +}
 +
 +// Cleans up state after a UIKit text interaction finishes.
 +- (void)interactionDidEnd:(UITextInteraction*)aInteraction {
-+  (void)aInteraction;
 +  mEditable.mTextInteractionInProgress = NO;
 +  if (mEditable.mSelectionDisplayInteraction != nil) {
 +    [self updateHandleVisibility];
@@ -2324,6 +2321,11 @@ index 000000000000..1959769ddc3e
 +  }
 +  [self resetHandleState];
 +  [self updateEditMenu];
++
++  if (aInteraction != mEditable.mEditableTextInteraction &&
++      aInteraction != mEditable.mNonEditableTextInteraction) {
++    return;
++  }
 +}
 +
 +@end

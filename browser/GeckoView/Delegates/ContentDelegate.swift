@@ -115,12 +115,7 @@ enum ContentEvents: String, CaseIterable {
 func newContentHandler(_ session: GeckoSession) -> GeckoSessionHandler {
     GeckoSessionHandler(
         moduleName: "GeckoViewContent",
-        events: [
-            ContentEvents.contentCrash.rawValue,
-            ContentEvents.contentKill.rawValue,
-            ContentEvents.externalResponse.rawValue,
-            ContentEvents.savePdf.rawValue,
-        ],
+        events: ContentEvents.allCases.map(\.rawValue),
         session: session
     ) { @MainActor session, delegate, type, message in
         func parseStringDictionary(_ value: Any?) -> [String: String] {
@@ -180,7 +175,7 @@ func newContentHandler(_ session: GeckoSession) -> GeckoSessionHandler {
             
             let contextElement = ContextElement(
                 baseUri: message?["baseUri"] as? String,
-                linkUri: message?["linkUri"] as? String,
+                linkUri: (message?["linkUri"] as? String) ?? (message?["uri"] as? String),
                 title: message?["title"] as? String,
                 altText: message?["alt"] as? String,
                 type: parseElementType(message?["elementType"] as? String ?? ""),

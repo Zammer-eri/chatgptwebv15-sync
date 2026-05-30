@@ -8,6 +8,7 @@
 import Foundation
 import GeckoView
 import UniformTypeIdentifiers
+import MobileCoreServices
 
 extension Notification.Name {
     static let downloadStoreDidChange = Notification.Name("me.minh-ton.reynard.download-store-did-change")
@@ -43,6 +44,7 @@ struct DownloadItemSnapshot {
     let originalURL: URL?
     let mimeType: String?
     let state: State
+    let fileExists: Bool
     let totalBytes: Int64?
     let downloadedBytes: Int64
     let bytesPerSecond: Int64
@@ -136,7 +138,7 @@ final class DownloadStore: NSObject {
     
     private let fileManager: FileManager
     private let storage: StorageURLs
-    private let stateQueue = DispatchQueue(label: "me.minh-ton.reynard.download-store-state", qos: .userInitiated)
+    private let stateQueue = DispatchQueue(label: "com.minh-ton.download-store", qos: .userInitiated)
     private lazy var session: URLSession = {
         let configuration = URLSessionConfiguration.default
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
@@ -157,8 +159,12 @@ final class DownloadStore: NSObject {
             fatalError("Documents directory is unavailable")
         }
         
+        guard let applicationSupportDirectoryURL = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
+            fatalError("Application Support directory is unavailable")
+        }
+        
         let downloadsDirectoryURL = documentsDirectoryURL.appendingPathComponent("Downloads", isDirectory: true)
-        let appDataDirectoryURL = documentsDirectoryURL.appendingPathComponent("AppData", isDirectory: true)
+        let appDataDirectoryURL = applicationSupportDirectoryURL.appendingPathComponent("AppData", isDirectory: true)
         let manifestFileURL = appDataDirectoryURL.appendingPathComponent("DownloadStore", isDirectory: false)
         self.storage = StorageURLs(
             downloadsDirectoryURL: downloadsDirectoryURL,
@@ -176,8 +182,7 @@ final class DownloadStore: NSObject {
     
     func snapshot() -> DownloadStoreSnapshot {
         stateQueue.sync {
-            syncDownloadsDirectoryLocked()
-            return makeSnapshotLocked()
+            makeSnapshotLocked()
         }
     }
     
@@ -337,6 +342,19 @@ final class DownloadStore: NSObject {
         }
     }
     
+    func clearDownloadHistory(since startDate: Date?) {
+        stateQueue.async {
+            if let startDate {
+                self.persistedDownloads.removeAll { $0.addedAt >= startDate }
+            } else {
+                self.persistedDownloads.removeAll()
+            }
+            
+            self.savePersistedDownloadsLocked()
+            self.postDidChange()
+        }
+    }
+    
     func markCompletedDownloadsViewed() {
         stateQueue.async {
             guard self.hasUnviewedCompletedDownloads else {
@@ -397,6 +415,7 @@ final class DownloadStore: NSObject {
                     originalURL: active.originalURL,
                     mimeType: active.mimeType,
                     state: .downloading,
+                    fileExists: true,
                     totalBytes: active.expectedBytes,
                     downloadedBytes: active.downloadedBytes,
                     bytesPerSecond: active.bytesPerSecond,
@@ -407,14 +426,16 @@ final class DownloadStore: NSObject {
         
         let completedItems = persistedDownloads
             .map { entry in
-                DownloadItemSnapshot(
+                let fileURL = storage.downloadsDirectoryURL.appendingPathComponent(entry.relativePath, isDirectory: false)
+                return DownloadItemSnapshot(
                     id: entry.id,
                     fileName: entry.fileName,
-                    fileURL: storage.downloadsDirectoryURL.appendingPathComponent(entry.relativePath, isDirectory: false),
+                    fileURL: fileURL,
                     sourceURL: URL(string: entry.sourceURLString) ?? storage.downloadsDirectoryURL,
                     originalURL: entry.originalURLString.flatMap(URL.init(string:)),
                     mimeType: entry.mimeType,
                     state: .completed,
+                    fileExists: fileManager.fileExists(atPath: fileURL.path),
                     totalBytes: entry.fileSize,
                     downloadedBytes: entry.fileSize,
                     bytesPerSecond: 0,
@@ -463,74 +484,23 @@ final class DownloadStore: NSObject {
     private func loadPersistedDownloadsLocked() {
         guard let data = try? Data(contentsOf: storage.manifestFileURL) else {
             persistedDownloads = []
-            syncDownloadsDirectoryLocked()
             savePersistedDownloadsLocked()
             return
         }
         
         if data.isEmpty {
             persistedDownloads = []
-            syncDownloadsDirectoryLocked()
             savePersistedDownloadsLocked()
             return
         }
         
         if let decoded = try? JSONDecoder().decode([PersistedDownloadEntry].self, from: data) {
             persistedDownloads = decoded.sorted { $0.addedAt > $1.addedAt }
-            syncDownloadsDirectoryLocked()
             return
         }
         
         persistedDownloads = []
-        syncDownloadsDirectoryLocked()
         savePersistedDownloadsLocked()
-    }
-
-    private func syncDownloadsDirectoryLocked() {
-        prepareStorageLocked()
-
-        let fileURLs = (try? fileManager.contentsOfDirectory(
-            at: storage.downloadsDirectoryURL,
-            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey, .creationDateKey, .fileSizeKey, .contentTypeKey],
-            options: [.skipsHiddenFiles]
-        ))?
-            .filter { url in
-                (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
-            } ?? []
-
-        let existingFileNames = Set(fileURLs.map(\.lastPathComponent))
-        let previousEntries = persistedDownloads
-        persistedDownloads.removeAll { entry in
-            !existingFileNames.contains(entry.relativePath)
-        }
-
-        let trackedFileNames = Set(persistedDownloads.map(\.relativePath))
-        for fileURL in fileURLs where !trackedFileNames.contains(fileURL.lastPathComponent) {
-            let values = try? fileURL.resourceValues(
-                forKeys: [.contentModificationDateKey, .creationDateKey, .fileSizeKey, .contentTypeKey]
-            )
-            let mimeType = values?.contentType?.preferredMIMEType ??
-                UTType(filenameExtension: fileURL.pathExtension)?.preferredMIMEType
-
-            persistedDownloads.append(
-                PersistedDownloadEntry(
-                    id: UUID(),
-                    fileName: fileURL.lastPathComponent,
-                    relativePath: fileURL.lastPathComponent,
-                    sourceURLString: fileURL.absoluteString,
-                    originalURLString: nil,
-                    mimeType: mimeType,
-                    fileSize: Int64(values?.fileSize ?? 0),
-                    addedAt: values?.contentModificationDate ?? values?.creationDate ?? Date()
-                )
-            )
-        }
-
-        persistedDownloads.sort { $0.addedAt > $1.addedAt }
-
-        if persistedDownloads.map(\.relativePath) != previousEntries.map(\.relativePath) {
-            savePersistedDownloadsLocked()
-        }
     }
     
     private func savePersistedDownloadsLocked() {
@@ -547,8 +517,15 @@ final class DownloadStore: NSObject {
         
         guard URL(fileURLWithPath: initialName).pathExtension.isEmpty,
               let mimeType,
-              let contentType = UTType(mimeType: mimeType),
-              let preferredExtension = contentType.preferredFilenameExtension else {
+              let contentType = UTTypeCreatePreferredIdentifierForTag(
+                kUTTagClassMIMEType,
+                mimeType as CFString,
+                nil
+              )?.takeRetainedValue(),
+              let preferredExtension = UTTypeCopyPreferredTagWithClass(
+                contentType,
+                kUTTagClassFilenameExtension
+              )?.takeRetainedValue() as String? else {
             return initialName
         }
         

@@ -7,7 +7,6 @@
 
 @import Foundation;
 #import <Security/Security.h>
-#import <Security/SecureTransport.h>
 
 #import "IdeviceFFI.h"
 
