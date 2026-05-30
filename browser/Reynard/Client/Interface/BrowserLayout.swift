@@ -13,12 +13,16 @@ final class BrowserLayout {
     private unowned let controller: BrowserViewController
     private var keyboardHeight: CGFloat = 0
     private var keyboardFrame: CGRect = .zero
+    private var focusedInputBottomRatio: CGFloat?
+    private var geckoPhoneVerticalOffset: CGFloat = 0
+    private var focusedInputMetricsTask: Task<Void, Never>?
 
     init(controller: BrowserViewController) {
         self.controller = controller
     }
     
     deinit {
+        focusedInputMetricsTask?.cancel()
         NotificationCenter.default.removeObserver(self)
     }
     
@@ -263,7 +267,9 @@ final class BrowserLayout {
         let shouldPinSearchFocusedGeckoFrame = !pad
         && controller.isSearchFocused
         && !controller.tabOverviewPresentation.isVisible
-        let geckoPhoneOffset: CGFloat = 0
+        let geckoPhoneOffset = resolvedGeckoPhoneVerticalOffset(
+            shouldShowGeckoBehindKeyboard: shouldShowGeckoBehindKeyboard
+        )
         ui.geckoTopPhoneConstraint.constant = !pad ? -geckoPhoneOffset : 0
         ui.geckoBottomPhoneConstraint.constant = !pad ? -geckoPhoneOffset : 0
         ui.geckoBottomPhoneSearchPinnedConstraint.constant = -94
@@ -387,6 +393,9 @@ final class BrowserLayout {
         let usesPadChromeLayout = controller.usesPadChromeLayout
         
         controller.isSearchFocused = focused
+        if focused {
+            resetFocusedInputRelocation()
+        }
         if !usesPadChromeLayout {
             ui.phoneToolbarHeightConstraint.constant = focused ? 0 : 30
             ui.phoneChromeHeightConstraint.constant = focused ? 58 : 94
@@ -433,15 +442,13 @@ final class BrowserLayout {
         let duration = info[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval ?? 0.25
         let curveRaw = info[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 7
         let curve = UIView.AnimationOptions(rawValue: curveRaw << 16)
+        requestFocusedInputMetricsIfNeeded(duration: duration, curve: curve)
         
-        let shouldDockChromeToKeyboard = !Self.chatGPTShellMode
-            && !controller.usesPadChromeLayout
+        let shouldDockChromeToKeyboard = !controller.usesPadChromeLayout
             && controller.isSearchFocused
             && !controller.tabOverviewPresentation.isVisible
             && keyboardHeight > 0
-        if !Self.chatGPTShellMode {
-            controller.browserUI.phoneChromeBottomConstraint.constant = shouldDockChromeToKeyboard ? -keyboardHeight : 0
-        }
+        controller.browserUI.phoneChromeBottomConstraint.constant = shouldDockChromeToKeyboard ? -keyboardHeight : 0
         updateChromeLayoutState()
         
         UIView.animate(withDuration: duration, delay: 0, options: [curve]) {
@@ -453,9 +460,8 @@ final class BrowserLayout {
     @objc private func keyboardWillHide(_ notification: Notification) {
         keyboardHeight = 0
         keyboardFrame = .zero
-        if !Self.chatGPTShellMode {
-            controller.browserUI.phoneChromeBottomConstraint.constant = 0
-        }
+        resetFocusedInputRelocation()
+        controller.browserUI.phoneChromeBottomConstraint.constant = 0
         updateChromeLayoutState()
         
         let duration = (notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval) ?? 0.25
@@ -511,6 +517,93 @@ final class BrowserLayout {
         
         ui.keyboardDismissButton.button.removeFromSuperview()
         targetHost.addSubview(ui.keyboardDismissButton.button)
+    }
+
+    private func requestFocusedInputMetricsIfNeeded(duration: TimeInterval, curve: UIView.AnimationOptions) {
+        guard !controller.isSearchFocused,
+              !controller.tabOverviewPresentation.isVisible,
+              keyboardHeight > 0,
+              let session = controller.tabManager.selectedTab?.session else {
+            focusedInputBottomRatio = nil
+            applyFocusedInputRelocation(duration: duration, curve: curve)
+            return
+        }
+
+        focusedInputMetricsTask?.cancel()
+        focusedInputMetricsTask = Task { @MainActor [weak self] in
+            guard let self else {
+                return
+            }
+
+            let bottomRatio = await session.focusedInputBottomRatio()
+            guard !Task.isCancelled else {
+                return
+            }
+
+            if let bottomRatio {
+                self.focusedInputBottomRatio = bottomRatio
+            }
+            self.applyFocusedInputRelocation(duration: duration, curve: curve)
+        }
+    }
+
+    private func applyFocusedInputRelocation(duration: TimeInterval, curve: UIView.AnimationOptions) {
+        let nextOffset = resolvedGeckoPhoneVerticalOffset(
+            shouldShowGeckoBehindKeyboard: false
+        )
+        guard abs(nextOffset - geckoPhoneVerticalOffset) > 0.5 else {
+            return
+        }
+
+        geckoPhoneVerticalOffset = nextOffset
+        updateChromeLayoutState()
+        UIView.animate(withDuration: duration, delay: 0, options: [curve, .beginFromCurrentState, .allowUserInteraction]) {
+            self.controller.view.layoutIfNeeded()
+            self.updatePhoneDismissKeyboardButtonShadowPath()
+        }
+    }
+
+    private func resetFocusedInputRelocation() {
+        focusedInputMetricsTask?.cancel()
+        focusedInputMetricsTask = nil
+        focusedInputBottomRatio = nil
+        geckoPhoneVerticalOffset = 0
+    }
+
+    private func resolvedGeckoPhoneVerticalOffset(
+        shouldShowGeckoBehindKeyboard: Bool
+    ) -> CGFloat {
+        guard !controller.isSearchFocused,
+              !controller.tabOverviewPresentation.isVisible,
+              !shouldShowGeckoBehindKeyboard,
+              keyboardHeight > 0,
+              let bottomRatio = focusedInputBottomRatio else {
+            return 0
+        }
+
+        controller.view.layoutIfNeeded()
+        let geckoFrame = controller.browserUI.geckoView.frame
+        guard geckoFrame.height > 1 else {
+            return 0
+        }
+
+        let unshiftedGeckoMinY: CGFloat
+        if controller.usesPadChromeLayout {
+            unshiftedGeckoMinY = controller.browserUI.topBar.barView.frame.maxY
+        } else {
+            unshiftedGeckoMinY = controller.view.safeAreaLayoutGuide.layoutFrame.minY
+        }
+
+        let currentGeckoShift = max(0, unshiftedGeckoMinY - geckoFrame.minY)
+        let unshiftedGeckoMaxY = geckoFrame.maxY + currentGeckoShift
+        let keyboardOverlap = max(0, unshiftedGeckoMaxY - keyboardFrame.minY)
+        guard keyboardOverlap > 0 else {
+            return 0
+        }
+
+        let focusBottom = geckoFrame.height * bottomRatio
+        let visibleBottom = max(0, geckoFrame.height - keyboardOverlap - 12)
+        return min(keyboardOverlap, max(0, focusBottom - visibleBottom))
     }
     
 }
