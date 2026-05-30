@@ -216,6 +216,16 @@ public class GeckoSession {
         dispatcher.dispatch(type: "GeckoView:SetFocused", message: ["focused": focused])
     }
 
+    public func setEmbeddedGPTKeyboardInset(height: CGFloat, animationDuration: TimeInterval) {
+        dispatcher.dispatch(
+            type: "GeckoView:EmbeddedGPTKeyboardInset",
+            message: [
+                "height": Double(height),
+                "duration": animationDuration,
+            ]
+        )
+    }
+
     public func focusedInputBottomRatio() async -> CGFloat? {
         let response = try? await dispatcher.query(type: "GeckoView:GetFocusedInputMetrics")
         guard let values = response as? [AnyHashable: Any],

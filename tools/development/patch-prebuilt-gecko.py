@@ -5,7 +5,7 @@ import sys
 import json
 
 
-RUNTIME_PATCH_VERSION = 44
+RUNTIME_PATCH_VERSION = 45
 SCRIPT_DIR = Path(__file__).resolve().parent
 SHELL_RUNTIME_MARKER = "installEmbeddedGPTReturnRuntime"
 PAGE_RUNTIME_FILE = SCRIPT_DIR / "chatgpt-shell" / "page-runtime.js"
@@ -91,7 +91,37 @@ def shell_runtime_method() -> str:
     }}
   }}
 
+  setEmbeddedGPTKeyboardInset(message = {{}}) {{
+    const applyInset = () => {{
+      const runtime = this.contentWindow?.EmbeddedGPTShellRuntime;
+      if (typeof runtime?.setKeyboardInset == "function") {{
+        runtime.setKeyboardInset(message);
+        return true;
+      }}
+      return false;
+    }};
+
+    if (applyInset()) {{
+      return;
+    }}
+
+    this.installEmbeddedGPTReturnRuntime();
+    this.contentWindow?.setTimeout(() => applyInset(), 0);
+  }}
+
 '''
+
+
+def find_prebuilt_file(bin_dir: Path, name: str, excluded_parts=None) -> Path:
+    excluded_parts = excluded_parts or set()
+    candidates = [
+        path
+        for path in bin_dir.rglob(name)
+        if not excluded_parts.intersection(path.parts)
+    ]
+    if not candidates:
+        raise RuntimeError(f"Cannot find {name} under {bin_dir}")
+    return candidates[0]
 
 
 def patch_geckoview_content_child(bin_dir: Path) -> bool:
@@ -198,6 +228,51 @@ def patch_geckoview_startup(bin_dir: Path) -> bool:
     return True
 
 
+def patch_geckoview_content_module(bin_dir: Path) -> bool:
+    path = find_prebuilt_file(bin_dir, "GeckoViewContent.sys.mjs", {"actors"})
+    text = path.read_text(encoding="utf-8")
+    original_text = text
+
+    event_anchor = '      "GeckoView:ContainsFormData",\n'
+    if "GeckoView:EmbeddedGPTKeyboardInset" not in text:
+        if event_anchor not in text:
+            raise RuntimeError(f"Cannot find GeckoViewContent event list in {path}")
+        text = text.replace(
+            event_anchor,
+            event_anchor + '      "GeckoView:EmbeddedGPTKeyboardInset",\n',
+            1,
+        )
+
+    contains_case = """      case "GeckoView:ContainsFormData":
+        this._containsFormData(aCallback);
+        break;
+"""
+    keyboard_case = """      case "GeckoView:EmbeddedGPTKeyboardInset":
+        this._setEmbeddedGPTKeyboardInset(aData);
+        break;
+"""
+    if keyboard_case not in text:
+        if contains_case not in text:
+            raise RuntimeError(f"Cannot find ContainsFormData case in {path}")
+        text = text.replace(contains_case, contains_case + keyboard_case, 1)
+
+    method_anchor = "  async _containsFormData(aCallback) {\n"
+    keyboard_method = """  _setEmbeddedGPTKeyboardInset(aData) {
+    this.actor?.setEmbeddedGPTKeyboardInset?.(aData || {});
+  }
+
+"""
+    if "_setEmbeddedGPTKeyboardInset" not in text:
+        if method_anchor not in text:
+            raise RuntimeError(f"Cannot find _containsFormData method in {path}")
+        text = text.replace(method_anchor, keyboard_method + method_anchor, 1)
+
+    if text != original_text:
+        path.write_text(text, encoding="utf-8")
+        return True
+    return False
+
+
 def patch_extension_prefs(bin_dir: Path) -> bool:
     prefs_dir = bin_dir / "defaults" / "pref"
     prefs_dir.mkdir(parents=True, exist_ok=True)
@@ -228,12 +303,14 @@ def main() -> None:
 
     bin_dir = Path(sys.argv[1])
     content_child_changed = patch_geckoview_content_child(bin_dir)
+    content_module_changed = patch_geckoview_content_module(bin_dir)
     startup_changed = patch_geckoview_startup(bin_dir)
     extension_prefs_changed = patch_extension_prefs(bin_dir)
 
     print("Reynard ChatGPT runtime patch:")
     print(f"  runtime patch version: {RUNTIME_PATCH_VERSION}")
     print(f"  ChatGPT composer return hooks patched: {content_child_changed or startup_changed}")
+    print(f"  ChatGPT keyboard inset hooks patched: {content_child_changed or content_module_changed}")
     print("  ChatGPT diagnostics query patched: disabled")
     print(f"  extension prefs override patched: {extension_prefs_changed}")
 
