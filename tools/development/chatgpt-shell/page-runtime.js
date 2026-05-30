@@ -12,6 +12,7 @@
   const TIME_AWARE_TIMEZONE_KEY = "EmbeddedGPT.timeAware.timezone";
   const DEFAULT_TIMEZONE = "Europe/Paris";
   let doc = null;
+  let insertingLineBreak = false;
   let suppressComposerSubmitUntil = 0;
   let sendingAfterTimestamp = false;
   let timeAwareEnabled = true;
@@ -185,6 +186,24 @@
     }
   };
 
+  const insertLineBreak = target => {
+    if (insertingLineBreak) {
+      return true;
+    }
+
+    const editable = editableElement(target) || activeComposerEditable();
+    if (!editable) {
+      return false;
+    }
+
+    insertingLineBreak = true;
+    try {
+      return appendText(editable, "\n");
+    } finally {
+      insertingLineBreak = false;
+    }
+  };
+
   const ensureTimestamp = () => {
     if (!timeAwareEnabled) {
       return true;
@@ -213,8 +232,10 @@
   };
 
   const markReturnAsLineBreak = event => {
+    event.preventDefault();
     suppressComposerSubmitUntil = win.performance.now() + 300;
     event.stopImmediatePropagation();
+    insertLineBreak(event.target);
   };
 
   const installReturnKeyControls = () => {
@@ -249,6 +270,7 @@
     const handleBeforeInput = event => {
       if (
         (event.inputType !== "insertParagraph" && event.inputType !== "insertLineBreak") ||
+        insertingLineBreak ||
         !isComposerEditable(event.target)
       ) {
         return;

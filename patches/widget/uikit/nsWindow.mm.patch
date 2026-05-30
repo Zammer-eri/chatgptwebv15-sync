@@ -361,6 +361,9 @@ index a6edb082d7f0..e32dd4d84534 100644
 -    return NO;
 +- (BOOL)becomeFirstResponder {
 +  BOOL didBecomeFirstResponder = [super becomeFirstResponder];
++  if (didBecomeFirstResponder) {
++    [self reloadInputViews];
++  }
 +  if (didBecomeFirstResponder &&
 +      mEditable.mSelectionDisplayInteraction != nil) {
 +    [self updateSelectionActivation];
