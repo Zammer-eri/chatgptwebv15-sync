@@ -27,7 +27,6 @@ final class BrowserUI {
     }()
     
     lazy var keyboardDismissButton = KeyboardDismissButton()
-    let keyboardAccessoryBar = KeyboardAccessoryBar()
     
     lazy var toolbarView: PhoneToolbar = {
         let bar = PhoneToolbar()
@@ -78,10 +77,6 @@ final class BrowserUI {
     var addressBarCompactPadTrailingConstraint: NSLayoutConstraint!
     var addressBarPadCenterYConstraint: NSLayoutConstraint!
     var addressBarPadHeightConstraint: NSLayoutConstraint!
-    var keyboardAccessoryBottomConstraint: NSLayoutConstraint!
-    var keyboardAccessoryHeightConstraint: NSLayoutConstraint!
-    var keyboardAccessoryTrailingConstraint: NSLayoutConstraint!
-    var keyboardAccessoryWidthConstraint: NSLayoutConstraint!
     
     private unowned let controller: BrowserViewController
     private let tabCollectionHandler: TabCollectionHandler
@@ -98,7 +93,5 @@ final class BrowserUI {
         self.overviewInset = overviewInset
         self.overviewSpacing = overviewSpacing
         self.tabCollectionHandler = tabCollectionHandler
-        keyboardAccessoryBar.sendButton.addTarget(controller, action: #selector(BrowserViewController.sendChatGPTPromptTapped), for: .touchUpInside)
-        keyboardAccessoryBar.doneButton.addTarget(controller, action: #selector(BrowserViewController.dismissKeyboardTapped), for: .touchUpInside)
     }
 }

@@ -10,7 +10,6 @@ import UIKit
 
 final class BrowserLayout {
     private static let chatGPTShellMode = true
-    private static let keyboardAccessorySpacing: CGFloat = 8
     private static let keyboardAvoidancePadding: CGFloat = 12
     private unowned let controller: BrowserViewController
     private var keyboardHeight: CGFloat = 0
@@ -39,7 +38,6 @@ final class BrowserLayout {
         
         view.addSubview(ui.chromeContainer.bottomSafeAreaFillView)
         view.addSubview(ui.geckoView)
-        view.addSubview(ui.keyboardAccessoryBar.view)
         view.addSubview(ui.chromeContainer.containerView)
         view.addSubview(ui.topBar.safeAreaFillView)
         ui.chromeContainer.containerView.addSubview(ui.addressBar)
@@ -101,11 +99,6 @@ final class BrowserLayout {
         ui.keyboardDismissButton.centerYConstraint = ui.keyboardDismissButton.button.centerYAnchor.constraint(equalTo: ui.addressBar.centerYAnchor)
         ui.keyboardDismissButton.widthConstraint = ui.keyboardDismissButton.button.widthAnchor.constraint(equalToConstant: 42)
         ui.keyboardDismissButton.heightConstraint = ui.keyboardDismissButton.button.heightAnchor.constraint(equalToConstant: 42)
-        ui.keyboardAccessoryBottomConstraint = ui.keyboardAccessoryBar.view.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
-        ui.keyboardAccessoryTrailingConstraint = ui.keyboardAccessoryBar.view.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12)
-        ui.keyboardAccessoryHeightConstraint = ui.keyboardAccessoryBar.view.heightAnchor.constraint(equalToConstant: 36)
-        ui.keyboardAccessoryWidthConstraint = ui.keyboardAccessoryBar.view.widthAnchor.constraint(equalToConstant: KeyboardAccessoryBar.expandedWidth)
-        
         ui.topBar.heightConstraint = ui.topBar.barView.heightAnchor.constraint(equalToConstant: 52)
         ui.topBar.topConstraint = ui.topBar.barView.topAnchor.constraint(equalTo: view.topAnchor)
         ui.topBar.contentHeightConstraint = ui.topBar.contentView.heightAnchor.constraint(equalToConstant: 52)
@@ -153,11 +146,6 @@ final class BrowserLayout {
             ui.keyboardDismissButton.centerYConstraint,
             ui.keyboardDismissButton.widthConstraint,
             ui.keyboardDismissButton.heightConstraint,
-            ui.keyboardAccessoryTrailingConstraint,
-            ui.keyboardAccessoryBottomConstraint,
-            ui.keyboardAccessoryHeightConstraint,
-            ui.keyboardAccessoryWidthConstraint,
-            
             ui.toolbarView.leadingAnchor.constraint(equalTo: ui.chromeContainer.containerView.leadingAnchor, constant: 24),
             ui.toolbarView.trailingAnchor.constraint(equalTo: ui.chromeContainer.containerView.trailingAnchor, constant: -24),
             ui.phoneToolbarTopConstraint,
@@ -245,27 +233,16 @@ final class BrowserLayout {
         let view = controller.view!
 
         view.addSubview(ui.geckoView)
-        view.addSubview(ui.keyboardAccessoryBar.view)
-
         ui.geckoTopPhoneConstraint = ui.geckoView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
         ui.geckoBottomPhoneConstraint = ui.geckoView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ui.geckoBottomPhoneKeyboardOverlayConstraint = ui.geckoView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ui.geckoLeadingPhoneConstraint = ui.geckoView.leadingAnchor.constraint(equalTo: view.leadingAnchor)
         ui.geckoTrailingPhoneConstraint = ui.geckoView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
-        ui.keyboardAccessoryBottomConstraint = ui.keyboardAccessoryBar.view.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
-        ui.keyboardAccessoryTrailingConstraint = ui.keyboardAccessoryBar.view.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -12)
-        ui.keyboardAccessoryHeightConstraint = ui.keyboardAccessoryBar.view.heightAnchor.constraint(equalToConstant: 36)
-        ui.keyboardAccessoryWidthConstraint = ui.keyboardAccessoryBar.view.widthAnchor.constraint(equalToConstant: KeyboardAccessoryBar.expandedWidth)
-
         NSLayoutConstraint.activate([
             ui.geckoLeadingPhoneConstraint,
             ui.geckoTrailingPhoneConstraint,
             ui.geckoTopPhoneConstraint,
             ui.geckoBottomPhoneConstraint,
-            ui.keyboardAccessoryTrailingConstraint,
-            ui.keyboardAccessoryBottomConstraint,
-            ui.keyboardAccessoryHeightConstraint,
-            ui.keyboardAccessoryWidthConstraint,
         ])
     }
     
@@ -510,8 +487,6 @@ final class BrowserLayout {
         if !Self.chatGPTShellMode {
             controller.browserUI.phoneChromeBottomConstraint.constant = shouldDockChromeToKeyboard ? -keyboardHeight : 0
         }
-        controller.browserUI.keyboardAccessoryBottomConstraint.constant = -(keyboardHeight + Self.keyboardAccessorySpacing)
-        updateKeyboardAccessoryVisibility(keyboardVisible: keyboardHeight > 0)
         updateChromeLayoutState()
         
         UIView.animate(withDuration: duration, delay: 0, options: [curve]) {
@@ -527,8 +502,6 @@ final class BrowserLayout {
         if !Self.chatGPTShellMode {
             controller.browserUI.phoneChromeBottomConstraint.constant = 0
         }
-        controller.browserUI.keyboardAccessoryBottomConstraint.constant = 0
-        updateKeyboardAccessoryVisibility(keyboardVisible: false)
         updateChromeLayoutState()
         
         let duration = (notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval) ?? 0.25
@@ -540,25 +513,6 @@ final class BrowserLayout {
         }
     }
     
-    private func updateKeyboardAccessoryVisibility(keyboardVisible: Bool) {
-        let bar = controller.browserUI.keyboardAccessoryBar.view
-        let shouldShow = keyboardVisible && shouldAvoidKeyboardAccessory
-        let shouldShowSend = shouldShow && controller.shouldShowChatGPTSendAccessory
-        controller.browserUI.keyboardAccessoryBar.setShowsSend(shouldShowSend)
-        controller.browserUI.keyboardAccessoryWidthConstraint.constant = shouldShowSend ? KeyboardAccessoryBar.expandedWidth : KeyboardAccessoryBar.compactWidth
-        if shouldShow {
-            bar.isHidden = false
-        }
-        bar.alpha = shouldShow ? 1 : 0
-        if !shouldShow {
-            bar.isHidden = true
-        }
-    }
-
-    func refreshKeyboardAccessoryVisibility() {
-        updateKeyboardAccessoryVisibility(keyboardVisible: keyboardHeight > 0)
-    }
-
     private func updatePhoneDismissKeyboardButtonShadowPath() {
         guard !Self.chatGPTShellMode else {
             return
@@ -729,7 +683,7 @@ final class BrowserLayout {
         
         let currentGeckoShift = max(0, unshiftedGeckoMinY - geckoFrame.minY)
         let unshiftedGeckoMaxY = geckoFrame.maxY + currentGeckoShift
-        let keyboardOverlap = max(0, unshiftedGeckoMaxY - effectiveKeyboardObstructionMinY)
+        let keyboardOverlap = max(0, unshiftedGeckoMaxY - keyboardFrame.minY)
         guard keyboardOverlap > 0 else {
             return 0
         }
@@ -737,28 +691,6 @@ final class BrowserLayout {
         let focusBottom = geckoFrame.height * bottomRatio
         let visibleBottom = max(0, geckoFrame.height - keyboardOverlap - Self.keyboardAvoidancePadding)
         return min(keyboardOverlap, max(0, focusBottom - visibleBottom))
-    }
-
-    private var shouldAvoidKeyboardAccessory: Bool {
-        keyboardHeight > 0
-            && !controller.isSearchFocused
-            && (Self.chatGPTShellMode || !controller.tabOverviewPresentation.isVisible)
-    }
-
-    private var keyboardAccessoryAvoidanceHeight: CGFloat {
-        guard shouldAvoidKeyboardAccessory else {
-            return 0
-        }
-
-        return controller.browserUI.keyboardAccessoryHeightConstraint.constant + Self.keyboardAccessorySpacing
-    }
-
-    private var effectiveKeyboardAvoidanceHeight: CGFloat {
-        keyboardHeight + keyboardAccessoryAvoidanceHeight
-    }
-
-    private var effectiveKeyboardObstructionMinY: CGFloat {
-        keyboardFrame.minY - keyboardAccessoryAvoidanceHeight
     }
 }
 

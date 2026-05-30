@@ -12,6 +12,8 @@ final class BrowserPreferences {
     private enum Keys {
         static let jitEnabled = "BrowserPreferences.jitEnabled"
         static let useAndroidUserAgent = "BrowserPreferences.useAndroidUserAgent"
+        static let timeAwareEnabled = "BrowserPreferences.timeAwareEnabled"
+        static let timeAwareTimezone = "BrowserPreferences.timeAwareTimezone"
     }
     
     static let shared = BrowserPreferences()
@@ -44,6 +46,16 @@ final class BrowserPreferences {
     var useAndroidUserAgent: Bool {
         get { defaults.bool(forKey: Keys.useAndroidUserAgent) }
         set { defaults.set(newValue, forKey: Keys.useAndroidUserAgent) }
+    }
+
+    var timeAwareEnabled: Bool {
+        get { defaults.bool(forKey: Keys.timeAwareEnabled) }
+        set { defaults.set(newValue, forKey: Keys.timeAwareEnabled) }
+    }
+
+    var timeAwareTimezone: String {
+        get { defaults.string(forKey: Keys.timeAwareTimezone) ?? "Europe/Paris" }
+        set { defaults.set(newValue, forKey: Keys.timeAwareTimezone) }
     }
     
     var pairingFileURL: URL {
@@ -78,6 +90,8 @@ final class BrowserPreferences {
         defaults.register(defaults: [
             Keys.jitEnabled: false,
             Keys.useAndroidUserAgent: true,
+            Keys.timeAwareEnabled: true,
+            Keys.timeAwareTimezone: "Europe/Paris",
         ])
     }
 }
