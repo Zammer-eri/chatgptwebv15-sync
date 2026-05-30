@@ -10,7 +10,6 @@ import UIKit
 
 final class BrowserLayout {
     private static let chatGPTShellMode = true
-    private static let shellKeyboardChromeHeight: CGFloat = 58
     private unowned let controller: BrowserViewController
     private var keyboardHeight: CGFloat = 0
     private var keyboardFrame: CGRect = .zero
@@ -261,16 +260,14 @@ final class BrowserLayout {
         setAddressBarHost(isPad: pad)
         setKeyboardDismissButtonHost(isPad: pad)
         ui.topBar.topConstraint.constant = shellMode ? controller.view.safeAreaInsets.top : resolvedPadTopInset()
-        let shouldShowGeckoBehindKeyboard = !shellMode
-        && !pad
+        let shouldShowGeckoBehindKeyboard = !pad
         && controller.isSearchFocused
         && keyboardHeight > 0
         && !controller.tabOverviewPresentation.isVisible
-        let shouldPinSearchFocusedGeckoFrame = !shellMode
-        && !pad
+        let shouldPinSearchFocusedGeckoFrame = !pad
         && controller.isSearchFocused
         && !controller.tabOverviewPresentation.isVisible
-        let geckoPhoneOffset = shellMode ? 0 : resolvedGeckoPhoneVerticalOffset(
+        let geckoPhoneOffset = resolvedGeckoPhoneVerticalOffset(
             shouldShowGeckoBehindKeyboard: shouldShowGeckoBehindKeyboard
         )
         ui.geckoTopPhoneConstraint.constant = !pad ? -geckoPhoneOffset : 0
@@ -309,7 +306,7 @@ final class BrowserLayout {
         
         ui.chromeContainer.containerView.isHidden = shellMode || (!showsCompactPadBottomToolbar && pad) || controller.tabOverviewPresentation.isVisible
         ui.chromeContainer.bottomSafeAreaFillView.isHidden = shellMode || (!showsCompactPadBottomToolbar && pad) || controller.tabOverviewPresentation.isVisible
-        ui.phoneChromeHeightConstraint.constant = shellMode ? resolvedShellKeyboardChromeHeight() : (compactPad ? 44 : (controller.isSearchFocused ? 58 : 94))
+        ui.phoneChromeHeightConstraint.constant = shellMode ? 0 : (compactPad ? 44 : (controller.isSearchFocused ? 58 : 94))
         ui.chromeContainer.containerView.backgroundColor = controller.isSearchFocused && !pad ? .clear : .systemGray6
         ui.chromeContainer.bottomSafeAreaFillView.backgroundColor = controller.isSearchFocused && !pad ? .clear : .systemGray6
         ui.toolbarView.alpha = shellMode ? 0 : (compactPad ? 1 : ui.toolbarView.alpha)
@@ -386,16 +383,6 @@ final class BrowserLayout {
         return (CGFloat(visibleButtonCount) * buttonWidth) + (CGFloat(max(visibleButtonCount - 1, 0)) * spacing)
     }
 
-    private func resolvedShellKeyboardChromeHeight() -> CGFloat {
-        guard Self.chatGPTShellMode,
-              keyboardHeight > 0,
-              !controller.tabOverviewPresentation.isVisible else {
-            return 0
-        }
-
-        return Self.shellKeyboardChromeHeight
-    }
-    
     func setSearchFocused(_ focused: Bool, animated: Bool) {
         guard !Self.chatGPTShellMode else {
             controller.isSearchFocused = focused
@@ -455,17 +442,6 @@ final class BrowserLayout {
         let duration = info[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval ?? 0.25
         let curveRaw = info[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 7
         let curve = UIView.AnimationOptions(rawValue: curveRaw << 16)
-        if Self.chatGPTShellMode {
-            resetFocusedInputRelocation()
-            controller.browserUI.phoneChromeBottomConstraint.constant = keyboardHeight > 0 ? -keyboardHeight : 0
-            updateChromeLayoutState()
-            UIView.animate(withDuration: duration, delay: 0, options: [curve]) {
-                self.controller.view.layoutIfNeeded()
-                self.updatePhoneDismissKeyboardButtonShadowPath()
-            }
-            return
-        }
-
         requestFocusedInputMetricsIfNeeded(duration: duration, curve: curve)
         
         let shouldDockChromeToKeyboard = !controller.usesPadChromeLayout
