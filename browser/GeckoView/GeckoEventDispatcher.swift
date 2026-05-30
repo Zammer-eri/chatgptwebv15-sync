@@ -49,8 +49,6 @@ public class GeckoEventDispatcherWrapper: NSObject, SwiftEventDispatcher {
     var queue: [QueuedMessage]? = []
     var listeners: [String: [GeckoEventListenerInternal]] = [:]
     var name: String?
-    private var pendingQueryCallbacks: [UUID: AnyObject] = [:]
-    private let pendingQueryCallbacksLock = NSLock()
 
     override init() {}
 
@@ -86,74 +84,28 @@ public class GeckoEventDispatcherWrapper: NSObject, SwiftEventDispatcher {
     }
 
     public func query(type: String, message: [String: Any]? = nil) async throws -> Any? {
-        final class CallbackBox {
-            var cancel: (() -> Void)?
-        }
-
         class AsyncCallback: NSObject, EventCallback {
-            private let lock = NSLock()
             var continuation: CheckedContinuation<Any?, Error>?
-            var release: (() -> Void)?
-
-            init(_ continuation: CheckedContinuation<Any?, Error>, release: @escaping () -> Void) {
+            init(_ continuation: CheckedContinuation<Any?, Error>) {
                 self.continuation = continuation
-                self.release = release
             }
-
             func sendSuccess(_ response: Any?) {
-                complete(.success(response))
+                continuation?.resume(returning: response)
+                continuation = nil
             }
-
             func sendError(_ response: Any?) {
-                complete(.failure(GeckoHandlerError(response)))
+                continuation?.resume(throwing: GeckoHandlerError(response))
+                continuation = nil
             }
-
             deinit {
-                complete(.failure(GeckoHandlerError("callback never invoked")))
-            }
-
-            private func complete(_ result: Result<Any?, Error>) {
-                lock.lock()
-                let continuation = continuation
-                let release = release
-                self.continuation = nil
-                self.release = nil
-                lock.unlock()
-
-                guard let continuation else {
-                    return
-                }
-
-                release?()
-                switch result {
-                case .success(let value):
-                    continuation.resume(returning: value)
-                case .failure(let error):
-                    continuation.resume(throwing: error)
-                }
+                continuation?.resume(throwing: GeckoHandlerError("callback never invoked"))
+                continuation = nil
             }
         }
 
-        let callbackID = UUID()
-        let callbackBox = CallbackBox()
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                let callback = AsyncCallback(continuation) { [weak self] in
-                    self?.releaseQueryCallback(id: callbackID)
-                }
-                callbackBox.cancel = {
-                    callback.sendError("query cancelled")
-                }
-                retainQueryCallback(callback, id: callbackID)
-                dispatch(type: type, message: message, callback: callback)
-                Task {
-                    try? await Task.sleep(nanoseconds: 1_500_000_000)
-                    callback.sendError("query timed out")
-                }
-            }
-        } onCancel: {
-            callbackBox.cancel?()
-        }
+        return try await withCheckedThrowingContinuation({
+            dispatch(type: type, message: message, callback: AsyncCallback($0))
+        })
     }
 
     public func attach(_ dispatcher: (any GeckoEventDispatcher)?) {
@@ -186,17 +138,5 @@ public class GeckoEventDispatcherWrapper: NSObject, SwiftEventDispatcher {
         message?.mapValues { value in
             value is NSNull ? nil : value
         }
-    }
-
-    private func retainQueryCallback(_ callback: AnyObject, id: UUID) {
-        pendingQueryCallbacksLock.lock()
-        pendingQueryCallbacks[id] = callback
-        pendingQueryCallbacksLock.unlock()
-    }
-
-    private func releaseQueryCallback(id: UUID) {
-        pendingQueryCallbacksLock.lock()
-        pendingQueryCallbacks[id] = nil
-        pendingQueryCallbacksLock.unlock()
     }
 }
