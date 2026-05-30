@@ -34,11 +34,10 @@ index ec258b459893..87c69dd4781c 100644
 +          });
 +        });
 +      }
-+      const actor =
-+        Services.focus.focusedContentBrowsingContext?.currentWindowGlobal?.getActor(
-+          "GeckoViewContent"
-+        );
-+      aCallback.onSuccess(actor ? await actor.sendQuery("GetFocusedInputMetrics") : null);
++      const metrics = typeof this.actor?.getFocusedInputMetrics == "function"
++        ? await this.actor.getFocusedInputMetrics()
++        : await this.actor?.sendQuery?.("GetFocusedInputMetrics");
++      aCallback.onSuccess(metrics ?? null);
 +    } catch (error) {
 +      aCallback.onError(`Cannot get focused input metrics, error: ${error}`);
 +    }

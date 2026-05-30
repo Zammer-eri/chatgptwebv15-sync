@@ -50,8 +50,10 @@ index 9ca6e15bed3e..2e7831c3da85 100644
 +      });
 +    }
 +
-+    const focusedElement =
-+      Services.focus.focusedElement || contentWindow?.document?.activeElement;
++    const focusedElement = contentWindow?.document?.activeElement;
++    if (!focusedElement || focusedElement.ownerGlobal !== contentWindow) {
++      return null;
++    }
 +    if (!this.isFocusedEditableElement(focusedElement)) {
 +      return null;
 +    }
