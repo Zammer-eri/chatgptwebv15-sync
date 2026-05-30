@@ -9,7 +9,7 @@ import GeckoView
 import UIKit
 
 final class BrowserLayout {
-    private static let chatGPTShellMode = true
+    private static let chatGPTShellMode = false
     private static let shellKeyboardChromeHeight: CGFloat = 58
     private unowned let controller: BrowserViewController
     private var keyboardHeight: CGFloat = 0

@@ -9,7 +9,7 @@ import GeckoView
 import UIKit
 
 final class BrowserViewController: UIViewController, AddressBarDelegate, PhoneToolbarDelegate, TabManagerDelegate {
-    private static let chatGPTShellMode = true
+    private static let chatGPTShellMode = false
 
     let overviewInset: CGFloat = 16
     let overviewSpacing: CGFloat = 16
