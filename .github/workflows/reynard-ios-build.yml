@@ -35,6 +35,19 @@ jobs:
           path: engine/prebuilt-gecko
           key: reynard-prebuilt-gecko-0.4.0-Reynard-ipa-runtime-v45-shell-disabled-${{ hashFiles('tools/development/setup-prebuilt-gecko.sh', 'tools/development/patch-prebuilt-gecko.py') }}
 
+      - name: Cache JIT native bridge
+        uses: actions/cache@v4
+        with:
+          path: |
+            support/idevice
+            browser/Reynard/JIT/libidevice_ffi.a
+            browser/Reynard/JIT/libidevice_ffi.a.fingerprint
+            ~/.cargo/git
+            ~/.cargo/registry
+          key: reynard-idevice-ffi-ios14-${{ hashFiles('tools/development/build-idevice.sh') }}
+          restore-keys: |
+            reynard-idevice-ffi-ios14-
+
       - name: Prepare prebuilt Gecko engine
         run: ./tools/development/setup-prebuilt-gecko.sh
 

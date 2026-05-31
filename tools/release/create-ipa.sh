@@ -24,16 +24,6 @@ if [ -z "$APP_PATH" ]; then
 	exit 1
 fi
 
-# Normalize bundle metadata after unsigned archive export.
-plutil -replace CFBundleIdentifier -string "com.chatgpt.shell" "$APP_PATH/Info.plist"
-plutil -replace CFBundleDisplayName -string "ChatGPT" "$APP_PATH/Info.plist"
-plutil -replace CFBundleIdentifier -string "com.chatgpt.shell.Helper" "$APP_PATH/PlugIns/Reynard Helper.appex/Info.plist"
-plutil -replace CFBundleDisplayName -string "ChatGPT Helper" "$APP_PATH/PlugIns/Reynard Helper.appex/Info.plist"
-if [ -d "$APP_PATH/PlugIns/OpenIn.appex" ]; then
-	plutil -replace CFBundleIdentifier -string "com.chatgpt.shell.OpenIn" "$APP_PATH/PlugIns/OpenIn.appex/Info.plist"
-	plutil -replace CFBundleDisplayName -string "Open in ChatGPT" "$APP_PATH/PlugIns/OpenIn.appex/Info.plist"
-fi
-
 rm -rf "$WORK_DIR" "$ROOT_DIR/dist/Reynard-TrollStore.tipa"
 mkdir -p "$WORK_DIR/Payload"
 cp -R "$APP_PATH" "$WORK_DIR/Payload/"
