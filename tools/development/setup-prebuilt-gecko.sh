@@ -10,7 +10,8 @@ URL="https://github.com/minh-ton/reynard-browser/releases/download/${TAG}/${ASSE
 WORK_DIR="$ROOT_DIR/dist/prebuilt-gecko-work"
 DIST_DIR="$ROOT_DIR/engine/prebuilt-gecko/obj-aarch64-apple-ios/dist"
 BIN_DIR="$DIST_DIR/bin"
-INCLUDE_DIR="$DIST_DIR/include/GeckoView"
+INCLUDE_ROOT="$DIST_DIR/include"
+INCLUDE_DIR="$INCLUDE_ROOT/GeckoView"
 MARKER="$ROOT_DIR/engine/prebuilt-gecko/.release"
 RUNTIME_PATCH_VERSION="45"
 CHATGPT_SHELL_FEATURES="${REYNARD_ENABLE_CHATGPT_SHELL:-0}"
@@ -64,7 +65,12 @@ echo "  runtime patch fingerprint: $RUNTIME_PATCH_FINGERPRINT"
 echo "  release sha256: ${RELEASE_SHA256:-unverified}"
 echo "  ChatGPT shell runtime hooks: $([ "$CHATGPT_SHELL_FEATURES" = "1" ] && echo enabled || echo disabled)"
 
-if [ -f "$BIN_DIR/XUL" ] && [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$MARKER_VALUE" ]; then
+if [ -f "$BIN_DIR/XUL" ] &&
+	[ -f "$INCLUDE_ROOT/mozilla-config.h" ] &&
+	[ -f "$INCLUDE_DIR/GeckoViewSwiftSupport.h" ] &&
+	[ -f "$INCLUDE_DIR/IOSBootstrap.h" ] &&
+	[ -f "$MARKER" ] &&
+	[ "$(cat "$MARKER")" = "$MARKER_VALUE" ]; then
 	echo "Using cached prebuilt Gecko dist at $DIST_DIR"
 	echo "  ChatGPT shell runtime hooks: $([ "$CHATGPT_SHELL_FEATURES" = "1" ] && echo enabled || echo disabled)"
 	exit 0
@@ -107,6 +113,21 @@ if [ "$CHATGPT_SHELL_FEATURES" = "1" ]; then
 else
 	echo "Skipping ChatGPT shell runtime patch."
 fi
+
+GECKO_VERSION="$(awk -F= '/^Version=/ { print $2; exit }' "$BIN_DIR/application.ini")"
+if [ -z "$GECKO_VERSION" ]; then
+	echo "Unable to determine Gecko version from $BIN_DIR/application.ini"
+	exit 1
+fi
+
+cat > "$INCLUDE_ROOT/mozilla-config.h" <<EOF
+#ifndef mozilla_config_h
+#define mozilla_config_h
+
+#define MOZILLA_VERSION "$GECKO_VERSION"
+
+#endif /* mozilla_config_h */
+EOF
 
 cat > "$INCLUDE_DIR/GeckoViewSwiftSupport.h" <<'EOF'
 #import <Foundation/Foundation.h>
