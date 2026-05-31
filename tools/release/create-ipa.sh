@@ -19,7 +19,7 @@ sign_macho_files() {
 			case "$(file -b "$file")" in
 				*Mach-O*)
 					echo "Signing Mach-O: $file"
-					codesign --force --sign - "$file"
+					ldid -S "$file"
 					;;
 			esac
 		done
@@ -40,14 +40,6 @@ verify_macho_signatures() {
 			esac
 		done
 	' sh {} +
-}
-
-sign_bundle() {
-	BUNDLE_PATH="$1"
-	if [ -d "$BUNDLE_PATH" ]; then
-		echo "Signing bundle: $BUNDLE_PATH"
-		codesign --force --sign - --preserve-metadata=identifier,entitlements "$BUNDLE_PATH"
-	fi
 }
 
 cd "$ROOT_DIR"
@@ -99,15 +91,10 @@ fi
 
 sign_macho_files
 
-sign_bundle "Payload/Reynard.app/PlugIns/OpenIn.appex"
-sign_bundle "Payload/Reynard.app/PlugIns/Reynard Helper.appex"
-sign_bundle "Payload/Reynard.app/Frameworks/GeckoView.framework"
-sign_bundle "Payload/Reynard.app"
-
 ldid -S"$ROOT_DIR/browser/Reynard/TrollStore/JIT/ptrace_jit.entitlements" "$PTRACE_JIT_OUT"
 ldid -S"$ROOT_DIR/browser/Reynard/Entitlements/Reynard.private.entitlements" "Payload/Reynard.app/Reynard"
 ldid -S"$ROOT_DIR/browser/Helper/Entitlements/Reynard-Helper.private.entitlements" "Payload/Reynard.app/PlugIns/Reynard Helper.appex/Reynard Helper"
-ldid -S"$ROOT_DIR/browser/Extensions/OpenIn/OpenIn.private.entitlements" "Payload/Reynard.app/PlugIns/OpenIn.appex/OpenIn"
+ldid -S "Payload/Reynard.app/PlugIns/OpenIn.appex/OpenIn"
 verify_macho_signatures
 zip -r ../Reynard-TrollStore.tipa Payload -x "._*" -x ".DS_Store" -x "__MACOSX" # trollstore ipa
 if [ "$TROLLSTORE_ONLY" != "1" ]; then
