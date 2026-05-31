@@ -47,13 +47,38 @@ jobs:
           cargo --version
           df -h
 
+      - name: Restore tool cache
+        id: tool-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/git
+            ~/.cargo/registry
+            ~/.mozbuild
+          key: ${{ runner.os }}-${{ runner.arch }}-reynard-tools-v1-${{ hashFiles('engine/release.txt', '.gitmodules') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-reynard-tools-v1-
+
       - name: Install build dependencies
         run: |
-          brew list autoconf@2.13 >/dev/null 2>&1 || brew install autoconf@2.13
           brew list ldid >/dev/null 2>&1 || brew install ldid
           brew list nasm >/dev/null 2>&1 || brew install nasm
           brew list yasm >/dev/null 2>&1 || brew install yasm
           rustup target add aarch64-apple-ios
+
+          AUTOCONF_PREFIX="$HOME/.mozbuild/autoconf-2.13"
+          if [ ! -x "$AUTOCONF_PREFIX/bin/autoconf-2.13" ]; then
+            mkdir -p "$HOME/.mozbuild"
+            curl -fsSL --retry 3 https://ftp.gnu.org/gnu/autoconf/autoconf-2.13.tar.gz -o "$RUNNER_TEMP/autoconf-2.13.tar.gz"
+            tar -xzf "$RUNNER_TEMP/autoconf-2.13.tar.gz" -C "$RUNNER_TEMP"
+            cd "$RUNNER_TEMP/autoconf-2.13"
+            ./configure --prefix="$AUTOCONF_PREFIX"
+            make -j"$(sysctl -n hw.logicalcpu)"
+            make install
+            ln -sf "$AUTOCONF_PREFIX/bin/autoconf" "$AUTOCONF_PREFIX/bin/autoconf-2.13"
+            ln -sf "$AUTOCONF_PREFIX/bin/autoheader" "$AUTOCONF_PREFIX/bin/autoheader-2.13"
+          fi
+          echo "$AUTOCONF_PREFIX/bin" >> "$GITHUB_PATH"
 
       - name: Make scripts executable
         run: find tools browser/Scripts -name "*.sh" -exec chmod +x {} +
@@ -64,19 +89,16 @@ jobs:
           ./tools/development/apply-patches.sh
           git submodule update --init --recursive support/idevice
 
-      - name: Restore build cache
-        id: build-cache
+      - name: Restore object cache
+        id: object-cache
         uses: actions/cache/restore@v4
         with:
           path: |
-            ~/.cargo/git
-            ~/.cargo/registry
-            ~/.mozbuild
             engine/firefox/obj-aarch64-apple-ios
             support/idevice/target
-          key: ${{ runner.os }}-${{ runner.arch }}-reynard-v2-${{ hashFiles('engine/release.txt', '.gitmodules', 'patches/**/*.patch', 'tools/development/build-gecko.sh', 'tools/development/build-idevice.sh', 'support/idevice/Cargo.lock', 'support/idevice/**/Cargo.toml') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-reynard-objects-v1-${{ hashFiles('engine/release.txt', '.gitmodules', 'patches/**/*.patch', 'tools/development/build-gecko.sh', 'tools/development/build-idevice.sh', 'support/idevice/Cargo.lock', 'support/idevice/**/Cargo.toml') }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-reynard-v2-
+            ${{ runner.os }}-${{ runner.arch }}-reynard-objects-v1-
 
       - name: Build idevice FFI
         run: ./tools/development/build-idevice.sh
@@ -84,17 +106,24 @@ jobs:
       - name: Build Gecko
         run: ./tools/development/build-gecko.sh
 
-      - name: Save build cache
-        if: steps.build-cache.outputs.cache-hit != 'true'
+      - name: Save tool cache
+        if: steps.tool-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: |
             ~/.cargo/git
             ~/.cargo/registry
             ~/.mozbuild
+          key: ${{ runner.os }}-${{ runner.arch }}-reynard-tools-v1-${{ hashFiles('engine/release.txt', '.gitmodules') }}
+
+      - name: Save object cache
+        if: steps.object-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
             engine/firefox/obj-aarch64-apple-ios
             support/idevice/target
-          key: ${{ runner.os }}-${{ runner.arch }}-reynard-v2-${{ hashFiles('engine/release.txt', '.gitmodules', 'patches/**/*.patch', 'tools/development/build-gecko.sh', 'tools/development/build-idevice.sh', 'support/idevice/Cargo.lock', 'support/idevice/**/Cargo.toml') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-reynard-objects-v1-${{ hashFiles('engine/release.txt', '.gitmodules', 'patches/**/*.patch', 'tools/development/build-gecko.sh', 'tools/development/build-idevice.sh', 'support/idevice/Cargo.lock', 'support/idevice/**/Cargo.toml') }}
 
       - name: Archive browser app
         env:
