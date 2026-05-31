@@ -1,0 +1,147 @@
+name: Build Browser
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: GitHub runner label to use
+        required: true
+        default: macos-15-intel
+        type: string
+  push:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-browser-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Reynard TrollStore
+    runs-on: ${{ github.event.inputs.runner || 'macos-15-intel' }}
+    timeout-minutes: 360
+
+    env:
+      CARGO_BUILD_JOBS: "2"
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
+      MOZ_MAKE_FLAGS: "-j2"
+      ROLLING_TAG: rolling
+      RUST_BACKTRACE: "1"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      - name: Show build host
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          rustc --version
+          cargo --version
+          df -h
+
+      - name: Install build dependencies
+        run: |
+          brew list autoconf@2.13 >/dev/null 2>&1 || brew install autoconf@2.13
+          brew list ldid >/dev/null 2>&1 || brew install ldid
+          brew list nasm >/dev/null 2>&1 || brew install nasm
+          brew list yasm >/dev/null 2>&1 || brew install yasm
+          rustup target add aarch64-apple-ios
+
+      - name: Make scripts executable
+        run: find tools browser/Scripts -name "*.sh" -exec chmod +x {} +
+
+      - name: Prepare sources
+        run: |
+          ./tools/development/update-gecko.sh
+          ./tools/development/apply-patches.sh
+          git submodule update --init --recursive support/idevice
+
+      - name: Restore build cache
+        id: build-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/git
+            ~/.cargo/registry
+            ~/.mozbuild
+            engine/firefox/obj-aarch64-apple-ios
+            support/idevice/target
+          key: ${{ runner.os }}-${{ runner.arch }}-reynard-v2-${{ hashFiles('engine/release.txt', '.gitmodules', 'patches/**/*.patch', 'tools/development/build-gecko.sh', 'tools/development/build-idevice.sh', 'support/idevice/Cargo.lock', 'support/idevice/**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-reynard-v2-
+
+      - name: Build idevice FFI
+        run: ./tools/development/build-idevice.sh
+
+      - name: Build Gecko
+        run: ./tools/development/build-gecko.sh
+
+      - name: Save build cache
+        if: steps.build-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/git
+            ~/.cargo/registry
+            ~/.mozbuild
+            engine/firefox/obj-aarch64-apple-ios
+            support/idevice/target
+          key: ${{ runner.os }}-${{ runner.arch }}-reynard-v2-${{ hashFiles('engine/release.txt', '.gitmodules', 'patches/**/*.patch', 'tools/development/build-gecko.sh', 'tools/development/build-idevice.sh', 'support/idevice/Cargo.lock', 'support/idevice/**/Cargo.toml') }}
+
+      - name: Archive browser app
+        env:
+          REYNARD_SKIP_CODE_SIGNING: "1"
+        run: ./tools/release/build-app.sh
+
+      - name: Package TrollStore TIPA
+        env:
+          REYNARD_TROLLSTORE_ONLY: "1"
+        run: ./tools/release/create-ipa.sh
+
+      - name: Publish rolling prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          ASSET_PATH="dist/Reynard-TrollStore.tipa"
+          NOTES_FILE="$(mktemp)"
+
+          test -f "$ASSET_PATH"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f "$ROLLING_TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/$ROLLING_TAG" --force
+
+          {
+            echo "Rolling TrollStore build for commit $GITHUB_SHA."
+            echo
+            echo "This prerelease is overwritten by each successful build."
+          } > "$NOTES_FILE"
+
+          if gh release view "$ROLLING_TAG" >/dev/null 2>&1; then
+            gh release edit "$ROLLING_TAG" \
+              --title "Rolling TrollStore Build" \
+              --notes-file "$NOTES_FILE" \
+              --prerelease \
+              --latest=false \
+              --target "$GITHUB_SHA"
+          else
+            gh release create "$ROLLING_TAG" \
+              --title "Rolling TrollStore Build" \
+              --notes-file "$NOTES_FILE" \
+              --prerelease \
+              --latest=false \
+              --target "$GITHUB_SHA"
+          fi
+
+          gh release upload "$ROLLING_TAG" "$ASSET_PATH#Reynard-TrollStore.tipa" --clobber
