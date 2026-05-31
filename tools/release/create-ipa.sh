@@ -11,6 +11,36 @@ APP_DIR="$ARCHIVE_DIR/Products/Applications"
 WORK_DIR="$ROOT_DIR/dist/Reynard"
 TROLLSTORE_ONLY="${REYNARD_TROLLSTORE_ONLY:-0}"
 
+sign_macho_files() {
+	find Payload -type f -exec sh -c '
+		set -e
+		for file do
+			case "$(file -b "$file")" in
+				*Mach-O*)
+					echo "Signing Mach-O: $file"
+					ldid -S "$file"
+					;;
+			esac
+		done
+	' sh {} +
+}
+
+verify_macho_signatures() {
+	find Payload -type f -exec sh -c '
+		set -e
+		for file do
+			case "$(file -b "$file")" in
+				*Mach-O*)
+					if ! codesign -dv "$file" >/dev/null 2>&1; then
+						echo "Unsigned Mach-O after packaging: $file" >&2
+						exit 1
+					fi
+					;;
+			esac
+		done
+	' sh {} +
+}
+
 cd "$ROOT_DIR"
 
 if [ ! -d "$APP_DIR" ]; then
@@ -52,10 +82,13 @@ PTRACE_JIT_OUT="Payload/Reynard.app/ptrace_jit"
 	-o "$PTRACE_JIT_OUT"
 
 chmod 0755 "$PTRACE_JIT_OUT"
+
+sign_macho_files
 ldid -S"$ROOT_DIR/browser/Reynard/TrollStore/JIT/ptrace_jit.entitlements" "$PTRACE_JIT_OUT"
 ldid -S"$ROOT_DIR/browser/Reynard/Entitlements/Reynard.private.entitlements" "Payload/Reynard.app/Reynard"
 ldid -S"$ROOT_DIR/browser/Helper/Entitlements/Reynard-Helper.private.entitlements" "Payload/Reynard.app/PlugIns/Reynard Helper.appex/Reynard Helper"
 ldid -S "Payload/Reynard.app/PlugIns/OpenIn.appex/OpenIn"
+verify_macho_signatures
 zip -r ../Reynard-TrollStore.tipa Payload -x "._*" -x ".DS_Store" -x "__MACOSX" # trollstore ipa
 if [ "$TROLLSTORE_ONLY" != "1" ]; then
 	cp ../Reynard-TrollStore.tipa ../Reynard-Jailbroken.ipa # for jailbroken users
