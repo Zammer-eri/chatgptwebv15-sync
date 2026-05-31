@@ -18,24 +18,11 @@ FEATURES="full,ring"
 PYTHON_BIN="$(command -v python3 || command -v python)"
 
 hash_file() {
-	"$PYTHON_BIN" - "$1" <<'PY'
-import hashlib
-import pathlib
-import sys
-
-path = pathlib.Path(sys.argv[1])
-print(hashlib.sha256(path.read_bytes()).hexdigest())
-PY
+	"$PYTHON_BIN" -c 'import hashlib, pathlib, sys; print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())' "$1"
 }
 
 hash_stdin() {
-	"$PYTHON_BIN" - <<'PY'
-import hashlib
-import sys
-
-digest = hashlib.sha256(sys.stdin.buffer.read()).hexdigest()
-print(digest)
-PY
+	"$PYTHON_BIN" -c 'import hashlib, sys; print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())'
 }
 
 if [ ! -e "$SUBMODULE_PATH/.git" ]; then
