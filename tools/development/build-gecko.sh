@@ -25,6 +25,9 @@ rm -f "$FIREFOX_DIR/.mozconfig"
 	echo "ac_add_options --enable-optimize"
 	echo "ac_add_options --disable-debug"
 	echo "ac_add_options --disable-tests"
+	if [ -n "${REYNARD_LINKER:-}" ]; then
+		echo "ac_add_options --with-linker=$REYNARD_LINKER"
+	fi
 } > "$FIREFOX_DIR/.mozconfig"
 
 if ! rustup target list | grep -q "^$TARGET (installed)"; then
