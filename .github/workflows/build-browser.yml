@@ -51,13 +51,30 @@ jobs:
 
       - name: Install packaging tools
         run: |
-          set -euo pipefail
-          brew list ldid >/dev/null 2>&1 || brew install ldid
-          brew list llvm >/dev/null 2>&1 || brew install llvm
-          LLVM_PREFIX="$(brew --prefix llvm)"
-          test -x "$LLVM_PREFIX/bin/ld64.lld"
-          echo "REYNARD_LINKER=$LLVM_PREFIX/bin/ld64.lld" >> "$GITHUB_ENV"
-          rustup target add aarch64-apple-ios
+          set +e
+          mkdir -p dist
+          {
+            set -euo pipefail
+            brew list ldid >/dev/null 2>&1 || brew install ldid
+            brew list llvm >/dev/null 2>&1 || brew install llvm
+            LLVM_PREFIX="$(brew --prefix llvm)"
+            test -x "$LLVM_PREFIX/bin/ld64.lld"
+            echo "REYNARD_LINKER=$LLVM_PREFIX/bin/ld64.lld" >> "$GITHUB_ENV"
+            rustup target add aarch64-apple-ios
+          } 2>&1 | tee dist/install-tools.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            echo "::error title=Install packaging tools failed::$(tail -80 dist/install-tools.log | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g')"
+            exit "$status"
+          fi
+
+      - name: Upload tool install log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: install-tools-log
+          path: dist/install-tools.log
+          if-no-files-found: ignore
 
       - name: Make scripts executable
         run: find tools browser/Scripts -name "*.sh" -exec chmod +x {} +
