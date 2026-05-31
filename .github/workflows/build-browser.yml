@@ -93,7 +93,30 @@ jobs:
         run: ./tools/development/build-idevice.sh
 
       - name: Build Gecko from source
-        run: ./tools/development/build-gecko.sh
+        run: |
+          set +e
+          mkdir -p dist
+          ./tools/development/build-gecko.sh 2>&1 | tee dist/build-gecko.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            {
+              echo "## Build Gecko failure"
+              echo
+              echo '```text'
+              tail -200 dist/build-gecko.log
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error title=Build Gecko failed::$(tail -20 dist/build-gecko.log | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g')"
+            exit "$status"
+          fi
+
+      - name: Upload Gecko build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gecko-build-log
+          path: dist/build-gecko.log
+          if-no-files-found: ignore
 
       - name: Archive browser app
         env:
