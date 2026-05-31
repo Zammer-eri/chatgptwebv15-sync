@@ -15,25 +15,27 @@ TARGET_DIR="$SUBMODULE_PATH/target"
 DEPLOYMENT_TARGET="14.0"
 RUST_TARGET="aarch64-apple-ios"
 FEATURES="full,ring"
+PYTHON_BIN="$(command -v python3 || command -v python)"
 
 hash_file() {
-	if command -v shasum >/dev/null 2>&1; then
-		shasum -a 256 "$1" | awk '{print $1}'
-	elif command -v sha256sum >/dev/null 2>&1; then
-		sha256sum "$1" | awk '{print $1}'
-	else
-		openssl dgst -sha256 "$1" | awk '{print $NF}'
-	fi
+	"$PYTHON_BIN" - "$1" <<'PY'
+import hashlib
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+print(hashlib.sha256(path.read_bytes()).hexdigest())
+PY
 }
 
 hash_stdin() {
-	if command -v shasum >/dev/null 2>&1; then
-		shasum -a 256 | awk '{print $1}'
-	elif command -v sha256sum >/dev/null 2>&1; then
-		sha256sum | awk '{print $1}'
-	else
-		openssl dgst -sha256 | awk '{print $NF}'
-	fi
+	"$PYTHON_BIN" - <<'PY'
+import hashlib
+import sys
+
+digest = hashlib.sha256(sys.stdin.buffer.read()).hexdigest()
+print(digest)
+PY
 }
 
 if [ ! -e "$SUBMODULE_PATH/.git" ]; then
