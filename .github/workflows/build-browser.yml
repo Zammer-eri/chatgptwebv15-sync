@@ -56,10 +56,7 @@ jobs:
           {
             set -euo pipefail
             brew list ldid >/dev/null 2>&1 || brew install ldid
-            brew list lld >/dev/null 2>&1 || brew install lld
-            LLD_PREFIX="$(brew --prefix lld)"
-            test -x "$LLD_PREFIX/bin/ld64.lld"
-            echo "REYNARD_LINKER=$LLD_PREFIX/bin/ld64.lld" >> "$GITHUB_ENV"
+            echo "REYNARD_LINKER=ld64" >> "$GITHUB_ENV"
             rustup target add aarch64-apple-ios
           } 2>&1 | tee dist/install-tools.log
           status=${PIPESTATUS[0]}
