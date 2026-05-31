@@ -12,21 +12,299 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-old-03:
-    name: Build old 0.3 mixed baseline
+  build-current-04:
+    name: Build current 0.4 mixed
     runs-on: macos-latest
     timeout-minutes: 90
 
     env:
       HOMEBREW_NO_AUTO_UPDATE: "1"
       HOMEBREW_NO_INSTALL_CLEANUP: "1"
-      RELEASE_TAG: diagnostic-0.3-mixed
+      RUST_BACKTRACE: "1"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: false
+
+      - name: Show build host
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          python3 --version
+          rustc --version
+          cargo --version
+          df -h
+
+      - name: Install packaging tools
+        run: |
+          brew list ldid >/dev/null 2>&1 || brew install ldid
+          rustup target add aarch64-apple-ios
+
+      - name: Make scripts executable
+        run: find tools browser/Scripts -name "*.sh" -exec chmod +x {} +
+
+      - name: Cache prebuilt Gecko engine
+        uses: actions/cache@v4
+        with:
+          path: engine/prebuilt-gecko
+          key: reynard-prebuilt-gecko-0.4.0-runtime-v2-${{ hashFiles('tools/development/setup-prebuilt-gecko.sh') }}
+          restore-keys: |
+            reynard-prebuilt-gecko-0.4.0-runtime-v2-
+
+      - name: Cache JIT native bridge
+        uses: actions/cache@v4
+        with:
+          path: |
+            support/idevice
+            browser/Reynard/JIT/libidevice_ffi.a
+            ~/.cargo/git
+            ~/.cargo/registry
+          key: reynard-idevice-ffi-ios13-${{ hashFiles('tools/development/build-idevice.sh') }}
+          restore-keys: |
+            reynard-idevice-ffi-ios13-
+
+      - name: Prepare prebuilt Gecko engine
+        run: ./tools/development/setup-prebuilt-gecko.sh
+
+      - name: Build idevice FFI
+        run: ./tools/development/build-idevice.sh
+
+      - name: Archive browser app
+        env:
+          REYNARD_SKIP_CODE_SIGNING: "1"
+        run: ./tools/release/build-app.sh
+
+      - name: Package TrollStore TIPA
+        env:
+          REYNARD_TROLLSTORE_ONLY: "1"
+        run: ./tools/release/create-ipa.sh
+
+      - name: Verify packaged runtime
+        run: |
+          python3 - <<'PY'
+          import plistlib
+          import sys
+          import zipfile
+
+          tipa = "dist/Reynard-TrollStore.tipa"
+          with zipfile.ZipFile(tipa) as archive:
+              swift_path = "Payload/Reynard.app/Frameworks/libswift_Concurrency.dylib"
+              info_path = "Payload/Reynard.app/Info.plist"
+              swift_size = archive.getinfo(swift_path).file_size
+              info = plistlib.loads(archive.read(info_path))
+
+          print(f"CFBundleVersion: {info.get('CFBundleVersion')}")
+          print(f"{swift_path}: {swift_size} bytes")
+
+          if swift_size > 1_000_000:
+              print("Packaged Swift concurrency runtime is not the upstream iOS 15-compatible runtime.", file=sys.stderr)
+              sys.exit(1)
+          PY
+
+      - name: Prepare current artifact
+        run: cp dist/Reynard-TrollStore.tipa Reynard-0.4-mixed.tipa
+
+      - name: Upload current 0.4 artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Reynard-0.4-mixed
+          path: Reynard-0.4-mixed.tipa
+          if-no-files-found: error
+
+  compare-current-04:
+    name: Compare 0.4 output to upstream 0.4
+    runs-on: ubuntu-latest
+    needs: build-current-04
+    timeout-minutes: 15
+
+    steps:
+      - name: Download current 0.4 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Reynard-0.4-mixed
+          path: compare
+
+      - name: Download upstream 0.4 baseline
+        working-directory: compare
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 3 \
+            -o Reynard-0.4-upstream.tipa \
+            https://github.com/minh-ton/reynard-browser/releases/download/0.4.0/Reynard-TrollStore.tipa
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+
+          expected = "09e1d8d290112fffacbfecb8249b3bb587fdfeac801505c959f261a75aa7b7ac"
+          actual = hashlib.sha256(Path("Reynard-0.4-upstream.tipa").read_bytes()).hexdigest()
+          print(f"upstream sha256: {actual}")
+          if actual != expected:
+              raise SystemExit(f"upstream checksum mismatch: expected {expected}")
+          PY
+
+      - name: Compare IPAs
+        working-directory: compare
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import plistlib
+          import zipfile
+          from pathlib import Path
+
+          upstream = Path("Reynard-0.4-upstream.tipa")
+          current = Path("Reynard-0.4-mixed.tipa")
+          report = Path("compare-0.4-vs-upstream.md")
+
+          interesting_plist_keys = [
+              "CFBundleIdentifier",
+              "CFBundleDisplayName",
+              "CFBundleExecutable",
+              "CFBundleShortVersionString",
+              "CFBundleVersion",
+              "MinimumOSVersion",
+              "DTPlatformVersion",
+              "DTSDKName",
+              "DTXcode",
+              "DTXcodeBuild",
+          ]
+
+          def sha(path):
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+
+          def rows_for_archive(path):
+              with zipfile.ZipFile(path) as archive:
+                  return {info.filename: info for info in archive.infolist() if not info.is_dir()}
+
+          def plist_summary(path, plist_path):
+              with zipfile.ZipFile(path) as archive:
+                  if plist_path not in archive.namelist():
+                      return None
+                  data = plistlib.loads(archive.read(plist_path))
+              return {key: data.get(key) for key in interesting_plist_keys if key in data}
+
+          def size(path, member):
+              with zipfile.ZipFile(path) as archive:
+                  return archive.getinfo(member).file_size if member in archive.namelist() else None
+
+          up_files = rows_for_archive(upstream)
+          cur_files = rows_for_archive(current)
+          up_set = set(up_files)
+          cur_set = set(cur_files)
+          only_up = sorted(up_set - cur_set)
+          only_cur = sorted(cur_set - up_set)
+          changed = []
+          for name in sorted(up_set & cur_set):
+              up = up_files[name]
+              cur = cur_files[name]
+              if up.CRC != cur.CRC or up.file_size != cur.file_size:
+                  changed.append((name, up.file_size, cur.file_size, cur.file_size - up.file_size))
+          changed_by_delta = sorted(changed, key=lambda item: abs(item[3]), reverse=True)
+
+          key_members = [
+              "Payload/Reynard.app/Reynard",
+              "Payload/Reynard.app/PlugIns/Reynard Helper.appex/Reynard Helper",
+              "Payload/Reynard.app/PlugIns/OpenIn.appex/OpenIn",
+              "Payload/Reynard.app/Frameworks/GeckoView.framework/GeckoView",
+              "Payload/Reynard.app/Frameworks/GeckoView.framework/XUL",
+              "Payload/Reynard.app/Frameworks/libswift_Concurrency.dylib",
+              "Payload/Reynard.app/embedded.mobileprovision",
+              "Payload/Reynard.app/_CodeSignature/CodeResources",
+          ]
+          plist_members = [
+              "Payload/Reynard.app/Info.plist",
+              "Payload/Reynard.app/PlugIns/Reynard Helper.appex/Info.plist",
+              "Payload/Reynard.app/PlugIns/OpenIn.appex/Info.plist",
+              "Payload/Reynard.app/Frameworks/GeckoView.framework/Info.plist",
+          ]
+
+          lines = []
+          lines.append("# Reynard 0.4 Mixed vs Upstream IPA Compare")
+          lines.append("")
+          lines.append("## Archive")
+          lines.append(f"- upstream bytes: {upstream.stat().st_size}")
+          lines.append(f"- current bytes: {current.stat().st_size}")
+          lines.append(f"- upstream sha256: `{sha(upstream)}`")
+          lines.append(f"- current sha256: `{sha(current)}`")
+          lines.append(f"- upstream file count: {len(up_files)}")
+          lines.append(f"- current file count: {len(cur_files)}")
+          lines.append(f"- only upstream: {len(only_up)}")
+          lines.append(f"- only current: {len(only_cur)}")
+          lines.append(f"- changed common files: {len(changed)}")
+          lines.append("")
+
+          lines.append("## Key Member Sizes")
+          lines.append("| member | upstream | current | delta |")
+          lines.append("|---|---:|---:|---:|")
+          for member in key_members:
+              up_size = size(upstream, member)
+              cur_size = size(current, member)
+              delta = "" if up_size is None or cur_size is None else cur_size - up_size
+              lines.append(f"| `{member}` | {up_size} | {cur_size} | {delta} |")
+          lines.append("")
+
+          lines.append("## Missing From Current")
+          for name in only_up[:80]:
+              lines.append(f"- `{name}` ({up_files[name].file_size} bytes)")
+          if len(only_up) > 80:
+              lines.append(f"- ... {len(only_up) - 80} more")
+          lines.append("")
+
+          lines.append("## Extra In Current")
+          for name in only_cur[:80]:
+              lines.append(f"- `{name}` ({cur_files[name].file_size} bytes)")
+          if len(only_cur) > 80:
+              lines.append(f"- ... {len(only_cur) - 80} more")
+          lines.append("")
+
+          lines.append("## Largest Changed Files")
+          lines.append("| member | upstream | current | delta |")
+          lines.append("|---|---:|---:|---:|")
+          for name, up_size, cur_size, delta in changed_by_delta[:80]:
+              lines.append(f"| `{name}` | {up_size} | {cur_size} | {delta} |")
+          lines.append("")
+
+          lines.append("## Plists")
+          for member in plist_members:
+              lines.append(f"### `{member}`")
+              lines.append("upstream:")
+              lines.append("```")
+              lines.append(repr(plist_summary(upstream, member)))
+              lines.append("```")
+              lines.append("current:")
+              lines.append("```")
+              lines.append(repr(plist_summary(current, member)))
+              lines.append("```")
+              lines.append("")
+
+          report.write_text("\n".join(lines) + "\n", encoding="utf-8")
+          print(report.read_text(encoding="utf-8"))
+          PY
+
+      - name: Upload comparison report
+        uses: actions/upload-artifact@v4
+        with:
+          name: compare-0.4-vs-upstream
+          path: compare/compare-0.4-vs-upstream.md
+          if-no-files-found: error
+
+  build-old-03-control:
+    name: Build old 0.3 mixed control
+    runs-on: macos-latest
+    timeout-minutes: 90
+
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
 
     steps:
       - name: Checkout old shell-era source
         uses: actions/checkout@v4
         with:
-          ref: f409d0c
+          ref: f409d0cd62f2516c2c7a81e78160d00af7a08efd
           fetch-depth: 1
           submodules: false
           path: old-source
@@ -65,54 +343,84 @@ jobs:
         working-directory: old-source/ReynardChatGPT
         run: ./tools/release/create-ipa.sh
 
-      - name: Prepare release asset
+      - name: Prepare old control artifact
+        run: cp old-source/ReynardChatGPT/dist/Reynard-TrollStore.tipa Reynard-0.3-mixed.tipa
+
+      - name: Upload old 0.3 control artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Reynard-0.3-mixed
+          path: Reynard-0.3-mixed.tipa
+          if-no-files-found: error
+
+  publish:
+    name: Publish test artifacts
+    runs-on: ubuntu-latest
+    needs:
+      - build-current-04
+      - compare-current-04
+      - build-old-03-control
+
+    env:
+      ROLLING_TAG: rolling
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Prepare release assets
         run: |
           set -euo pipefail
-          cp old-source/ReynardChatGPT/dist/Reynard-TrollStore.tipa Reynard-0.3-mixed.tipa
-          python3 - <<'PY'
-          import hashlib
-          from pathlib import Path
+          mv release-assets/Reynard-0.4-mixed/Reynard-0.4-mixed.tipa release-assets/Reynard-0.4-mixed.tipa
+          mv release-assets/Reynard-0.3-mixed/Reynard-0.3-mixed.tipa release-assets/Reynard-0.3-mixed.tipa
+          mv release-assets/compare-0.4-vs-upstream/compare-0.4-vs-upstream.md release-assets/compare-0.4-vs-upstream.md
+          sha256sum release-assets/Reynard-0.4-mixed.tipa release-assets/Reynard-0.3-mixed.tipa
 
-          path = Path("Reynard-0.3-mixed.tipa")
-          print(f"{path}: {path.stat().st_size} bytes")
-          print(hashlib.sha256(path.read_bytes()).hexdigest())
-          PY
-
-      - name: Publish diagnostic prerelease
+      - name: Publish rolling prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
           NOTES_FILE="$(mktemp)"
-          test -f Reynard-0.3-mixed.tipa
+          test -f release-assets/Reynard-0.4-mixed.tipa
+          test -f release-assets/Reynard-0.3-mixed.tipa
+          test -f release-assets/compare-0.4-vs-upstream.md
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -f "$RELEASE_TAG" "$GITHUB_SHA"
-          git push origin "refs/tags/$RELEASE_TAG" --force
+          git tag -f "$ROLLING_TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/$ROLLING_TAG" --force
 
           {
-            echo "Diagnostic old mixed-build baseline for commit $GITHUB_SHA."
+            echo "Rolling Reynard launch/debug build for commit $GITHUB_SHA."
             echo
-            echo "This builds commit f409d0c using the old Reynard 0.3 mixed method."
-            echo "Purpose: verify whether the old GitHub Actions mixed build still launches on the device."
+            echo "Assets:"
+            echo "- Reynard-0.4-mixed.tipa: current 0.4 source build using upstream 0.4 Gecko/runtime payloads."
+            echo "- Reynard-0.3-mixed.tipa: old f409d0c mixed-build control to verify whether the mixed method still launches."
+            echo "- compare-0.4-vs-upstream.md: current 0.4 output compared to official upstream Reynard 0.4 TIPA."
           } > "$NOTES_FILE"
 
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            gh release edit "$RELEASE_TAG" \
-              --title "Diagnostic Reynard 0.3 Mixed Build" \
+          if gh release view "$ROLLING_TAG" >/dev/null 2>&1; then
+            gh release edit "$ROLLING_TAG" \
+              --title "Rolling Reynard Launch Debug Build" \
               --notes-file "$NOTES_FILE" \
               --prerelease \
               --latest=false \
               --target "$GITHUB_SHA"
           else
-            gh release create "$RELEASE_TAG" \
-              --title "Diagnostic Reynard 0.3 Mixed Build" \
+            gh release create "$ROLLING_TAG" \
+              --title "Rolling Reynard Launch Debug Build" \
               --notes-file "$NOTES_FILE" \
               --prerelease \
               --latest=false \
               --target "$GITHUB_SHA"
           fi
 
-          gh release upload "$RELEASE_TAG" Reynard-0.3-mixed.tipa --clobber
+          gh release upload "$ROLLING_TAG" \
+            release-assets/Reynard-0.4-mixed.tipa \
+            release-assets/Reynard-0.3-mixed.tipa \
+            release-assets/compare-0.4-vs-upstream.md \
+            --clobber
