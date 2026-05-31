@@ -7,10 +7,16 @@
 
 import UIKit
 import Darwin
-import Symbols
 
 enum MakeButtons {
-    static let hasLiquidGlass = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "_UISolariumEnabled") != nil && _UISolariumEnabled()
+    private typealias SolariumEnabledFunction = @convention(c) () -> Bool
+    static let hasLiquidGlass: Bool = {
+        guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "_UISolariumEnabled") else {
+            return false
+        }
+        let isEnabled = unsafeBitCast(symbol, to: SolariumEnabledFunction.self)
+        return isEnabled()
+    }()
     static let bookmarksLibraryActionBarButtonTag = 8701
     static let historyLibraryActionBarButtonTag = 8702
     static let downloadsLibraryActionBarButtonTag = 8703
@@ -77,10 +83,10 @@ enum MakeButtons {
     
     static func updateLibraryActionsButton(_ button: UIButton, imageName: String) {
         if hasLiquidGlass, #available(iOS 26.0, *) {
-            var configuration = UIButton.Configuration.glass()
+            var configuration = UIButton.Configuration.plain()
             configuration.image = toolbarImage(for: imageName)
-            configuration.baseForegroundColor = .label
-            configuration.contentInsets = .zero
+            configuration.baseForegroundColor = UIColor.label
+            configuration.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
             button.configuration = configuration
         } else {
             button.setImage(toolbarImage(for: imageName), for: .normal)
