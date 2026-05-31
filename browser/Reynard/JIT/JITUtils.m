@@ -12,6 +12,9 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+// Some SDKs ship this Security symbol without a public declaration.
+extern SecIdentityRef SecIdentityCreate(CFAllocatorRef allocator, SecCertificateRef certificate, SecKeyRef privateKey);
+
 static const NSTimeInterval debugPacketTimeoutSeconds = 2.0;
 
 void logger(NSString *message) {
