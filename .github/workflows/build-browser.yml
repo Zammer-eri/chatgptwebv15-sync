@@ -6,7 +6,7 @@ on:
       runner:
         description: GitHub runner label to use
         required: true
-        default: macos-15-intel
+        default: macos-latest
         type: string
   push:
 
@@ -20,14 +20,12 @@ concurrency:
 jobs:
   build:
     name: Build Reynard TrollStore
-    runs-on: ${{ github.event.inputs.runner || 'macos-15-intel' }}
-    timeout-minutes: 360
+    runs-on: ${{ github.event.inputs.runner || 'macos-latest' }}
+    timeout-minutes: 90
 
     env:
-      CARGO_BUILD_JOBS: "2"
       HOMEBREW_NO_AUTO_UPDATE: "1"
       HOMEBREW_NO_INSTALL_CLEANUP: "1"
-      MOZ_MAKE_FLAGS: "-j2"
       ROLLING_TAG: rolling
       RUST_BACKTRACE: "1"
 
@@ -43,87 +41,44 @@ jobs:
           sw_vers
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
+          python3 --version
           rustc --version
           cargo --version
           df -h
 
-      - name: Restore tool cache
-        id: tool-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            ~/.cargo/git
-            ~/.cargo/registry
-            ~/.mozbuild
-          key: ${{ runner.os }}-${{ runner.arch }}-reynard-tools-v1-${{ hashFiles('engine/release.txt', '.gitmodules') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-reynard-tools-v1-
-
-      - name: Install build dependencies
+      - name: Install packaging tools
         run: |
           brew list ldid >/dev/null 2>&1 || brew install ldid
-          brew list nasm >/dev/null 2>&1 || brew install nasm
-          brew list yasm >/dev/null 2>&1 || brew install yasm
           rustup target add aarch64-apple-ios
-
-          AUTOCONF_PREFIX="$HOME/.mozbuild/autoconf-2.13"
-          if [ ! -x "$AUTOCONF_PREFIX/bin/autoconf-2.13" ]; then
-            mkdir -p "$HOME/.mozbuild"
-            curl -fsSL --retry 3 https://ftp.gnu.org/gnu/autoconf/autoconf-2.13.tar.gz -o "$RUNNER_TEMP/autoconf-2.13.tar.gz"
-            tar -xzf "$RUNNER_TEMP/autoconf-2.13.tar.gz" -C "$RUNNER_TEMP"
-            cd "$RUNNER_TEMP/autoconf-2.13"
-            ./configure --prefix="$AUTOCONF_PREFIX"
-            make -j"$(sysctl -n hw.logicalcpu)"
-            make install
-            ln -sf "$AUTOCONF_PREFIX/bin/autoconf" "$AUTOCONF_PREFIX/bin/autoconf-2.13"
-            ln -sf "$AUTOCONF_PREFIX/bin/autoheader" "$AUTOCONF_PREFIX/bin/autoheader-2.13"
-          fi
-          echo "$AUTOCONF_PREFIX/bin" >> "$GITHUB_PATH"
 
       - name: Make scripts executable
         run: find tools browser/Scripts -name "*.sh" -exec chmod +x {} +
 
-      - name: Prepare sources
-        run: |
-          ./tools/development/update-gecko.sh
-          ./tools/development/apply-patches.sh
-          git submodule update --init --recursive support/idevice
+      - name: Cache prebuilt Gecko engine
+        uses: actions/cache@v4
+        with:
+          path: engine/prebuilt-gecko
+          key: reynard-prebuilt-gecko-0.4.0-clean-${{ hashFiles('tools/development/setup-prebuilt-gecko.sh') }}
+          restore-keys: |
+            reynard-prebuilt-gecko-0.4.0-clean-
 
-      - name: Restore object cache
-        id: object-cache
-        uses: actions/cache/restore@v4
+      - name: Cache JIT native bridge
+        uses: actions/cache@v4
         with:
           path: |
-            engine/firefox/obj-aarch64-apple-ios
-            support/idevice/target
-          key: ${{ runner.os }}-${{ runner.arch }}-reynard-objects-v1-${{ hashFiles('engine/release.txt', '.gitmodules', 'patches/**/*.patch', 'tools/development/build-gecko.sh', 'tools/development/build-idevice.sh', 'support/idevice/Cargo.lock', 'support/idevice/**/Cargo.toml') }}
+            support/idevice
+            browser/Reynard/JIT/libidevice_ffi.a
+            ~/.cargo/git
+            ~/.cargo/registry
+          key: reynard-idevice-ffi-ios13-${{ hashFiles('tools/development/build-idevice.sh') }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-reynard-objects-v1-
+            reynard-idevice-ffi-ios13-
+
+      - name: Prepare prebuilt Gecko engine
+        run: ./tools/development/setup-prebuilt-gecko.sh
 
       - name: Build idevice FFI
         run: ./tools/development/build-idevice.sh
-
-      - name: Build Gecko
-        run: ./tools/development/build-gecko.sh
-
-      - name: Save tool cache
-        if: steps.tool-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            ~/.cargo/git
-            ~/.cargo/registry
-            ~/.mozbuild
-          key: ${{ runner.os }}-${{ runner.arch }}-reynard-tools-v1-${{ hashFiles('engine/release.txt', '.gitmodules') }}
-
-      - name: Save object cache
-        if: steps.object-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: |
-            engine/firefox/obj-aarch64-apple-ios
-            support/idevice/target
-          key: ${{ runner.os }}-${{ runner.arch }}-reynard-objects-v1-${{ hashFiles('engine/release.txt', '.gitmodules', 'patches/**/*.patch', 'tools/development/build-gecko.sh', 'tools/development/build-idevice.sh', 'support/idevice/Cargo.lock', 'support/idevice/**/Cargo.toml') }}
 
       - name: Archive browser app
         env:
