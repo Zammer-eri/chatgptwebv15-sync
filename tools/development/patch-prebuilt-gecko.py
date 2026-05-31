@@ -3,9 +3,10 @@
 from pathlib import Path
 import sys
 import json
+import os
 
 
-RUNTIME_PATCH_VERSION = 44
+RUNTIME_PATCH_VERSION = 45
 SCRIPT_DIR = Path(__file__).resolve().parent
 SHELL_RUNTIME_MARKER = "installEmbeddedGPTReturnRuntime"
 PAGE_RUNTIME_FILE = SCRIPT_DIR / "chatgpt-shell" / "page-runtime.js"
@@ -225,6 +226,11 @@ def patch_extension_prefs(bin_dir: Path) -> bool:
 def main() -> None:
     if len(sys.argv) != 2:
         raise SystemExit("usage: patch-prebuilt-gecko.py <dist-bin-dir>")
+
+    if os.environ.get("REYNARD_ENABLE_CHATGPT_SHELL") != "1":
+        print("Reynard ChatGPT runtime patch: disabled")
+        print("  Set REYNARD_ENABLE_CHATGPT_SHELL=1 to re-enable shell hooks.")
+        return
 
     bin_dir = Path(sys.argv[1])
     content_child_changed = patch_geckoview_content_child(bin_dir)

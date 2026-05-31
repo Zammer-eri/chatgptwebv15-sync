@@ -12,8 +12,8 @@ DIST_DIR="$ROOT_DIR/engine/prebuilt-gecko/obj-aarch64-apple-ios/dist"
 BIN_DIR="$DIST_DIR/bin"
 INCLUDE_DIR="$DIST_DIR/include/GeckoView"
 MARKER="$ROOT_DIR/engine/prebuilt-gecko/.release"
-RUNTIME_PATCH_VERSION="44"
-EXTENSION_PREF_OVERRIDES="true"
+RUNTIME_PATCH_VERSION="45"
+CHATGPT_SHELL_FEATURES="${REYNARD_ENABLE_CHATGPT_SHELL:-0}"
 DEFAULT_RELEASE_SHA256=""
 
 if [ "$TAG" = "0.4.0" ] && [ "$ASSET" = "Reynard.ipa" ]; then
@@ -45,26 +45,28 @@ hash_stdin() {
 RUNTIME_PATCH_FINGERPRINT="$(
 	{
 		printf '%s\n' "$RUNTIME_PATCH_VERSION"
+		printf 'chatgpt-shell=%s\n' "$CHATGPT_SHELL_FEATURES"
 		hash_file "$SCRIPT_DIR/setup-prebuilt-gecko.sh"
-		hash_file "$SCRIPT_DIR/patch-prebuilt-gecko.py"
-		hash_file "$SCRIPT_DIR/chatgpt-shell/page-runtime.js"
+		if [ "$CHATGPT_SHELL_FEATURES" = "1" ]; then
+			hash_file "$SCRIPT_DIR/patch-prebuilt-gecko.py"
+			hash_file "$SCRIPT_DIR/chatgpt-shell/page-runtime.js"
+		fi
 	} | hash_stdin
 )"
 MARKER_SHA="${RELEASE_SHA256:-unverified}"
-MARKER_VALUE="${TAG}/${ASSET}/asset-${MARKER_SHA}/runtime-${RUNTIME_PATCH_VERSION}-${RUNTIME_PATCH_FINGERPRINT}"
+MARKER_VALUE="${TAG}/${ASSET}/asset-${MARKER_SHA}/runtime-${RUNTIME_PATCH_VERSION}-shell-${CHATGPT_SHELL_FEATURES}-${RUNTIME_PATCH_FINGERPRINT}"
 
-echo "Reynard ChatGPT prebuilt setup:"
+echo "Reynard prebuilt setup:"
 echo "  release tag: $TAG"
 echo "  asset: $ASSET"
 echo "  runtime patch version: $RUNTIME_PATCH_VERSION"
 echo "  runtime patch fingerprint: $RUNTIME_PATCH_FINGERPRINT"
 echo "  release sha256: ${RELEASE_SHA256:-unverified}"
-echo "  extension prefs override: $EXTENSION_PREF_OVERRIDES"
-echo "  ChatGPT composer return hooks: enabled"
+echo "  ChatGPT shell runtime hooks: $([ "$CHATGPT_SHELL_FEATURES" = "1" ] && echo enabled || echo disabled)"
 
 if [ -f "$BIN_DIR/XUL" ] && [ -f "$MARKER" ] && [ "$(cat "$MARKER")" = "$MARKER_VALUE" ]; then
 	echo "Using cached prebuilt Gecko dist at $DIST_DIR"
-	echo "  ChatGPT composer return hooks: enabled"
+	echo "  ChatGPT shell runtime hooks: $([ "$CHATGPT_SHELL_FEATURES" = "1" ] && echo enabled || echo disabled)"
 	exit 0
 fi
 
@@ -100,7 +102,11 @@ cp -f "$GECKOVIEW_FW/XUL" "$BIN_DIR/XUL"
 find "$APP_DIR/Frameworks" -maxdepth 1 -type f -name '*.dylib' -exec cp -f {} "$BIN_DIR/" \;
 cp -R "$GECKOVIEW_FW/Frameworks/." "$BIN_DIR/"
 find "$BIN_DIR" -maxdepth 1 -type f -name 'libswift*.dylib' -delete
-python3 "$SCRIPT_DIR/patch-prebuilt-gecko.py" "$BIN_DIR"
+if [ "$CHATGPT_SHELL_FEATURES" = "1" ]; then
+	python3 "$SCRIPT_DIR/patch-prebuilt-gecko.py" "$BIN_DIR"
+else
+	echo "Skipping ChatGPT shell runtime patch."
+fi
 
 cat > "$INCLUDE_DIR/GeckoViewSwiftSupport.h" <<'EOF'
 #import <Foundation/Foundation.h>

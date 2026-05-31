@@ -297,6 +297,7 @@ extension BrowserViewController: AddressBarDelegate, BottomToolbarDelegate {
 
 final class BrowserUI {
     typealias TabCollectionHandler = UICollectionViewDataSource & UICollectionViewDelegate & UICollectionViewDelegateFlowLayout
+    private static let focusedInputRelocationEnabled = false
     
     let geckoView: GeckoView = {
         let view = GeckoView()
@@ -974,6 +975,12 @@ final class BrowserUI {
     }
     
     private func requestFocusedInputMetricsIfNeeded(duration: TimeInterval, curve: UIView.AnimationOptions) {
+        guard Self.focusedInputRelocationEnabled else {
+            focusedInputBottomRatio = nil
+            applyFocusedInputRelocation(duration: duration, curve: curve)
+            return
+        }
+        
         guard !controller.isSearchFocused,
               !controller.tabOverviewPresentation.isVisible,
               keyboardHeight > 0,
