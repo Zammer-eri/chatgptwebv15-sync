@@ -16,6 +16,7 @@ MARKER="$ROOT_DIR/engine/prebuilt-gecko/.release"
 RUNTIME_PATCH_VERSION="45"
 CHATGPT_SHELL_FEATURES="${REYNARD_ENABLE_CHATGPT_SHELL:-0}"
 DEFAULT_RELEASE_SHA256=""
+PYTHON_BIN="$(command -v python3 || command -v python)"
 
 if [ "$TAG" = "0.4.0" ] && [ "$ASSET" = "Reynard.ipa" ]; then
 	DEFAULT_RELEASE_SHA256="e8e674474b406f0d0549053aa2b52b3a2c7afe7241dbf2947770b6ac836b3938"
@@ -24,23 +25,11 @@ fi
 RELEASE_SHA256="${REYNARD_RELEASE_SHA256:-$DEFAULT_RELEASE_SHA256}"
 
 hash_file() {
-	if command -v shasum >/dev/null 2>&1; then
-		shasum -a 256 "$1" | awk '{print $1}'
-	elif command -v sha256sum >/dev/null 2>&1; then
-		sha256sum "$1" | awk '{print $1}'
-	else
-		openssl dgst -sha256 "$1" | awk '{print $NF}'
-	fi
+	"$PYTHON_BIN" -c 'import hashlib, pathlib, sys; print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())' "$1"
 }
 
 hash_stdin() {
-	if command -v shasum >/dev/null 2>&1; then
-		shasum -a 256 | awk '{print $1}'
-	elif command -v sha256sum >/dev/null 2>&1; then
-		sha256sum | awk '{print $1}'
-	else
-		openssl dgst -sha256 | awk '{print $NF}'
-	fi
+	"$PYTHON_BIN" -c 'import hashlib, sys; print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())'
 }
 
 RUNTIME_PATCH_FINGERPRINT="$(
@@ -114,7 +103,12 @@ else
 	echo "Skipping ChatGPT shell runtime patch."
 fi
 
-GECKO_VERSION="$(awk -F= '/^Version=/ { print $2; exit }' "$BIN_DIR/application.ini")"
+GECKO_VERSION="$("$PYTHON_BIN" -c 'import pathlib, sys
+for line in pathlib.Path(sys.argv[1]).read_text().splitlines():
+    if line.startswith("Version="):
+        print(line.split("=", 1)[1])
+        break
+' "$BIN_DIR/application.ini")"
 if [ -z "$GECKO_VERSION" ]; then
 	echo "Unable to determine Gecko version from $BIN_DIR/application.ini"
 	exit 1

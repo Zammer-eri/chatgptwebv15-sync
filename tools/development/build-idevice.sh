@@ -8,6 +8,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SUBMODULE_PATH="$REPO_ROOT/support/idevice"
 IDEVICE_URL="https://github.com/jkcoxson/idevice"
 FFI_DIR="$SUBMODULE_PATH/ffi"
+FFI_REL="ffi"
 OUTPUT_LIB="$REPO_ROOT/browser/Reynard/JIT/libidevice_ffi.a"
 OUTPUT_MARKER="$OUTPUT_LIB.fingerprint"
 
@@ -25,6 +26,21 @@ hash_stdin() {
 	"$PYTHON_BIN" -c 'import hashlib, sys; print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())'
 }
 
+idevice_source_fingerprint() {
+	git_state="$(git -C "$SUBMODULE_PATH" status --porcelain --untracked-files=all -- "$FFI_REL" 2>/dev/null || true)"
+	if [ -z "$git_state" ]; then
+		git_rev="$(git -C "$SUBMODULE_PATH" rev-parse HEAD)"
+		printf 'git-clean:%s\n' "$git_rev"
+		return
+	fi
+
+	# Dirty source trees need exact hashing; clean trees use the Git commit above.
+	find "$FFI_DIR" -type f ! -path "*/target/*" ! -path "*/.git/*" -print | LC_ALL=C sort | while IFS= read -r path; do
+		printf '%s ' "${path#$SUBMODULE_PATH/}"
+		hash_file "$path"
+	done
+}
+
 if [ ! -e "$SUBMODULE_PATH/.git" ]; then
   rm -rf "$SUBMODULE_PATH"
   git clone --depth 1 "$IDEVICE_URL" "$SUBMODULE_PATH"
@@ -38,10 +54,7 @@ CACHE_FINGERPRINT="$(
 		printf '%s\n' "$DEPLOYMENT_TARGET"
 		printf '%s\n' "$FEATURES"
 		hash_file "$SCRIPT_DIR/build-idevice.sh"
-		find "$FFI_DIR" -type f ! -path "*/target/*" ! -path "*/.git/*" -print | LC_ALL=C sort | while IFS= read -r path; do
-			printf '%s ' "${path#$SUBMODULE_PATH/}"
-			hash_file "$path"
-		done
+		idevice_source_fingerprint
 	} | hash_stdin
 )"
 
@@ -51,9 +64,15 @@ if [ -f "$OUTPUT_LIB" ] && [ -f "$OUTPUT_MARKER" ] && [ "$(cat "$OUTPUT_MARKER")
 	exit 0
 fi
 
-if ! rustup target list | grep -q "^$RUST_TARGET (installed)"; then
-	rustup target add "$RUST_TARGET"
-fi
+INSTALLED_TARGETS="$(rustup target list --installed)"
+case "
+$INSTALLED_TARGETS
+" in
+	*"
+$RUST_TARGET
+"*) ;;
+	*) rustup target add "$RUST_TARGET" ;;
+esac
 
 export IPHONEOS_DEPLOYMENT_TARGET="$DEPLOYMENT_TARGET"
 if [ -n "${RUSTFLAGS:-}" ]; then
