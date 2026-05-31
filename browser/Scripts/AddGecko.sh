@@ -8,12 +8,24 @@ FRAMEWORKS_DIR="${APP_BUNDLE}/Frameworks"
 GECKOVIEW_FW="${FRAMEWORKS_DIR}/GeckoView.framework"
 GECKOVIEW_FW_FRAMEWORKS="${GECKOVIEW_FW}/Frameworks"
 
-SIGN_IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:-${EXPANDED_CODE_SIGN_IDENTITY_NAME:-Apple Development}}"
-SHOULD_CODESIGN=1
-if [ "${CODE_SIGNING_ALLOWED:-YES}" = "NO" ] || [ "${CODE_SIGNING_REQUIRED:-YES}" = "NO" ]; then
-	SHOULD_CODESIGN=0
+SIGN_IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:-${EXPANDED_CODE_SIGN_IDENTITY_NAME:-}}"
+if [ -z "${SIGN_IDENTITY}" ] || [ "${CODE_SIGNING_ALLOWED:-YES}" = "NO" ] || [ "${CODE_SIGNING_REQUIRED:-YES}" = "NO" ]; then
+	SIGN_IDENTITY="-"
 fi
 DEFAULT_THEME_SRC="${SRCROOT}/../engine/firefox/toolkit/mozapps/extensions/default-theme"
+
+sign_file() {
+	file="$1"
+	if [ ! -e "${file}" ]; then
+		return
+	fi
+
+	if [ "${SIGN_IDENTITY}" = "-" ]; then
+		codesign --force --sign "-" "${file}"
+	else
+		codesign --force --sign "${SIGN_IDENTITY}" --preserve-metadata=identifier,entitlements "${file}"
+	fi
+}
 
 mkdir -p "${FRAMEWORKS_DIR}"
 mkdir -p "${GECKOVIEW_FW_FRAMEWORKS}"
@@ -23,8 +35,8 @@ cp -fL "${GECKO_DIST_BIN}/"*.dylib "${FRAMEWORKS_DIR}/"
 cp -fL "${GECKO_DIST_BIN}/XUL" "${GECKOVIEW_FW}/XUL"
 
 for file in "${GECKOVIEW_FW}/XUL" "${FRAMEWORKS_DIR}/"*.dylib; do
-	if [ -f "${file}" ] && [ "${SHOULD_CODESIGN}" = "1" ]; then
-		codesign --force --sign "${SIGN_IDENTITY}" --preserve-metadata=identifier,entitlements "${file}"
+	if [ -f "${file}" ]; then
+		sign_file "${file}"
 	fi
 done
 
@@ -41,6 +53,4 @@ if [ -d "${DEFAULT_THEME_SRC}" ]; then
 fi
 
 # sign the GeckoView.framework
-if [ "${SHOULD_CODESIGN}" = "1" ]; then
-	codesign --force --sign "${SIGN_IDENTITY}" "${GECKOVIEW_FW}"
-fi
+sign_file "${GECKOVIEW_FW}"
