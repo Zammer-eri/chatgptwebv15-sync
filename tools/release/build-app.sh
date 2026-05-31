@@ -16,6 +16,8 @@ cp "$XCCONFIG_PATH" "$DIST_DIR/Reynard.xcconfig"
 BUILD_SHA=$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || git -C "$ROOT_DIR/.." rev-parse --short HEAD 2>/dev/null || echo UNKNOWN)
 sed -i '' "s/CURRENT_BUILD = .*/CURRENT_BUILD = $BUILD_SHA/" "$DIST_DIR/Reynard.xcconfig"
 
+zsh "$ROOT_DIR/tools/development/build-idevice.sh"
+
 xcodebuild archive \
 	-scheme "Reynard" \
 	-archivePath "$DIST_DIR/Reynard.xcarchive" \
