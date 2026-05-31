@@ -1,6 +1,0 @@
-*.sh text eol=lf
-*.zsh text eol=lf
-*.swift text eol=lf
-*.pbxproj text eol=lf
-*.plist text eol=lf
-*.xcconfig text eol=lf

@@ -21,9 +21,8 @@ if [[ -z "$RELEASE_TAG" ]]; then
 	exit 1
 fi
 
-if [[ ! -d "$SUBMODULE_PATH/.git" ]]; then
-	echo "Missing Firefox source at $SUBMODULE_PATH."
-	echo "Run tools/development/update-gecko.sh first."
+if ! git submodule status -- "$SUBMODULE_PATH" >/dev/null 2>&1; then
+	echo "Missing submodule $SUBMODULE_PATH. Add it first, then run tools/development/update-gecko.sh."
 	exit 1
 fi
 

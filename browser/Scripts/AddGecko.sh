@@ -8,24 +8,8 @@ FRAMEWORKS_DIR="${APP_BUNDLE}/Frameworks"
 GECKOVIEW_FW="${FRAMEWORKS_DIR}/GeckoView.framework"
 GECKOVIEW_FW_FRAMEWORKS="${GECKOVIEW_FW}/Frameworks"
 
-SIGN_IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:-${EXPANDED_CODE_SIGN_IDENTITY_NAME:-}}"
-if [ -z "${SIGN_IDENTITY}" ] || [ "${CODE_SIGNING_ALLOWED:-YES}" = "NO" ] || [ "${CODE_SIGNING_REQUIRED:-YES}" = "NO" ]; then
-	SIGN_IDENTITY="-"
-fi
+SIGN_IDENTITY="${EXPANDED_CODE_SIGN_IDENTITY:-${EXPANDED_CODE_SIGN_IDENTITY_NAME:-Apple Development}}"
 DEFAULT_THEME_SRC="${SRCROOT}/../engine/firefox/toolkit/mozapps/extensions/default-theme"
-
-sign_file() {
-	file="$1"
-	if [ ! -e "${file}" ]; then
-		return
-	fi
-
-	if [ "${SIGN_IDENTITY}" = "-" ]; then
-		codesign --force --sign "-" "${file}"
-	else
-		codesign --force --sign "${SIGN_IDENTITY}" --preserve-metadata=identifier,entitlements "${file}"
-	fi
-}
 
 mkdir -p "${FRAMEWORKS_DIR}"
 mkdir -p "${GECKOVIEW_FW_FRAMEWORKS}"
@@ -36,21 +20,17 @@ cp -fL "${GECKO_DIST_BIN}/XUL" "${GECKOVIEW_FW}/XUL"
 
 for file in "${GECKOVIEW_FW}/XUL" "${FRAMEWORKS_DIR}/"*.dylib; do
 	if [ -f "${file}" ]; then
-		sign_file "${file}"
+		codesign --force --sign "${SIGN_IDENTITY}" --preserve-metadata=identifier,entitlements "${file}"
 	fi
 done
 
 # copy the rest of the files, excluding the ones we already copied and the test files
 rsync -pvtrlL --delete --exclude "XUL" --exclude "*.dylib" --exclude "Test*" --exclude "test_*" --exclude "*_unittest" "${GECKO_DIST_BIN}/" "${GECKOVIEW_FW_FRAMEWORKS}"
 
-if [ -d "${DEFAULT_THEME_SRC}" ]; then
-	# default theme missing error fix for locally built Gecko trees
-	mkdir -p "${GECKOVIEW_FW_FRAMEWORKS}/default-theme"
-	cp -RfL "${DEFAULT_THEME_SRC}/" "${GECKOVIEW_FW_FRAMEWORKS}/default-theme/"
-	if ! grep -q "resource default-theme file:default-theme/" "${GECKOVIEW_FW_FRAMEWORKS}/chrome.manifest"; then
-		echo "resource default-theme file:default-theme/" >> "${GECKOVIEW_FW_FRAMEWORKS}/chrome.manifest"
-	fi
-fi
+# default theme missing error fix
+mkdir -p "${GECKOVIEW_FW_FRAMEWORKS}/default-theme"
+cp -RfL "${DEFAULT_THEME_SRC}/" "${GECKOVIEW_FW_FRAMEWORKS}/default-theme/"
+echo "resource default-theme file:default-theme/" >> "${GECKOVIEW_FW_FRAMEWORKS}/chrome.manifest"
 
 # sign the GeckoView.framework
-sign_file "${GECKOVIEW_FW}"
+codesign --force --sign "${SIGN_IDENTITY}" "${GECKOVIEW_FW}"

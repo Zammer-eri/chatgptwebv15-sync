@@ -11,15 +11,7 @@ xcuserdata/
 
 # AI agent stuff
 AGENTS.md
-_inspect/
-__pycache__/
 
 # Build artifacts
 dist/
 browser/Reynard/JIT/libidevice_ffi.a
-browser/Reynard/JIT/libidevice_ffi.a.fingerprint
-
-# Large upstream dependencies fetched by setup/build scripts
-engine/firefox/
-engine/prebuilt-gecko/
-support/idevice/

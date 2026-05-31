@@ -10,8 +10,6 @@ import GeckoView
 import UIKit
 
 final class TabManagerImplementation: NSObject, TabManager {
-    private static let defaultLaunchURL = "https://chatgpt.com/"
-    
     private(set) var regularTabs: [Tab] = []
     private(set) var privateTabs: [Tab] = []
     private(set) var selectedTabMode: TabMode = .regular
@@ -386,10 +384,7 @@ final class TabManagerImplementation: NSObject, TabManager {
             return
         }
         
-        let index = addTab(selecting: true, windowId: nil, at: nil, isPrivate: false)
-        if let tab = regularTabs[safe: index] {
-            browse(to: Self.defaultLaunchURL, in: tab)
-        }
+        addTab(selecting: true, windowId: nil, at: nil, isPrivate: false)
     }
     
     @discardableResult

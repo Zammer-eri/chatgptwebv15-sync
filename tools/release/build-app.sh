@@ -13,20 +13,7 @@ mkdir -p "$DIST_DIR"
 
 cp "$XCCONFIG_PATH" "$DIST_DIR/Reynard.xcconfig"
 
-BUILD_SHA=$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || git -C "$ROOT_DIR/.." rev-parse --short HEAD 2>/dev/null || echo UNKNOWN)
+BUILD_SHA=$(git -C "$ROOT_DIR" rev-parse --short HEAD)
 sed -i '' "s/CURRENT_BUILD = .*/CURRENT_BUILD = $BUILD_SHA/" "$DIST_DIR/Reynard.xcconfig"
 
-zsh "$ROOT_DIR/tools/development/build-idevice.sh"
-
-xcodebuild archive \
-	-scheme "Reynard" \
-	-archivePath "$DIST_DIR/Reynard.xcarchive" \
-	-project "$PROJECT_PATH" \
-	-sdk iphoneos \
-	-arch arm64 \
-	-configuration Release \
-	-xcconfig "$DIST_DIR/Reynard.xcconfig" \
-	ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES=YES \
-	CODE_SIGNING_ALLOWED=NO \
-	CODE_SIGNING_REQUIRED=NO \
-	CODE_SIGN_IDENTITY=""
+xcodebuild archive -scheme "Reynard" -archivePath "$DIST_DIR/Reynard.xcarchive" -project "$PROJECT_PATH" -sdk iphoneos -arch arm64 -configuration Release -xcconfig "$DIST_DIR/Reynard.xcconfig"

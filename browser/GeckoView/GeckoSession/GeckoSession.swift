@@ -117,8 +117,7 @@ public class GeckoSession {
             fatalError("cannot open a GeckoSession twice")
         }
         
-        let sessionId = windowId ?? UUID().uuidString.replacingOccurrences(of: "-", with: "")
-        id = sessionId
+        id = windowId ?? UUID().uuidString.replacingOccurrences(of: "-", with: "")
         
         let settings: [String: Any?] = [
             "chromeUri": nil,
@@ -141,7 +140,7 @@ public class GeckoSession {
         })
         
         window = GeckoViewOpenWindow(
-            sessionId,
+            id,
             dispatcher,
             [
                 "settings": settings,
@@ -214,7 +213,24 @@ public class GeckoSession {
     }
     
     public func focusedInputBottomRatio() async -> CGFloat? {
-        // Shell baseline: do not query focused-input metrics until keyboard handling is reintroduced.
+        let response = try? await dispatcher.query(type: "GeckoView:GetFocusedInputMetrics")
+        guard let values = response as? [AnyHashable: Any],
+              let bottomRatioValue = values["bottomRatio"] else {
+            return nil
+        }
+        
+        if let number = bottomRatioValue as? NSNumber {
+            return CGFloat(truncating: number)
+        }
+        
+        if let value = bottomRatioValue as? Double {
+            return CGFloat(value)
+        }
+        
+        if let value = bottomRatioValue as? CGFloat {
+            return value
+        }
+        
         return nil
     }
 }

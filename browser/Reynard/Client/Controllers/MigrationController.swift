@@ -70,13 +70,11 @@ final class MigrationController {
             }
             try fileManager.moveItem(at: sourceURL, to: destinationURL)
         } catch {
-            NSLog("AppData migration failed: \(error.localizedDescription)")
-            return
+            fatalError("AppData migration failed")
         }
         
         guard !fileManager.fileExists(atPath: sourceURL.path) else {
-            NSLog("AppData migration left source in place")
-            return
+            fatalError("AppData migration failed")
         }
     }
     
@@ -95,13 +93,11 @@ final class MigrationController {
             }
             try fileManager.moveItem(at: sourceURL, to: destinationURL)
         } catch {
-            NSLog("DDI migration failed: \(error.localizedDescription)")
-            return
+            fatalError("DDI migration failed")
         }
         
         guard !fileManager.fileExists(atPath: sourceURL.path) else {
-            NSLog("DDI migration left source in place")
-            return
+            fatalError("DDI migration failed")
         }
     }
     

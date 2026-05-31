@@ -523,7 +523,6 @@
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"$(GECKO_DIST)/bin/XUL",
-					"-lidevice_ffi",
 					"-lmozglue",
 					"-lnss3",
 					"-lfreebl3",
@@ -590,7 +589,6 @@
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"$(GECKO_DIST)/bin/XUL",
-					"-lidevice_ffi",
 					"-lmozglue",
 					"-lnss3",
 					"-lfreebl3",
