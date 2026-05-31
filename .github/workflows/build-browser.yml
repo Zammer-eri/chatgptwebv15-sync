@@ -49,6 +49,17 @@ jobs:
           cargo --version
           df -h
 
+      - name: Cache Rust tooling
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/cbindgen
+            ~/.cargo/git
+            ~/.cargo/registry
+          key: reynard-rust-tools-${{ runner.os }}-cbindgen-v1
+          restore-keys: |
+            reynard-rust-tools-${{ runner.os }}-
+
       - name: Install packaging tools
         run: |
           set +e
@@ -62,6 +73,7 @@ jobs:
             echo "$LLD_PREFIX/bin" >> "$GITHUB_PATH"
             echo "REYNARD_LINKER=lld" >> "$GITHUB_ENV"
             rustup target add aarch64-apple-ios
+            command -v cbindgen >/dev/null 2>&1 || cargo install cbindgen --locked
           } 2>&1 | tee dist/install-tools.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
@@ -105,8 +117,6 @@ jobs:
           path: |
             support/idevice/target
             browser/Reynard/JIT/libidevice_ffi.a
-            ~/.cargo/git
-            ~/.cargo/registry
           key: reynard-idevice-ffi-source-${{ runner.os }}-${{ hashFiles('tools/development/build-idevice.sh', '.gitmodules') }}
           restore-keys: |
             reynard-idevice-ffi-source-${{ runner.os }}-
