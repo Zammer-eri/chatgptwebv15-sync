@@ -49,9 +49,33 @@ PTRACE_JIT_OUT="Payload/Reynard.app/ptrace_jit"
 	-o "$PTRACE_JIT_OUT"
 
 chmod 0755 "$PTRACE_JIT_OUT"
+
+find Payload -type f -exec sh -c '
+	for file do
+		case "$(file -b "$file")" in
+			*Mach-O*)
+				ldid -S "$file"
+				;;
+		esac
+	done
+' sh {} +
+
 ldid -S"$ROOT_DIR/browser/Reynard/TrollStore/JIT/ptrace_jit.entitlements" "$PTRACE_JIT_OUT"
 ldid -S"$ROOT_DIR/browser/Reynard/Entitlements/Reynard.private.entitlements" "Payload/Reynard.app/Reynard"
 ldid -S"$ROOT_DIR/browser/Helper/Entitlements/Reynard-Helper.private.entitlements" "Payload/Reynard.app/PlugIns/Reynard Helper.appex/Reynard Helper"
-[ ! -f "Payload/Reynard.app/PlugIns/OpenIn.appex/OpenIn" ] || ldid -S "Payload/Reynard.app/PlugIns/OpenIn.appex/OpenIn"
+
+find Payload -type f -exec sh -c '
+	for file do
+		case "$(file -b "$file")" in
+			*Mach-O*)
+				if ! ldid -e "$file" >/dev/null 2>&1; then
+					echo "Unsigned Mach-O: $file" >&2
+					exit 1
+				fi
+				;;
+		esac
+	done
+' sh {} +
+
 zip -r ../Reynard-TrollStore.tipa Payload -x "._*" -x ".DS_Store" -x "__MACOSX" # trollstore ipa
 cp ../Reynard-TrollStore.tipa ../Reynard-Jailbroken.ipa # for jailbroken users
