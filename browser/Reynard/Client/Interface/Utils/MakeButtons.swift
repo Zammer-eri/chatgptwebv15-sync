@@ -77,10 +77,10 @@ enum MakeButtons {
     
     static func updateLibraryActionsButton(_ button: UIButton, imageName: String) {
         if hasLiquidGlass, #available(iOS 26.0, *) {
-            var configuration = UIButton.Configuration.glass()
+            var configuration = UIButton.Configuration.plain()
             configuration.image = toolbarImage(for: imageName)
-            configuration.baseForegroundColor = .label
-            configuration.contentInsets = .zero
+            configuration.baseForegroundColor = UIColor.label
+            configuration.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0)
             button.configuration = configuration
         } else {
             button.setImage(toolbarImage(for: imageName), for: .normal)
