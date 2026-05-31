@@ -13,12 +13,15 @@ concurrency:
 
 jobs:
   build:
-    name: Publish Reynard 0.4.0 Baseline
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    name: Build Reynard Browser
+    runs-on: macos-latest
+    timeout-minutes: 90
 
     env:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      HOMEBREW_NO_INSTALL_CLEANUP: "1"
       ROLLING_TAG: rolling
+      RUST_BACKTRACE: "1"
 
     steps:
       - name: Checkout repository
@@ -27,8 +30,81 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Download known-good upstream baseline
-        run: sh ./tools/release/download-upstream-baseline.sh
+      - name: Show build host
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          python3 --version
+          rustc --version
+          cargo --version
+          df -h
+
+      - name: Install packaging tools
+        run: |
+          brew list ldid >/dev/null 2>&1 || brew install ldid
+          rustup target add aarch64-apple-ios
+
+      - name: Make scripts executable
+        run: find tools browser/Scripts -name "*.sh" -exec chmod +x {} +
+
+      - name: Cache prebuilt Gecko engine
+        uses: actions/cache@v4
+        with:
+          path: engine/prebuilt-gecko
+          key: reynard-prebuilt-gecko-0.4.0-runtime-v2-${{ hashFiles('tools/development/setup-prebuilt-gecko.sh') }}
+          restore-keys: |
+            reynard-prebuilt-gecko-0.4.0-runtime-v2-
+
+      - name: Cache JIT native bridge
+        uses: actions/cache@v4
+        with:
+          path: |
+            support/idevice
+            browser/Reynard/JIT/libidevice_ffi.a
+            ~/.cargo/git
+            ~/.cargo/registry
+          key: reynard-idevice-ffi-ios13-${{ hashFiles('tools/development/build-idevice.sh') }}
+          restore-keys: |
+            reynard-idevice-ffi-ios13-
+
+      - name: Prepare prebuilt Gecko engine
+        run: ./tools/development/setup-prebuilt-gecko.sh
+
+      - name: Build idevice FFI
+        run: ./tools/development/build-idevice.sh
+
+      - name: Archive browser app
+        env:
+          REYNARD_SKIP_CODE_SIGNING: "1"
+        run: ./tools/release/build-app.sh
+
+      - name: Package TrollStore TIPA
+        env:
+          REYNARD_TROLLSTORE_ONLY: "1"
+        run: ./tools/release/create-ipa.sh
+
+      - name: Verify packaged runtime
+        run: |
+          python3 - <<'PY'
+          import plistlib
+          import sys
+          import zipfile
+
+          tipa = "dist/Reynard-TrollStore.tipa"
+          with zipfile.ZipFile(tipa) as archive:
+              swift_path = "Payload/Reynard.app/Frameworks/libswift_Concurrency.dylib"
+              info_path = "Payload/Reynard.app/Info.plist"
+              swift_size = archive.getinfo(swift_path).file_size
+              info = plistlib.loads(archive.read(info_path))
+
+          print(f"CFBundleVersion: {info.get('CFBundleVersion')}")
+          print(f"{swift_path}: {swift_size} bytes")
+
+          if swift_size > 1_000_000:
+              print("Packaged Swift concurrency runtime is not the upstream iOS 15-compatible runtime.", file=sys.stderr)
+              sys.exit(1)
+          PY
 
       - name: Publish rolling prerelease
         env:
@@ -47,22 +123,22 @@ jobs:
           git push origin "refs/tags/$ROLLING_TAG" --force
 
           {
-            echo "Rolling baseline build for commit $GITHUB_SHA."
+            echo "Rolling source build for commit $GITHUB_SHA."
             echo
-            echo "This artifact is upstream Reynard 0.4.0 TrollStore TIPA, verified by SHA-256."
-            echo "No local source build, shell patches, signing, or Gecko repackaging is applied."
+            echo "This artifact is built from this repository's Reynard browser source."
+            echo "Gecko and Swift runtime payloads are restored from upstream Reynard 0.4.0 to avoid rebuilding Firefox."
           } > "$NOTES_FILE"
 
           if gh release view "$ROLLING_TAG" >/dev/null 2>&1; then
             gh release edit "$ROLLING_TAG" \
-              --title "Rolling Reynard Baseline" \
+              --title "Rolling Reynard Source Build" \
               --notes-file "$NOTES_FILE" \
               --prerelease \
               --latest=false \
               --target "$GITHUB_SHA"
           else
             gh release create "$ROLLING_TAG" \
-              --title "Rolling Reynard Baseline" \
+              --title "Rolling Reynard Source Build" \
               --notes-file "$NOTES_FILE" \
               --prerelease \
               --latest=false \

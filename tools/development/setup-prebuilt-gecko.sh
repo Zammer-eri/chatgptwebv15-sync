@@ -10,6 +10,7 @@ URL="https://github.com/minh-ton/reynard-browser/releases/download/${TAG}/${ASSE
 WORK_DIR="$ROOT_DIR/dist/prebuilt-gecko-work"
 DIST_DIR="$ROOT_DIR/engine/prebuilt-gecko/obj-aarch64-apple-ios/dist"
 BIN_DIR="$DIST_DIR/bin"
+SWIFT_RUNTIME_DIR="$ROOT_DIR/engine/prebuilt-gecko/swift-runtime"
 INCLUDE_ROOT="$DIST_DIR/include"
 INCLUDE_DIR="$INCLUDE_ROOT/GeckoView"
 MARKER="$ROOT_DIR/engine/prebuilt-gecko/.release"
@@ -27,7 +28,7 @@ hash_file() {
 }
 
 MARKER_SHA="${RELEASE_SHA256:-unverified}"
-MARKER_VALUE="${TAG}/${ASSET}/asset-${MARKER_SHA}/runtime-clean-prebuilt-v1"
+MARKER_VALUE="${TAG}/${ASSET}/asset-${MARKER_SHA}/runtime-clean-prebuilt-v2"
 
 echo "Reynard prebuilt Gecko setup:"
 echo "  release tag: $TAG"
@@ -38,6 +39,7 @@ if [ -f "$BIN_DIR/XUL" ] &&
 	[ -f "$INCLUDE_ROOT/mozilla-config.h" ] &&
 	[ -f "$INCLUDE_DIR/GeckoViewSwiftSupport.h" ] &&
 	[ -f "$INCLUDE_DIR/IOSBootstrap.h" ] &&
+	[ -f "$SWIFT_RUNTIME_DIR/libswift_Concurrency.dylib" ] &&
 	[ -f "$MARKER" ] &&
 	[ "$(cat "$MARKER")" = "$MARKER_VALUE" ]; then
 	echo "Using cached prebuilt Gecko dist at $DIST_DIR"
@@ -45,7 +47,7 @@ if [ -f "$BIN_DIR/XUL" ] &&
 fi
 
 rm -rf "$WORK_DIR" "$ROOT_DIR/engine/prebuilt-gecko"
-mkdir -p "$WORK_DIR" "$BIN_DIR" "$INCLUDE_DIR"
+mkdir -p "$WORK_DIR" "$BIN_DIR" "$INCLUDE_DIR" "$SWIFT_RUNTIME_DIR"
 
 echo "Downloading Reynard prebuilt engine payload: $URL"
 curl -L --fail --retry 3 -o "$WORK_DIR/Reynard.ipa" "$URL"
@@ -75,6 +77,7 @@ fi
 
 cp -f "$GECKOVIEW_FW/XUL" "$BIN_DIR/XUL"
 find "$APP_DIR/Frameworks" -maxdepth 1 -type f -name '*.dylib' -exec cp -f {} "$BIN_DIR/" \;
+find "$APP_DIR/Frameworks" -maxdepth 1 -type f -name 'libswift*.dylib' -exec cp -f {} "$SWIFT_RUNTIME_DIR/" \;
 cp -R "$GECKOVIEW_FW/Frameworks/." "$BIN_DIR/"
 find "$BIN_DIR" -maxdepth 1 -type f -name 'libswift*.dylib' -delete
 
