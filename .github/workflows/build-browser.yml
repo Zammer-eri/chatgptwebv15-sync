@@ -12,23 +12,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build Reynard Browser
+  build-old-03:
+    name: Build old 0.3 mixed baseline
     runs-on: macos-latest
     timeout-minutes: 90
 
     env:
       HOMEBREW_NO_AUTO_UPDATE: "1"
       HOMEBREW_NO_INSTALL_CLEANUP: "1"
-      ROLLING_TAG: rolling
-      RUST_BACKTRACE: "1"
+      RELEASE_TAG: diagnostic-0.3-mixed
 
     steps:
-      - name: Checkout repository
+      - name: Checkout old shell-era source
         uses: actions/checkout@v4
         with:
+          ref: f409d0c
           fetch-depth: 1
           submodules: false
+          path: old-source
 
       - name: Show build host
         run: |
@@ -36,113 +37,82 @@ jobs:
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-version
           python3 --version
-          rustc --version
-          cargo --version
           df -h
 
       - name: Install packaging tools
-        run: |
-          brew list ldid >/dev/null 2>&1 || brew install ldid
-          rustup target add aarch64-apple-ios
+        run: brew list ldid >/dev/null 2>&1 || brew install ldid
 
-      - name: Make scripts executable
-        run: find tools browser/Scripts -name "*.sh" -exec chmod +x {} +
+      - name: Make Reynard scripts executable
+        run: chmod +x old-source/ReynardChatGPT/tools/development/*.sh old-source/ReynardChatGPT/tools/release/*.sh
 
-      - name: Cache prebuilt Gecko engine
+      - name: Cache old prebuilt Gecko engine
         uses: actions/cache@v4
         with:
-          path: engine/prebuilt-gecko
-          key: reynard-prebuilt-gecko-0.4.0-runtime-v2-${{ hashFiles('tools/development/setup-prebuilt-gecko.sh') }}
+          path: old-source/ReynardChatGPT/engine/prebuilt-gecko
+          key: reynard-prebuilt-gecko-0.3.0-shim-v3-${{ hashFiles('old-source/ReynardChatGPT/tools/development/setup-prebuilt-gecko.sh') }}
           restore-keys: |
-            reynard-prebuilt-gecko-0.4.0-runtime-v2-
+            reynard-prebuilt-gecko-0.3.0-shim-v3-
 
-      - name: Cache JIT native bridge
-        uses: actions/cache@v4
-        with:
-          path: |
-            support/idevice
-            browser/Reynard/JIT/libidevice_ffi.a
-            ~/.cargo/git
-            ~/.cargo/registry
-          key: reynard-idevice-ffi-ios13-${{ hashFiles('tools/development/build-idevice.sh') }}
-          restore-keys: |
-            reynard-idevice-ffi-ios13-
-
-      - name: Prepare prebuilt Gecko engine
+      - name: Prepare old prebuilt Gecko engine
+        working-directory: old-source/ReynardChatGPT
         run: ./tools/development/setup-prebuilt-gecko.sh
 
-      - name: Build idevice FFI
-        run: ./tools/development/build-idevice.sh
-
-      - name: Archive browser app
-        env:
-          REYNARD_SKIP_CODE_SIGNING: "1"
+      - name: Archive old browser app
+        working-directory: old-source/ReynardChatGPT
         run: ./tools/release/build-app.sh
 
-      - name: Package TrollStore TIPA
-        env:
-          REYNARD_TROLLSTORE_ONLY: "1"
+      - name: Package old TrollStore TIPA
+        working-directory: old-source/ReynardChatGPT
         run: ./tools/release/create-ipa.sh
 
-      - name: Verify packaged runtime
+      - name: Prepare release asset
         run: |
+          set -euo pipefail
+          cp old-source/ReynardChatGPT/dist/Reynard-TrollStore.tipa Reynard-0.3-mixed.tipa
           python3 - <<'PY'
-          import plistlib
-          import sys
-          import zipfile
+          import hashlib
+          from pathlib import Path
 
-          tipa = "dist/Reynard-TrollStore.tipa"
-          with zipfile.ZipFile(tipa) as archive:
-              swift_path = "Payload/Reynard.app/Frameworks/libswift_Concurrency.dylib"
-              info_path = "Payload/Reynard.app/Info.plist"
-              swift_size = archive.getinfo(swift_path).file_size
-              info = plistlib.loads(archive.read(info_path))
-
-          print(f"CFBundleVersion: {info.get('CFBundleVersion')}")
-          print(f"{swift_path}: {swift_size} bytes")
-
-          if swift_size > 1_000_000:
-              print("Packaged Swift concurrency runtime is not the upstream iOS 15-compatible runtime.", file=sys.stderr)
-              sys.exit(1)
+          path = Path("Reynard-0.3-mixed.tipa")
+          print(f"{path}: {path.stat().st_size} bytes")
+          print(hashlib.sha256(path.read_bytes()).hexdigest())
           PY
 
-      - name: Publish rolling prerelease
+      - name: Publish diagnostic prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
-          ASSET_PATH="dist/Reynard-TrollStore.tipa"
           NOTES_FILE="$(mktemp)"
-
-          test -f "$ASSET_PATH"
+          test -f Reynard-0.3-mixed.tipa
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -f "$ROLLING_TAG" "$GITHUB_SHA"
-          git push origin "refs/tags/$ROLLING_TAG" --force
+          git tag -f "$RELEASE_TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/$RELEASE_TAG" --force
 
           {
-            echo "Rolling source build for commit $GITHUB_SHA."
+            echo "Diagnostic old mixed-build baseline for commit $GITHUB_SHA."
             echo
-            echo "This artifact is built from this repository's Reynard browser source."
-            echo "Gecko and Swift runtime payloads are restored from upstream Reynard 0.4.0 to avoid rebuilding Firefox."
+            echo "This builds commit f409d0c using the old Reynard 0.3 mixed method."
+            echo "Purpose: verify whether the old GitHub Actions mixed build still launches on the device."
           } > "$NOTES_FILE"
 
-          if gh release view "$ROLLING_TAG" >/dev/null 2>&1; then
-            gh release edit "$ROLLING_TAG" \
-              --title "Rolling Reynard Source Build" \
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --title "Diagnostic Reynard 0.3 Mixed Build" \
               --notes-file "$NOTES_FILE" \
               --prerelease \
               --latest=false \
               --target "$GITHUB_SHA"
           else
-            gh release create "$ROLLING_TAG" \
-              --title "Rolling Reynard Source Build" \
+            gh release create "$RELEASE_TAG" \
+              --title "Diagnostic Reynard 0.3 Mixed Build" \
               --notes-file "$NOTES_FILE" \
               --prerelease \
               --latest=false \
               --target "$GITHUB_SHA"
           fi
 
-          gh release upload "$ROLLING_TAG" "$ASSET_PATH#Reynard-TrollStore.tipa" --clobber
+          gh release upload "$RELEASE_TAG" Reynard-0.3-mixed.tipa --clobber
