@@ -69,12 +69,9 @@ public class GeckoEventDispatcherWrapper: NSObject, SwiftEventDispatcher {
         listeners[type, default: []] += [listener]
     }
 
-    public func dispatch(type: String!, message: [String: Any]!, callback: EventCallback?) {
-        let bridgedMessage: [String: Any?]? = message?.mapValues { $0 }
-        dispatch(type: type, message: bridgedMessage, callback: callback)
-    }
-
-    func dispatch(type: String, message: [String: Any?]? = nil, callback: EventCallback? = nil) {
+    public func dispatch(
+        type: String, message: [String: Any?]? = nil, callback: EventCallback? = nil
+    ) {
         if let eventListeners = listeners[type] {
             for listener in eventListeners {
                 listener.handleMessage(type: type, message: message, callback: callback)
@@ -116,7 +113,7 @@ public class GeckoEventDispatcherWrapper: NSObject, SwiftEventDispatcher {
     }
 
     public func dispatch(toSwift type: String!, message: Any!, callback: EventCallback?) {
-        let message = message as? [String: Any?]
+        let message = message as! [String: Any?]?
         if let eventListeners = listeners[type] {
             for listener in eventListeners {
                 listener.handleMessage(type: type, message: message, callback: callback)

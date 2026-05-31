@@ -117,8 +117,7 @@ public class GeckoSession {
             fatalError("cannot open a GeckoSession twice")
         }
         
-        let sessionId = windowId ?? UUID().uuidString.replacingOccurrences(of: "-", with: "")
-        id = sessionId
+        id = windowId ?? UUID().uuidString.replacingOccurrences(of: "-", with: "")
         
         let settings: [String: Any?] = [
             "chromeUri": nil,
@@ -141,7 +140,7 @@ public class GeckoSession {
         })
         
         window = GeckoViewOpenWindow(
-            sessionId,
+            id,
             dispatcher,
             [
                 "settings": settings,

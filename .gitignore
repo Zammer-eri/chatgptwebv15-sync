@@ -16,5 +16,4 @@ AGENTS.md
 dist/
 *.ipa
 *.tipa
-engine/prebuilt-gecko/
 browser/Reynard/JIT/libidevice_ffi.a

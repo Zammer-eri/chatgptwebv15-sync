@@ -10,7 +10,6 @@ ARCHIVE_DIR="$ROOT_DIR/dist/Reynard.xcarchive"
 APP_DIR="$ARCHIVE_DIR/Products/Applications"
 WORK_DIR="$ROOT_DIR/dist/Reynard"
 TROLLSTORE_ONLY="${REYNARD_TROLLSTORE_ONLY:-0}"
-SWIFT_RUNTIME_DIR="$ROOT_DIR/engine/prebuilt-gecko/swift-runtime"
 
 sign_macho_files() {
 	find Payload -type f -exec sh -c '
@@ -83,11 +82,6 @@ PTRACE_JIT_OUT="Payload/Reynard.app/ptrace_jit"
 	-o "$PTRACE_JIT_OUT"
 
 chmod 0755 "$PTRACE_JIT_OUT"
-
-if [ -d "$SWIFT_RUNTIME_DIR" ]; then
-	echo "Restoring upstream Swift runtime from $SWIFT_RUNTIME_DIR"
-	find "$SWIFT_RUNTIME_DIR" -maxdepth 1 -type f -name 'libswift*.dylib' -exec cp -f {} "Payload/Reynard.app/Frameworks/" \;
-fi
 
 sign_macho_files
 
