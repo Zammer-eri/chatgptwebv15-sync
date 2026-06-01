@@ -25,6 +25,7 @@ rm -f "$FIREFOX_DIR/.mozconfig"
 	echo "ac_add_options --enable-optimize"
 	echo "ac_add_options --disable-debug"
 	echo "ac_add_options --disable-tests"
+	echo "ac_add_options --without-wasm-sandboxed-libraries"
 	if [ -n "${REYNARD_LINKER:-}" ]; then
 		echo "ac_add_options --with-linker=$REYNARD_LINKER"
 	fi

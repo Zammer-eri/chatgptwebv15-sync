@@ -67,21 +67,11 @@ jobs:
           {
             set -euo pipefail
             brew list ldid >/dev/null 2>&1 || brew install ldid
-            brew list llvm >/dev/null 2>&1 || brew install llvm
             brew list lld >/dev/null 2>&1 || brew install lld
-            brew list wasi-libc >/dev/null 2>&1 || brew install wasi-libc
-            LLVM_PREFIX="$(brew --prefix llvm)"
             LLD_PREFIX="$(brew --prefix lld)"
-            WASI_PREFIX="$(brew --prefix wasi-libc)"
-            test -x "$LLVM_PREFIX/bin/clang"
-            test -x "$LLVM_PREFIX/bin/clang++"
             test -x "$LLD_PREFIX/bin/ld64.lld"
-            test -d "$WASI_PREFIX/share/wasi-sysroot/include"
             echo "$LLD_PREFIX/bin" >> "$GITHUB_PATH"
             echo "REYNARD_LINKER=lld" >> "$GITHUB_ENV"
-            echo "WASM_CC=$LLVM_PREFIX/bin/clang" >> "$GITHUB_ENV"
-            echo "WASM_CXX=$LLVM_PREFIX/bin/clang++" >> "$GITHUB_ENV"
-            echo "WASI_SYSROOT=$WASI_PREFIX/share/wasi-sysroot" >> "$GITHUB_ENV"
             rustup target add aarch64-apple-ios
             command -v cbindgen >/dev/null 2>&1 || cargo install cbindgen --locked
           } 2>&1 | tee dist/install-tools.log
