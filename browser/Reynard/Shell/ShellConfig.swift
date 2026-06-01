@@ -35,7 +35,7 @@ struct ShellFeatures {
         restoresPreviousTabs: false,
         loadDefaultURLOnFirstLaunch: true,
         allowsSiteJavaScript: false,
-        hidesBrowserChrome: false,
+        hidesBrowserChrome: true,
         prefersMobileUserAgent: false,
         requiresLocation: false
     )

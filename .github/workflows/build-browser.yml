@@ -8,21 +8,6 @@ on:
         required: false
         default: chatgpt
         type: string
-      shell_display_name:
-        description: "Installed app display name"
-        required: false
-        default: ChatGPT
-        type: string
-      shell_bundle_identifier:
-        description: "Main app bundle identifier"
-        required: false
-        default: com.chatgpt.shell
-        type: string
-      shell_url_scheme:
-        description: "Custom URL scheme"
-        required: false
-        default: chatgptshell
-        type: string
   push:
     branches:
       - main
@@ -35,14 +20,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  ROLLING_TAG: rolling
   HOMEBREW_NO_AUTO_UPDATE: "1"
   HOMEBREW_NO_INSTALL_CLEANUP: "1"
   RUST_BACKTRACE: "1"
   SHELL_TARGET: ${{ github.event.inputs.shell_target || 'chatgpt' }}
-  SHELL_DISPLAY_NAME: ${{ github.event.inputs.shell_display_name || 'ChatGPT' }}
-  SHELL_BUNDLE_IDENTIFIER: ${{ github.event.inputs.shell_bundle_identifier || 'com.chatgpt.shell' }}
-  SHELL_URL_SCHEME: ${{ github.event.inputs.shell_url_scheme || 'chatgptshell' }}
 
 jobs:
   build-shell-source:
@@ -56,6 +37,9 @@ jobs:
         with:
           fetch-depth: 1
           submodules: false
+
+      - name: Load shell profile
+        run: python3 tools/release/load-shell-profile.py "$SHELL_TARGET"
 
       - name: Select Xcode 26
         run: |
@@ -265,9 +249,10 @@ jobs:
           import zipfile
           from pathlib import Path
 
-          tipa = Path("dist/Reynard-TrollStore.tipa")
+          package_basename = os.environ.get("SHELL_PACKAGE_BASENAME", "ChatGPT-Shell")
+          tipa = Path("dist") / f"{package_basename}-TrollStore.tipa"
           if not tipa.exists():
-              raise SystemExit("missing dist/Reynard-TrollStore.tipa")
+              raise SystemExit(f"missing {tipa}")
 
           with zipfile.ZipFile(tipa) as archive:
               names = set(archive.namelist())
@@ -285,6 +270,11 @@ jobs:
                   raise SystemExit(f"missing package members: {missing}")
               info = plistlib.loads(archive.read("Payload/Reynard.app/Info.plist"))
 
+          expected_version = os.environ.get("CURRENT_VERSION")
+          actual_version = info.get("CFBundleShortVersionString")
+          if expected_version and actual_version != expected_version:
+              raise SystemExit(f"version mismatch: expected {expected_version}, got {actual_version}")
+
           sha256 = hashlib.sha256(tipa.read_bytes()).hexdigest()
           report = "\n".join([
               "# Shell Source Build",
@@ -292,6 +282,7 @@ jobs:
               f"- target: `{os.environ.get('SHELL_TARGET', 'chatgpt')}`",
               f"- display name: `{os.environ.get('SHELL_DISPLAY_NAME', 'ChatGPT')}`",
               f"- bundle id: `{info.get('CFBundleIdentifier')}`",
+              f"- package: `{tipa.name}`",
               f"- sha256: `{sha256}`",
               f"- bytes: {tipa.stat().st_size}",
               f"- version: {info.get('CFBundleShortVersionString')}",
@@ -303,7 +294,7 @@ jobs:
               "No upstream IPA payload extraction or runtime splicing is used.",
               "",
           ])
-          Path("dist/shell-source-build.md").write_text(report, encoding="utf-8")
+          Path("dist").joinpath(f"{package_basename}-source-build.md").write_text(report, encoding="utf-8")
           print(report)
           PY
 
@@ -312,8 +303,8 @@ jobs:
         with:
           name: Shell-Source-Build
           path: |
-            dist/Reynard-TrollStore.tipa
-            dist/shell-source-build.md
+            dist/*-TrollStore.tipa
+            dist/*-source-build.md
           if-no-files-found: error
 
       - name: Publish rolling prerelease
@@ -323,13 +314,17 @@ jobs:
           set -euo pipefail
 
           NOTES_FILE="$(mktemp)"
-          test -f dist/Reynard-TrollStore.tipa
-          test -f dist/shell-source-build.md
+          RELEASE_TAG="${SHELL_RELEASE_TAG:-${SHELL_TARGET}-rolling}"
+          PACKAGE_FILE="dist/${SHELL_PACKAGE_BASENAME:-ChatGPT-Shell}-TrollStore.tipa"
+          REPORT_FILE="dist/${SHELL_PACKAGE_BASENAME:-ChatGPT-Shell}-source-build.md"
+
+          test -f "$PACKAGE_FILE"
+          test -f "$REPORT_FILE"
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag -f "$ROLLING_TAG" "$GITHUB_SHA"
-          git push origin "refs/tags/$ROLLING_TAG" --force
+          git tag -f "$RELEASE_TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/$RELEASE_TAG" --force
 
           {
             echo "Rolling shell source build for commit $GITHUB_SHA."
@@ -337,36 +332,37 @@ jobs:
             echo "Shell target: $SHELL_TARGET"
             echo "Display name: $SHELL_DISPLAY_NAME"
             echo "Bundle id: $SHELL_BUNDLE_IDENTIFIER"
+            echo "Version: $CURRENT_VERSION"
             echo
             echo "Asset:"
-            echo "- Reynard-TrollStore.tipa: source-built shell package."
+            echo "- $(basename "$PACKAGE_FILE"): source-built shell package."
             echo
             echo "No upstream IPA payload extraction or runtime splicing is used."
           } > "$NOTES_FILE"
 
-          if gh release view "$ROLLING_TAG" >/dev/null 2>&1; then
-            gh release edit "$ROLLING_TAG" \
-              --title "Rolling Shell Source Build" \
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --title "Rolling $SHELL_DISPLAY_NAME Source Build" \
               --notes-file "$NOTES_FILE" \
               --prerelease \
               --latest=false \
               --target "$GITHUB_SHA"
           else
-            gh release create "$ROLLING_TAG" \
-              --title "Rolling Shell Source Build" \
+            gh release create "$RELEASE_TAG" \
+              --title "Rolling $SHELL_DISPLAY_NAME Source Build" \
               --notes-file "$NOTES_FILE" \
               --prerelease \
               --latest=false \
               --target "$GITHUB_SHA"
           fi
 
-          gh release view "$ROLLING_TAG" --json assets --jq '.assets[].name' > /tmp/reynard-release-assets.txt
+          gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' > /tmp/shell-release-assets.txt
           while IFS= read -r asset; do
             [ -n "$asset" ] || continue
-            gh release delete-asset "$ROLLING_TAG" "$asset" --yes
-          done < /tmp/reynard-release-assets.txt
+            gh release delete-asset "$RELEASE_TAG" "$asset" --yes
+          done < /tmp/shell-release-assets.txt
 
-          gh release upload "$ROLLING_TAG" \
-            dist/Reynard-TrollStore.tipa \
-            dist/shell-source-build.md \
+          gh release upload "$RELEASE_TAG" \
+            "$PACKAGE_FILE" \
+            "$REPORT_FILE" \
             --clobber

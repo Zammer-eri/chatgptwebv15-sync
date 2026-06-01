@@ -6,16 +6,40 @@ CLANG_PATH="$(xcrun --sdk iphoneos --find clang)"
 SDK_PATH="$(xcrun --sdk iphoneos --show-sdk-path)"
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 ROOT_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)"
+DIST_XCCONFIG="$ROOT_DIR/dist/Reynard.xcconfig"
 ARCHIVE_DIR="$ROOT_DIR/dist/Reynard.xcarchive"
 APP_DIR="$ARCHIVE_DIR/Products/Applications"
 WORK_DIR="$ROOT_DIR/dist/Reynard"
 TROLLSTORE_ONLY="${REYNARD_TROLLSTORE_ONLY:-0}"
-SHELL_TARGET="${SHELL_TARGET:-chatgpt}"
-SHELL_URL_SCHEME="${SHELL_URL_SCHEME:-chatgptshell}"
-APP_BUNDLE_IDENTIFIER="${SHELL_BUNDLE_IDENTIFIER:-com.chatgpt.shell}"
+
+xcconfig_value() {
+	key="$1"
+	default_value="$2"
+	eval "env_value=\${$key:-}"
+	if [ -n "$env_value" ]; then
+		printf '%s' "$env_value"
+		return
+	fi
+
+	if [ -f "$DIST_XCCONFIG" ]; then
+		config_value="$(sed -n "s/^[[:space:]]*$key[[:space:]]*=[[:space:]]*//p" "$DIST_XCCONFIG" | tail -n 1 | sed 's/[[:space:]]*$//')"
+		if [ -n "$config_value" ]; then
+			printf '%s' "$config_value"
+			return
+		fi
+	fi
+
+	printf '%s' "$default_value"
+}
+
+CURRENT_VERSION="$(xcconfig_value CURRENT_VERSION 0.2.0)"
+SHELL_TARGET="$(xcconfig_value SHELL_TARGET chatgpt)"
+SHELL_URL_SCHEME="$(xcconfig_value SHELL_URL_SCHEME chatgptshell)"
+SHELL_PACKAGE_BASENAME="$(xcconfig_value SHELL_PACKAGE_BASENAME ChatGPT-Shell)"
+APP_BUNDLE_IDENTIFIER="$(xcconfig_value SHELL_BUNDLE_IDENTIFIER com.chatgpt.shell)"
 HELPER_BUNDLE_IDENTIFIER="${SHELL_HELPER_BUNDLE_IDENTIFIER:-$APP_BUNDLE_IDENTIFIER.Helper}"
 OPENIN_BUNDLE_IDENTIFIER="${SHELL_OPENIN_BUNDLE_IDENTIFIER:-$APP_BUNDLE_IDENTIFIER.OpenIn}"
-PACKAGE_OPENIN_EXTENSION="${SHELL_PACKAGE_OPENIN_EXTENSION:-}"
+PACKAGE_OPENIN_EXTENSION="$(xcconfig_value SHELL_PACKAGE_OPENIN_EXTENSION "")"
 
 if [ -z "$PACKAGE_OPENIN_EXTENSION" ]; then
 	if [ "$SHELL_TARGET" = "browser" ]; then
@@ -75,12 +99,15 @@ fi
 
 # I absolutely hate Apple for this
 # Why is my bundle identifier just become unavailable for no reason?
+plutil -replace CFBundleShortVersionString -string "$CURRENT_VERSION" "$APP_PATH/Info.plist"
 plutil -replace CFBundleIdentifier -string "$APP_BUNDLE_IDENTIFIER" "$APP_PATH/Info.plist"
 if [ "$SHELL_TARGET" != "browser" ]; then
 	plutil -replace CFBundleURLTypes.0.CFBundleURLSchemes -json "[\"$SHELL_URL_SCHEME\"]" "$APP_PATH/Info.plist"
 fi
+plutil -replace CFBundleShortVersionString -string "$CURRENT_VERSION" "$APP_PATH/PlugIns/Reynard Helper.appex/Info.plist"
 plutil -replace CFBundleIdentifier -string "$HELPER_BUNDLE_IDENTIFIER" "$APP_PATH/PlugIns/Reynard Helper.appex/Info.plist"
 if [ -d "$APP_PATH/PlugIns/OpenIn.appex" ]; then
+	plutil -replace CFBundleShortVersionString -string "$CURRENT_VERSION" "$APP_PATH/PlugIns/OpenIn.appex/Info.plist"
 	plutil -replace CFBundleIdentifier -string "$OPENIN_BUNDLE_IDENTIFIER" "$APP_PATH/PlugIns/OpenIn.appex/Info.plist"
 fi
 
@@ -91,13 +118,19 @@ cp "$ROOT_DIR/browser/Helper/Entitlements/Reynard-Helper.private.entitlements" "
 plutil -replace application-identifier -string "$APP_BUNDLE_IDENTIFIER" "$APP_ENTITLEMENTS"
 plutil -replace application-identifier -string "$HELPER_BUNDLE_IDENTIFIER" "$HELPER_ENTITLEMENTS"
 
-rm -rf "$WORK_DIR" "$ROOT_DIR/dist/Reynard.ipa" "$ROOT_DIR/dist/Reynard-TrollStore.tipa" "$ROOT_DIR/dist/Reynard-Jailbroken.ipa"
+rm -rf "$WORK_DIR" \
+	"$ROOT_DIR/dist/$SHELL_PACKAGE_BASENAME.ipa" \
+	"$ROOT_DIR/dist/$SHELL_PACKAGE_BASENAME-TrollStore.tipa" \
+	"$ROOT_DIR/dist/$SHELL_PACKAGE_BASENAME-Jailbroken.ipa" \
+	"$ROOT_DIR/dist/Reynard.ipa" \
+	"$ROOT_DIR/dist/Reynard-TrollStore.tipa" \
+	"$ROOT_DIR/dist/Reynard-Jailbroken.ipa"
 mkdir -p "$WORK_DIR/Payload"
 cp -R "$APP_PATH" "$WORK_DIR/Payload/"
 
 cd "$WORK_DIR"
 if [ "$TROLLSTORE_ONLY" != "1" ]; then
-	zip -r ../Reynard.ipa Payload -x "._*" -x ".DS_Store" -x "__MACOSX" # normal ipa
+	zip -r "../$SHELL_PACKAGE_BASENAME.ipa" Payload -x "._*" -x ".DS_Store" -x "__MACOSX" # normal ipa
 fi
 
 PTRACE_JIT_SRC="$ROOT_DIR/browser/Reynard/TrollStore/JIT/ptrace_jit.c"
@@ -122,7 +155,7 @@ if [ -d "Payload/Reynard.app/PlugIns/OpenIn.appex" ]; then
 	ldid -S "Payload/Reynard.app/PlugIns/OpenIn.appex/OpenIn"
 fi
 verify_macho_signatures
-zip -r ../Reynard-TrollStore.tipa Payload -x "._*" -x ".DS_Store" -x "__MACOSX" # trollstore ipa
+zip -r "../$SHELL_PACKAGE_BASENAME-TrollStore.tipa" Payload -x "._*" -x ".DS_Store" -x "__MACOSX" # trollstore ipa
 if [ "$TROLLSTORE_ONLY" != "1" ]; then
-	cp ../Reynard-TrollStore.tipa ../Reynard-Jailbroken.ipa # for jailbroken users
+	cp "../$SHELL_PACKAGE_BASENAME-TrollStore.tipa" "../$SHELL_PACKAGE_BASENAME-Jailbroken.ipa" # for jailbroken users
 fi

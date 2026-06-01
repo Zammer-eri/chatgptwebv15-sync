@@ -161,6 +161,10 @@ extension BrowserViewController: AddressBarDelegate, BottomToolbarDelegate {
     }
     
     private func activeTabBarHeight() -> CGFloat {
+        guard !ShellConfig.current.features.hidesBrowserChrome else {
+            return 0
+        }
+
         let activeTabs = tabManager.selectedTabMode == .private ? tabManager.privateTabs : tabManager.regularTabs
         guard usesPadChrome,
               activeTabs.count > 1 else {
@@ -637,6 +641,12 @@ final class BrowserUI {
             controller.updateNavigationButtons()
             return
         }
+
+        if ShellConfig.current.features.hidesBrowserChrome && !controller.tabOverviewPresentation.isVisible {
+            applyShellFullscreenLayoutState()
+            controller.updateNavigationButtons()
+            return
+        }
         
         setAddressBarHost(isPad: pad)
         setKeyboardDismissButtonHost(isPad: pad)
@@ -754,6 +764,14 @@ final class BrowserUI {
     }
     
     private func applyMediaFullscreenLayoutState() {
+        applyHiddenChromeLayoutState()
+    }
+
+    private func applyShellFullscreenLayoutState() {
+        applyHiddenChromeLayoutState()
+    }
+
+    private func applyHiddenChromeLayoutState() {
         let ui = controller.browserUI
         let pad = controller.usesPadChrome
         
@@ -898,9 +916,14 @@ final class BrowserUI {
         let duration = info[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval ?? 0.25
         let curveRaw = info[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 7
         let curve = UIView.AnimationOptions(rawValue: curveRaw << 16)
-        requestFocusedInputMetricsIfNeeded(duration: duration, curve: curve)
+        if ShellConfig.current.features.hidesBrowserChrome {
+            resetFocusedInputRelocation()
+        } else {
+            requestFocusedInputMetricsIfNeeded(duration: duration, curve: curve)
+        }
         
-        let shouldDockChromeToKeyboard = !controller.usesPadChrome
+        let shouldDockChromeToKeyboard = !ShellConfig.current.features.hidesBrowserChrome
+        && !controller.usesPadChrome
         && controller.isSearchFocused
         && !controller.tabOverviewPresentation.isVisible
         && keyboardHeight > 0
@@ -1027,7 +1050,8 @@ final class BrowserUI {
     private func resolvedGeckoPhoneVerticalOffset(
         shouldShowGeckoBehindKeyboard: Bool
     ) -> CGFloat {
-        guard !controller.isSearchFocused,
+        guard !ShellConfig.current.features.hidesBrowserChrome,
+              !controller.isSearchFocused,
               !controller.tabOverviewPresentation.isVisible,
               !shouldShowGeckoBehindKeyboard,
               keyboardHeight > 0,
