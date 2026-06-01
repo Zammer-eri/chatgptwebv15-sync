@@ -83,7 +83,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             return incomingURL
         }
         
-        guard scheme == "reynard",
+        guard scheme == ShellConfig.urlScheme,
               let components = URLComponents(url: incomingURL, resolvingAgainstBaseURL: false),
               let encodedURL = components.queryItems?.first(where: { $0.name == "url" })?.value else {
             return nil

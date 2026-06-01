@@ -498,10 +498,10 @@
 				DEVELOPMENT_TEAM = NAR5D6HWAD;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Reynard/Resources/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Reynard;
+				INFOPLIST_KEY_CFBundleDisplayName = "$(SHELL_DISPLAY_NAME)";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Reynard uses your camera to take photos and video.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "$(SHELL_DISPLAY_NAME) uses your camera to take photos and video.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Some websites may use the microphone.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "This lets you save photos.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -533,7 +533,7 @@
 					"-lgkcodecs",
 					"-lmozinference",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.minh-ton.Reynard";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(SHELL_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -564,10 +564,10 @@
 				DEVELOPMENT_TEAM = NAR5D6HWAD;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Reynard/Resources/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Reynard;
+				INFOPLIST_KEY_CFBundleDisplayName = "$(SHELL_DISPLAY_NAME)";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Reynard uses your camera to take photos and video.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "$(SHELL_DISPLAY_NAME) uses your camera to take photos and video.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Some websites may use the microphone.";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "This lets you save photos.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -599,7 +599,7 @@
 					"-lgkcodecs",
 					"-lmozinference",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = "com.minh-ton.Reynard";
+				PRODUCT_BUNDLE_IDENTIFIER = "$(SHELL_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;

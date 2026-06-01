@@ -16,6 +16,19 @@ cp "$XCCONFIG_PATH" "$DIST_DIR/Reynard.xcconfig"
 BUILD_SHA=$(git -C "$ROOT_DIR" rev-parse --short HEAD)
 sed -i '' "s/CURRENT_BUILD = .*/CURRENT_BUILD = $BUILD_SHA/" "$DIST_DIR/Reynard.xcconfig"
 
+append_xcconfig_override() {
+	name="$1"
+	value="$2"
+	if [ -n "$value" ]; then
+		printf '%s = %s\n' "$name" "$value" >> "$DIST_DIR/Reynard.xcconfig"
+	fi
+}
+
+append_xcconfig_override SHELL_TARGET "${SHELL_TARGET:-}"
+append_xcconfig_override SHELL_DISPLAY_NAME "${SHELL_DISPLAY_NAME:-}"
+append_xcconfig_override SHELL_BUNDLE_IDENTIFIER "${SHELL_BUNDLE_IDENTIFIER:-}"
+append_xcconfig_override SHELL_URL_SCHEME "${SHELL_URL_SCHEME:-}"
+
 set -- xcodebuild archive \
 	-scheme "Reynard" \
 	-archivePath "$DIST_DIR/Reynard.xcarchive" \

@@ -1,7 +1,28 @@
-name: Build Browser
+name: Build Shell
 
 on:
   workflow_dispatch:
+    inputs:
+      shell_target:
+        description: "Shell target: browser, chatgpt, or uber"
+        required: false
+        default: chatgpt
+        type: string
+      shell_display_name:
+        description: "Installed app display name"
+        required: false
+        default: ChatGPT
+        type: string
+      shell_bundle_identifier:
+        description: "Main app bundle identifier"
+        required: false
+        default: com.chatgpt.shell
+        type: string
+      shell_url_scheme:
+        description: "Custom URL scheme"
+        required: false
+        default: chatgptshell
+        type: string
   push:
     branches:
       - main
@@ -10,7 +31,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: build-browser-${{ github.ref }}
+  group: build-shell-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -18,10 +39,14 @@ env:
   HOMEBREW_NO_AUTO_UPDATE: "1"
   HOMEBREW_NO_INSTALL_CLEANUP: "1"
   RUST_BACKTRACE: "1"
+  SHELL_TARGET: ${{ github.event.inputs.shell_target || 'chatgpt' }}
+  SHELL_DISPLAY_NAME: ${{ github.event.inputs.shell_display_name || 'ChatGPT' }}
+  SHELL_BUNDLE_IDENTIFIER: ${{ github.event.inputs.shell_bundle_identifier || 'com.chatgpt.shell' }}
+  SHELL_URL_SCHEME: ${{ github.event.inputs.shell_url_scheme || 'chatgptshell' }}
 
 jobs:
-  build-reynard-source:
-    name: Build Reynard 0.4 from source
+  build-shell-source:
+    name: Build shell from Reynard 0.4 source
     runs-on: macos-26
     timeout-minutes: 360
 
@@ -49,8 +74,9 @@ jobs:
           cargo --version
           df -h
 
-      - name: Cache Rust tooling
-        uses: actions/cache@v4
+      - name: Restore Rust tooling cache
+        id: restore-rust-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cargo/bin/cbindgen
@@ -81,8 +107,18 @@ jobs:
             exit "$status"
           fi
 
+      - name: Save Rust tooling cache
+        if: steps.restore-rust-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/bin/cbindgen
+            ~/.cargo/git
+            ~/.cargo/registry
+          key: reynard-rust-tools-${{ runner.os }}-cbindgen-v1
+
       - name: Upload tool install log
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: install-tools-log
@@ -101,8 +137,9 @@ jobs:
       - name: Sync idevice source
         run: git submodule update --init --recursive support/idevice
 
-      - name: Cache Gecko object directory
-        uses: actions/cache@v4
+      - name: Restore Gecko object cache
+        id: restore-gecko-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             engine/firefox/obj-aarch64-apple-ios
@@ -111,8 +148,9 @@ jobs:
           restore-keys: |
             reynard-gecko-source-0.4-${{ runner.os }}-
 
-      - name: Cache JIT native bridge
-        uses: actions/cache@v4
+      - name: Restore JIT native bridge cache
+        id: restore-idevice-cache
+        uses: actions/cache/restore@v4
         with:
           path: |
             support/idevice/target
@@ -122,12 +160,37 @@ jobs:
             reynard-idevice-ffi-source-${{ runner.os }}-
 
       - name: Build idevice FFI
-        run: ./tools/development/build-idevice.sh
+        env:
+          IDEVICE_CACHE_HIT: ${{ steps.restore-idevice-cache.outputs.cache-hit }}
+        run: |
+          set -euo pipefail
+          if [ "$IDEVICE_CACHE_HIT" = "true" ] && [ -f browser/Reynard/JIT/libidevice_ffi.a ]; then
+            echo "Exact idevice cache hit; libidevice_ffi.a exists. Skipping cargo build."
+            exit 0
+          fi
+          ./tools/development/build-idevice.sh
+
+      - name: Save JIT native bridge cache
+        if: steps.restore-idevice-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            support/idevice/target
+            browser/Reynard/JIT/libidevice_ffi.a
+          key: reynard-idevice-ffi-source-${{ runner.os }}-${{ hashFiles('tools/development/build-idevice.sh', '.gitmodules') }}
 
       - name: Build Gecko from source
+        env:
+          GECKO_CACHE_HIT: ${{ steps.restore-gecko-cache.outputs.cache-hit }}
         run: |
           set +e
           mkdir -p dist
+          if [ "$GECKO_CACHE_HIT" = "true" ] && \
+             [ -f engine/firefox/obj-aarch64-apple-ios/dist/bin/XUL ] && \
+             [ -f engine/firefox/obj-aarch64-apple-ios/dist/include/mozilla-config.h ]; then
+            echo "Exact Gecko cache hit; required source-built outputs exist. Skipping mach build." | tee dist/build-gecko.log
+            exit 0
+          fi
           ./tools/development/build-gecko.sh 2>&1 | tee dist/build-gecko.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
@@ -142,15 +205,24 @@ jobs:
             exit "$status"
           fi
 
+      - name: Save Gecko object cache
+        if: steps.restore-gecko-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            engine/firefox/obj-aarch64-apple-ios
+            ~/.mozbuild
+          key: reynard-gecko-source-0.4-${{ runner.os }}-${{ hashFiles('engine/release.txt', 'patches/**/*.patch', 'tools/development/build-gecko.sh') }}
+
       - name: Upload Gecko build log
-        if: always()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: gecko-build-log
           path: dist/build-gecko.log
           if-no-files-found: ignore
 
-      - name: Archive browser app
+      - name: Archive shell app
         env:
           REYNARD_SKIP_CODE_SIGNING: "1"
         run: ./tools/release/build-app.sh
@@ -165,6 +237,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import hashlib
+          import os
           import plistlib
           import zipfile
           from pathlib import Path
@@ -178,11 +251,12 @@ jobs:
               required = [
                   "Payload/Reynard.app/Reynard",
                   "Payload/Reynard.app/PlugIns/Reynard Helper.appex/Reynard Helper",
-                  "Payload/Reynard.app/PlugIns/OpenIn.appex/OpenIn",
                   "Payload/Reynard.app/Frameworks/GeckoView.framework/GeckoView",
                   "Payload/Reynard.app/Frameworks/GeckoView.framework/XUL",
                   "Payload/Reynard.app/ptrace_jit",
               ]
+              if os.environ.get("SHELL_TARGET", "chatgpt") == "browser" or os.environ.get("SHELL_PACKAGE_OPENIN_EXTENSION") == "1":
+                  required.append("Payload/Reynard.app/PlugIns/OpenIn.appex/OpenIn")
               missing = [name for name in required if name not in names]
               if missing:
                   raise SystemExit(f"missing package members: {missing}")
@@ -190,8 +264,11 @@ jobs:
 
           sha256 = hashlib.sha256(tipa.read_bytes()).hexdigest()
           report = "\n".join([
-              "# Reynard Source Build",
+              "# Shell Source Build",
               "",
+              f"- target: `{os.environ.get('SHELL_TARGET', 'chatgpt')}`",
+              f"- display name: `{os.environ.get('SHELL_DISPLAY_NAME', 'ChatGPT')}`",
+              f"- bundle id: `{info.get('CFBundleIdentifier')}`",
               f"- sha256: `{sha256}`",
               f"- bytes: {tipa.stat().st_size}",
               f"- version: {info.get('CFBundleShortVersionString')}",
@@ -203,17 +280,17 @@ jobs:
               "No upstream IPA payload extraction or runtime splicing is used.",
               "",
           ])
-          Path("dist/reynard-source-build.md").write_text(report, encoding="utf-8")
+          Path("dist/shell-source-build.md").write_text(report, encoding="utf-8")
           print(report)
           PY
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Reynard-Source-Build
+          name: Shell-Source-Build
           path: |
             dist/Reynard-TrollStore.tipa
-            dist/reynard-source-build.md
+            dist/shell-source-build.md
           if-no-files-found: error
 
       - name: Publish rolling prerelease
@@ -224,7 +301,7 @@ jobs:
 
           NOTES_FILE="$(mktemp)"
           test -f dist/Reynard-TrollStore.tipa
-          test -f dist/reynard-source-build.md
+          test -f dist/shell-source-build.md
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -232,24 +309,28 @@ jobs:
           git push origin "refs/tags/$ROLLING_TAG" --force
 
           {
-            echo "Rolling Reynard source build for commit $GITHUB_SHA."
+            echo "Rolling shell source build for commit $GITHUB_SHA."
+            echo
+            echo "Shell target: $SHELL_TARGET"
+            echo "Display name: $SHELL_DISPLAY_NAME"
+            echo "Bundle id: $SHELL_BUNDLE_IDENTIFIER"
             echo
             echo "Asset:"
-            echo "- Reynard-TrollStore.tipa: source-built Reynard package."
+            echo "- Reynard-TrollStore.tipa: source-built shell package."
             echo
             echo "No upstream IPA payload extraction or runtime splicing is used."
           } > "$NOTES_FILE"
 
           if gh release view "$ROLLING_TAG" >/dev/null 2>&1; then
             gh release edit "$ROLLING_TAG" \
-              --title "Rolling Reynard Source Build" \
+              --title "Rolling Shell Source Build" \
               --notes-file "$NOTES_FILE" \
               --prerelease \
               --latest=false \
               --target "$GITHUB_SHA"
           else
             gh release create "$ROLLING_TAG" \
-              --title "Rolling Reynard Source Build" \
+              --title "Rolling Shell Source Build" \
               --notes-file "$NOTES_FILE" \
               --prerelease \
               --latest=false \
@@ -264,5 +345,5 @@ jobs:
 
           gh release upload "$ROLLING_TAG" \
             dist/Reynard-TrollStore.tipa \
-            dist/reynard-source-build.md \
+            dist/shell-source-build.md \
             --clobber

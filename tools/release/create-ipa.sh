@@ -10,6 +10,20 @@ ARCHIVE_DIR="$ROOT_DIR/dist/Reynard.xcarchive"
 APP_DIR="$ARCHIVE_DIR/Products/Applications"
 WORK_DIR="$ROOT_DIR/dist/Reynard"
 TROLLSTORE_ONLY="${REYNARD_TROLLSTORE_ONLY:-0}"
+SHELL_TARGET="${SHELL_TARGET:-chatgpt}"
+SHELL_URL_SCHEME="${SHELL_URL_SCHEME:-chatgptshell}"
+APP_BUNDLE_IDENTIFIER="${SHELL_BUNDLE_IDENTIFIER:-com.chatgpt.shell}"
+HELPER_BUNDLE_IDENTIFIER="${SHELL_HELPER_BUNDLE_IDENTIFIER:-$APP_BUNDLE_IDENTIFIER.Helper}"
+OPENIN_BUNDLE_IDENTIFIER="${SHELL_OPENIN_BUNDLE_IDENTIFIER:-$APP_BUNDLE_IDENTIFIER.OpenIn}"
+PACKAGE_OPENIN_EXTENSION="${SHELL_PACKAGE_OPENIN_EXTENSION:-}"
+
+if [ -z "$PACKAGE_OPENIN_EXTENSION" ]; then
+	if [ "$SHELL_TARGET" = "browser" ]; then
+		PACKAGE_OPENIN_EXTENSION=1
+	else
+		PACKAGE_OPENIN_EXTENSION=0
+	fi
+fi
 
 sign_macho_files() {
 	find Payload -type f -exec sh -c '
@@ -55,11 +69,27 @@ if [ -z "$APP_PATH" ]; then
 	exit 1
 fi
 
+if [ "$PACKAGE_OPENIN_EXTENSION" != "1" ]; then
+	rm -rf "$APP_PATH/PlugIns/OpenIn.appex"
+fi
+
 # I absolutely hate Apple for this
 # Why is my bundle identifier just become unavailable for no reason?
-plutil -replace CFBundleIdentifier -string "com.minh-ton.Reynard" "$APP_PATH/Info.plist"
-plutil -replace CFBundleIdentifier -string "com.minh-ton.Reynard.Helper" "$APP_PATH/PlugIns/Reynard Helper.appex/Info.plist"
-plutil -replace CFBundleIdentifier -string "com.minh-ton.Reynard.OpenIn" "$APP_PATH/PlugIns/OpenIn.appex/Info.plist"
+plutil -replace CFBundleIdentifier -string "$APP_BUNDLE_IDENTIFIER" "$APP_PATH/Info.plist"
+if [ "$SHELL_TARGET" != "browser" ]; then
+	plutil -replace CFBundleURLTypes.0.CFBundleURLSchemes -json "[\"$SHELL_URL_SCHEME\"]" "$APP_PATH/Info.plist"
+fi
+plutil -replace CFBundleIdentifier -string "$HELPER_BUNDLE_IDENTIFIER" "$APP_PATH/PlugIns/Reynard Helper.appex/Info.plist"
+if [ -d "$APP_PATH/PlugIns/OpenIn.appex" ]; then
+	plutil -replace CFBundleIdentifier -string "$OPENIN_BUNDLE_IDENTIFIER" "$APP_PATH/PlugIns/OpenIn.appex/Info.plist"
+fi
+
+APP_ENTITLEMENTS="$ROOT_DIR/dist/Reynard.private.generated.entitlements"
+HELPER_ENTITLEMENTS="$ROOT_DIR/dist/Reynard-Helper.private.generated.entitlements"
+cp "$ROOT_DIR/browser/Reynard/Entitlements/Reynard.private.entitlements" "$APP_ENTITLEMENTS"
+cp "$ROOT_DIR/browser/Helper/Entitlements/Reynard-Helper.private.entitlements" "$HELPER_ENTITLEMENTS"
+plutil -replace application-identifier -string "$APP_BUNDLE_IDENTIFIER" "$APP_ENTITLEMENTS"
+plutil -replace application-identifier -string "$HELPER_BUNDLE_IDENTIFIER" "$HELPER_ENTITLEMENTS"
 
 rm -rf "$WORK_DIR" "$ROOT_DIR/dist/Reynard.ipa" "$ROOT_DIR/dist/Reynard-TrollStore.tipa" "$ROOT_DIR/dist/Reynard-Jailbroken.ipa"
 mkdir -p "$WORK_DIR/Payload"
@@ -86,9 +116,11 @@ chmod 0755 "$PTRACE_JIT_OUT"
 sign_macho_files
 
 ldid -S"$ROOT_DIR/browser/Reynard/TrollStore/JIT/ptrace_jit.entitlements" "$PTRACE_JIT_OUT"
-ldid -S"$ROOT_DIR/browser/Reynard/Entitlements/Reynard.private.entitlements" "Payload/Reynard.app/Reynard"
-ldid -S"$ROOT_DIR/browser/Helper/Entitlements/Reynard-Helper.private.entitlements" "Payload/Reynard.app/PlugIns/Reynard Helper.appex/Reynard Helper"
-ldid -S "Payload/Reynard.app/PlugIns/OpenIn.appex/OpenIn"
+ldid -S"$APP_ENTITLEMENTS" "Payload/Reynard.app/Reynard"
+ldid -S"$HELPER_ENTITLEMENTS" "Payload/Reynard.app/PlugIns/Reynard Helper.appex/Reynard Helper"
+if [ -d "Payload/Reynard.app/PlugIns/OpenIn.appex" ]; then
+	ldid -S "Payload/Reynard.app/PlugIns/OpenIn.appex/OpenIn"
+fi
 verify_macho_signatures
 zip -r ../Reynard-TrollStore.tipa Payload -x "._*" -x ".DS_Store" -x "__MACOSX" # trollstore ipa
 if [ "$TROLLSTORE_ONLY" != "1" ]; then

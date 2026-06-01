@@ -380,11 +380,18 @@ final class TabManagerImplementation: NSObject, TabManager {
     }
     
     func createInitialTab() {
-        if restoreTabsIfNeeded() {
+        if ShellConfig.current.features.restoresPreviousTabs && restoreTabsIfNeeded() {
             return
         }
         
-        addTab(selecting: true, windowId: nil, at: nil, isPrivate: false)
+        let index = addTab(selecting: true, windowId: nil, at: nil, isPrivate: false)
+        guard ShellConfig.current.features.loadDefaultURLOnFirstLaunch,
+              let defaultURL = ShellConfig.current.defaultURL,
+              let tab = regularTabs[safe: index] else {
+            return
+        }
+
+        browse(to: defaultURL.absoluteString, in: tab)
     }
     
     @discardableResult

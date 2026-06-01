@@ -2,14 +2,18 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>ShellTarget</key>
+	<string>$(SHELL_TARGET)</string>
+	<key>ShellURLScheme</key>
+	<string>$(SHELL_URL_SCHEME)</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.minh-ton.Reynard</string>
+			<string>$(SHELL_BUNDLE_IDENTIFIER)</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
-				<string>reynard</string>
+				<string>$(SHELL_URL_SCHEME)</string>
 				<string>http</string>
 				<string>https</string>
 			</array>
