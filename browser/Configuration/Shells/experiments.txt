@@ -51,3 +51,15 @@ What must not change:
 - Do not collapse Gecko fullscreen.
 - Do not remove the bottom container.
 - Do not alter keyboard/focus/viewport code.
+
+Next candidate: ChatGPT shell 0.2.4 minimal hidden spacer
+
+What changes:
+- Keep 0.2.3 behavior.
+- Reduce the shell-only phone bottom chrome spacer from 44 to 24.
+- Keep the pinned Gecko bottom offset tied to the same shell spacer helper.
+
+What must not change:
+- Do not collapse Gecko fullscreen.
+- Do not remove the bottom container.
+- Do not alter keyboard/focus/viewport code.
