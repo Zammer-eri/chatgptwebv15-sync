@@ -19,6 +19,7 @@ fi
 rm -f "$FIREFOX_DIR/.mozconfig"
 
 {
+	echo "mk_add_options AUTOCLOBBER=1"
 	echo "ac_add_options --enable-application=mobile/ios"
 	echo "ac_add_options --target=$TARGET"
 	echo "ac_add_options --enable-ios-target=13.0"
