@@ -439,7 +439,9 @@ final class BrowserUI {
         ui.geckoBottomFullscreenConstraint = ui.geckoView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         
         ui.bottomContainerBottomConstraint = ui.bottomContainer.containerView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
-        ui.bottomContainerHeightConstraint = ui.bottomContainer.containerView.heightAnchor.constraint(equalToConstant: 94)
+        ui.bottomContainerHeightConstraint = ui.bottomContainer.containerView.heightAnchor.constraint(
+            equalToConstant: resolvedPhoneBottomContainerHeight(isSearchFocused: false)
+        )
         ui.bottomToolbarHeightConstraint = ui.bottomToolbar.heightAnchor.constraint(equalToConstant: 30)
         ui.bottomToolbarTopConstraint = ui.bottomToolbar.topAnchor.constraint(equalTo: ui.addressBar.bottomAnchor, constant: 7)
         ui.bottomToolbarCompactPadTopConstraint = ui.bottomToolbar.topAnchor.constraint(equalTo: ui.bottomContainer.containerView.topAnchor, constant: 7)
@@ -660,7 +662,7 @@ final class BrowserUI {
         
         ui.geckoTopPhoneConstraint.constant = !pad ? -geckoPhoneOffset : 0
         ui.geckoBottomPhoneConstraint.constant = !pad ? -geckoPhoneOffset : 0
-        ui.geckoBottomPhoneSearchPinnedConstraint.constant = -94
+        ui.geckoBottomPhoneSearchPinnedConstraint.constant = -resolvedPhoneBottomContainerHeight(isSearchFocused: false)
         ui.geckoBottomPhoneKeyboardOverlayConstraint.constant = 0
         ui.geckoTopPadConstraint.constant = pad ? -geckoPhoneOffset : 0
         ui.geckoBottomCompactPadConstraint.constant = pad && compactPad ? -geckoPhoneOffset : 0
@@ -701,7 +703,9 @@ final class BrowserUI {
         
         ui.bottomContainer.containerView.isHidden = (!showsCompactPadBottomToolbar && pad) || controller.tabOverviewPresentation.isVisible
         ui.bottomContainer.bottomSafeAreaFillView.isHidden = (!showsCompactPadBottomToolbar && pad) || controller.tabOverviewPresentation.isVisible
-        ui.bottomContainerHeightConstraint.constant = compactPad ? 44 : (controller.isSearchFocused ? 58 : 94)
+        ui.bottomContainerHeightConstraint.constant = compactPad ? 44 : resolvedPhoneBottomContainerHeight(
+            isSearchFocused: controller.isSearchFocused
+        )
         ui.bottomContainer.containerView.backgroundColor = controller.isSearchFocused && !pad ? .clear : .systemGray6
         ui.bottomContainer.bottomSafeAreaFillView.backgroundColor = controller.isSearchFocused && !pad ? .clear : .systemGray6
         ui.bottomToolbar.alpha = compactPad ? 1 : ui.bottomToolbar.alpha
@@ -885,6 +889,14 @@ final class BrowserUI {
         let spacing: CGFloat = 10
         return (CGFloat(visibleButtonCount) * buttonWidth) + (CGFloat(max(visibleButtonCount - 1, 0)) * spacing)
     }
+
+    private func resolvedPhoneBottomContainerHeight(isSearchFocused: Bool) -> CGFloat {
+        if let shellHeight = ShellConfig.current.features.visualChromePhoneBottomHeight {
+            return CGFloat(shellHeight)
+        }
+
+        return isSearchFocused ? 58 : 94
+    }
     
     func setSearchFocused(_ focused: Bool, animated: Bool) {
         let ui = controller.browserUI
@@ -896,7 +908,7 @@ final class BrowserUI {
         }
         if !usesPadChrome {
             ui.bottomToolbarHeightConstraint.constant = focused ? 0 : 30
-            ui.bottomContainerHeightConstraint.constant = focused ? 58 : 94
+            ui.bottomContainerHeightConstraint.constant = resolvedPhoneBottomContainerHeight(isSearchFocused: focused)
             ui.bottomContainer.containerView.backgroundColor = focused ? .clear : .systemGray6
             ui.bottomContainer.bottomSafeAreaFillView.backgroundColor = focused ? .clear : .systemGray6
         }

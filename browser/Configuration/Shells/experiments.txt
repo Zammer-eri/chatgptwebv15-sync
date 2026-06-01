@@ -27,3 +27,15 @@ What must not change:
 - Do not activate Gecko fullscreen constraints for shell mode.
 - Do not skip focused-input metrics.
 - Do not collapse bottom/top chrome containers.
+
+Next candidate: ChatGPT shell 0.2.2 reduced hidden spacer
+
+What changes:
+- Keep 0.2.1 visual-only chrome hiding.
+- Reduce the shell-only phone bottom chrome spacer from 94 to 58.
+- Apply the same shell spacer value to the pinned Gecko bottom offset.
+
+What must not change:
+- Browser target keeps the Reynard 94/58 behavior.
+- Do not remove the bottom container.
+- Do not alter keyboard/focus/viewport code.

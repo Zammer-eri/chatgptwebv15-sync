@@ -20,6 +20,7 @@ struct ShellFeatures {
     let allowsSiteJavaScript: Bool
     let hidesBrowserChrome: Bool
     let visuallyHidesBrowserChrome: Bool
+    let visualChromePhoneBottomHeight: Int?
     let prefersMobileUserAgent: Bool
     let requiresLocation: Bool
 
@@ -29,6 +30,7 @@ struct ShellFeatures {
         allowsSiteJavaScript: false,
         hidesBrowserChrome: false,
         visuallyHidesBrowserChrome: false,
+        visualChromePhoneBottomHeight: nil,
         prefersMobileUserAgent: false,
         requiresLocation: false
     )
@@ -39,6 +41,7 @@ struct ShellFeatures {
         allowsSiteJavaScript: false,
         hidesBrowserChrome: false,
         visuallyHidesBrowserChrome: true,
+        visualChromePhoneBottomHeight: 58,
         prefersMobileUserAgent: false,
         requiresLocation: false
     )
