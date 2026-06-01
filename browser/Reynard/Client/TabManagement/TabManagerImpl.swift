@@ -10,6 +10,25 @@ import GeckoView
 import UIKit
 
 final class TabManagerImplementation: NSObject, TabManager {
+    private static let embeddedChatGPTFlowHosts: Set<String> = [
+        "account.live.com",
+        "accounts.google.com",
+        "accounts.openai.com",
+        "appleid.apple.com",
+        "auth.openai.com",
+        "auth0.openai.com",
+        "challenges.cloudflare.com",
+        "idmsa.apple.com",
+        "login.live.com",
+        "login.microsoftonline.com",
+        "login.openai.com",
+        "openid.apple.com",
+    ]
+    private static let embeddedChatGPTFileHosts: Set<String> = [
+        "files.oaiusercontent.com",
+        "oaiusercontent.com",
+    ]
+
     private(set) var regularTabs: [Tab] = []
     private(set) var privateTabs: [Tab] = []
     private(set) var selectedTabMode: TabMode = .regular
@@ -229,6 +248,96 @@ final class TabManagerImplementation: NSObject, TabManager {
         }
         
         return url
+    }
+
+    private func shouldOpenLoadRequestExternally(session: GeckoSession, request: LoadRequest) -> Bool {
+        guard let location = tabLocation(for: session) else {
+            return false
+        }
+
+        let sourceURLString = request.triggerUri ?? tabs(for: location.mode)[location.index].url
+        if request.target == .new,
+           shouldOpenNewSessionExternallyFromChatGPT(
+               targetURLString: request.uri,
+               sourceURLString: sourceURLString
+           ) {
+            return requestExternalOpen(request.uri)
+        }
+
+        guard (request.hasUserGesture || request.isRedirect),
+              shouldOpenExternallyFromChatGPT(
+                  targetURLString: request.uri,
+                  sourceURLString: sourceURLString
+              ) else {
+            return false
+        }
+
+        return requestExternalOpen(request.uri)
+    }
+
+    private func shouldOpenNewSessionExternallyFromChatGPT(targetURLString: String, sourceURLString: String?) -> Bool {
+        guard let targetURL = remoteURL(from: targetURLString),
+              isChatGPTURL(sourceURLString),
+              !shouldKeepEmbeddedNewSessionForChatGPT(targetURL) else {
+            return false
+        }
+
+        return true
+    }
+
+    private func shouldOpenExternallyFromChatGPT(targetURLString: String, sourceURLString: String?) -> Bool {
+        guard let targetURL = remoteURL(from: targetURLString),
+              isChatGPTURL(sourceURLString),
+              !shouldKeepEmbeddedForChatGPT(targetURL) else {
+            return false
+        }
+
+        return true
+    }
+
+    private func isChatGPTURL(_ value: String?) -> Bool {
+        guard let url = remoteURL(from: value),
+              let host = url.host?.lowercased() else {
+            return false
+        }
+
+        return host == "chatgpt.com" ||
+            host.hasSuffix(".chatgpt.com") ||
+            host == "chat.openai.com"
+    }
+
+    private func shouldKeepEmbeddedForChatGPT(_ url: URL) -> Bool {
+        guard let host = url.host?.lowercased() else {
+            return false
+        }
+
+        return isChatGPTURL(url.absoluteString) ||
+            Self.embeddedChatGPTFlowHosts.contains { hostMatches(host, domain: $0) } ||
+            Self.embeddedChatGPTFileHosts.contains { hostMatches(host, domain: $0) } ||
+            host.hasSuffix(".blob.core.windows.net")
+    }
+
+    private func shouldKeepEmbeddedNewSessionForChatGPT(_ url: URL) -> Bool {
+        shouldKeepEmbeddedForChatGPT(url)
+    }
+
+    private func hostMatches(_ host: String, domain: String) -> Bool {
+        host == domain || host.hasSuffix("." + domain)
+    }
+
+    @discardableResult
+    private func requestExternalOpen(_ value: String) -> Bool {
+        guard let url = remoteURL(from: value) else {
+            return false
+        }
+
+        DispatchQueue.main.async { [weak self] in
+            guard let self else {
+                return
+            }
+            self.delegate?.tabManager(self, didRequestExternalOpen: url)
+        }
+        return true
     }
     
     private func cachedFavicon(for value: String?) -> UIImage? {
@@ -982,7 +1091,11 @@ extension TabManagerImplementation: NavigationDelegate {
     }
     
     func onLoadRequest(session: GeckoSession, request: LoadRequest) async -> AllowOrDeny {
-        .allow
+        if shouldOpenLoadRequestExternally(session: session, request: request) {
+            return .deny
+        }
+
+        return .allow
     }
     
     func onSubframeLoadRequest(session: GeckoSession, request: LoadRequest) async -> AllowOrDeny {
@@ -990,6 +1103,15 @@ extension TabManagerImplementation: NavigationDelegate {
     }
     
     func onNewSession(session: GeckoSession, uri: String, windowId: String) async -> GeckoSession? {
+        if let sourceLocation = tabLocation(for: session),
+           shouldOpenNewSessionExternallyFromChatGPT(
+               targetURLString: uri,
+               sourceURLString: tabs(for: sourceLocation.mode)[sourceLocation.index].url
+           ),
+           requestExternalOpen(uri) {
+            return nil
+        }
+
         let newSession = GeckoSession()
         
         let sourceLocation = tabLocation(for: session)

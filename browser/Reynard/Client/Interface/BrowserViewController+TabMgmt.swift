@@ -259,6 +259,12 @@ extension BrowserViewController: TabManagerDelegate {
             self?.enqueueDownloadConfirmation(download)
         }
     }
+
+    func tabManager(_ tabManager: TabManager, didRequestExternalOpen url: URL) {
+        DispatchQueue.main.async {
+            UIApplication.shared.open(url, options: [:], completionHandler: nil)
+        }
+    }
     
     func tabManager(_ tabManager: TabManager, shouldHandleExternalResponse response: ExternalResponseInfo, for session: GeckoSession) -> Bool {
         addonController.handleExternalResponse(response)
