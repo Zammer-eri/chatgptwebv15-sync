@@ -52,6 +52,18 @@ What must not change:
 - Do not remove the bottom container.
 - Do not alter keyboard/focus/viewport code.
 
+Next candidate: ChatGPT shell 0.2.5 one-point hidden spacer
+
+What changes:
+- Keep 0.2.4 behavior.
+- Reduce the shell-only phone bottom chrome spacer from 24 to 1.
+- Keep the bottom container and pinned Gecko bottom offset wired through the same helper.
+
+What must not change:
+- Do not activate shell fullscreen constraints.
+- Do not remove the bottom container object/path.
+- Do not alter keyboard/focus/viewport code.
+
 Next candidate: ChatGPT shell 0.2.4 minimal hidden spacer
 
 What changes:
