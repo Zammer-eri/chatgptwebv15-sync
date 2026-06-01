@@ -39,3 +39,15 @@ What must not change:
 - Browser target keeps the Reynard 94/58 behavior.
 - Do not remove the bottom container.
 - Do not alter keyboard/focus/viewport code.
+
+Next candidate: ChatGPT shell 0.2.3 smaller hidden spacer
+
+What changes:
+- Keep 0.2.2 behavior.
+- Reduce the shell-only phone bottom chrome spacer from 58 to 44.
+- Keep the pinned Gecko bottom offset tied to the same shell spacer helper.
+
+What must not change:
+- Do not collapse Gecko fullscreen.
+- Do not remove the bottom container.
+- Do not alter keyboard/focus/viewport code.
