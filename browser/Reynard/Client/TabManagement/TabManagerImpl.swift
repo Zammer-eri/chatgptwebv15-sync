@@ -311,10 +311,6 @@ final class TabManagerImplementation: NSObject, TabManager {
             return false
         }
 
-        if isChatGPTBrowserBackendURL(url) {
-            return false
-        }
-
         return isChatGPTURL(url.absoluteString) ||
             Self.embeddedChatGPTFlowHosts.contains { hostMatches(host, domain: $0) } ||
             Self.embeddedChatGPTFileHosts.contains { hostMatches(host, domain: $0) } ||
@@ -323,17 +319,6 @@ final class TabManagerImplementation: NSObject, TabManager {
 
     private func shouldKeepEmbeddedNewSessionForChatGPT(_ url: URL) -> Bool {
         shouldKeepEmbeddedForChatGPT(url)
-    }
-
-    private func isChatGPTBrowserBackendURL(_ url: URL) -> Bool {
-        guard let host = url.host?.lowercased(),
-              host == "chatgpt.com" || host.hasSuffix(".chatgpt.com") else {
-            return false
-        }
-
-        let path = url.path.lowercased()
-        return path.contains("backend") &&
-            (path.contains("browser") || path.contains("citation") || path.contains("source"))
     }
 
     private func hostMatches(_ host: String, domain: String) -> Bool {
