@@ -81,6 +81,7 @@ final class BrowserViewController: UIViewController {
         browserUI.configureLayout()
         browserUI.observeKeyboard()
         addressBarGestures.configureGestures()
+        configureShellSurfaceFeatures()
         restoreTabOverviewMode()
         syncBrowserNavigationChrome(animated: false)
         syncSidebarButtonItem()
