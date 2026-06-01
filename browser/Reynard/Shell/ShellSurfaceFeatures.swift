@@ -635,7 +635,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         header.alignment = .center
         header.spacing = 10
 
-        let downloadsView = DownloadsManagerView()
+        let downloadsView = ShellLegacyDownloadsManagerView()
         downloadsView.translatesAutoresizingMaskIntoConstraints = false
 
         downloadsContent.addSubview(header)
