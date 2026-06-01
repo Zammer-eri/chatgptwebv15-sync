@@ -41,7 +41,7 @@ struct ShellFeatures {
         allowsSiteJavaScript: false,
         hidesBrowserChrome: false,
         visuallyHidesBrowserChrome: true,
-        visualChromePhoneBottomHeight: 1,
+        visualChromePhoneBottomHeight: 0,
         prefersMobileUserAgent: false,
         requiresLocation: false
     )
