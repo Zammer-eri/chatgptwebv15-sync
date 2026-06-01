@@ -1,0 +1,29 @@
+Failed experiment: ChatGPT shell 0.2.0 fullscreen chrome collapse
+
+What changed:
+- Hid native browser chrome and made Gecko fill the full view.
+
+Result:
+- Reintroduced keyboard/composer instability.
+- Treat 0.2.0 as an invalid experiment, not a usable release line.
+
+Decision:
+- Revert ChatGPT shell to 0.1.0 behavior.
+- Do not hide chrome by collapsing layout blindly.
+- Do not add broad logging for this class of issue.
+
+Next safer direction:
+- Keep native layout math intact.
+- Make chrome visually transparent/offscreen, or reserve an equivalent hidden spacer,
+  so browser/Gecko calculations still see the expected structure.
+
+Next candidate: ChatGPT shell 0.2.1 visual chrome hide
+
+What changes:
+- Leave Reynard chrome constraints and keyboard/focus handling intact.
+- Make browser chrome transparent and non-interactive after normal layout is computed.
+
+What must not change:
+- Do not activate Gecko fullscreen constraints for shell mode.
+- Do not skip focused-input metrics.
+- Do not collapse bottom/top chrome containers.

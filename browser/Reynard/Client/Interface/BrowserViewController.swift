@@ -38,10 +38,6 @@ final class BrowserViewController: UIViewController {
             return
         }
         
-        if ShellConfig.current.features.hidesBrowserChrome {
-            setNeedsStatusBarAppearanceUpdate()
-        }
-
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(addressBarPositionDidChange),
@@ -267,10 +263,6 @@ final class BrowserViewController: UIViewController {
         return .portrait
     }
     
-    override var prefersStatusBarHidden: Bool {
-        ShellConfig.current.features.hidesBrowserChrome || isInFullscreenMedia
-    }
-
     func applyFullscreenState(_ fullScreen: Bool, for session: GeckoSession?) {
         if fullScreen {
             activeFullscreenSession = session

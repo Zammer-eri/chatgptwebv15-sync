@@ -19,6 +19,7 @@ struct ShellFeatures {
     let loadDefaultURLOnFirstLaunch: Bool
     let allowsSiteJavaScript: Bool
     let hidesBrowserChrome: Bool
+    let visuallyHidesBrowserChrome: Bool
     let prefersMobileUserAgent: Bool
     let requiresLocation: Bool
 
@@ -27,6 +28,7 @@ struct ShellFeatures {
         loadDefaultURLOnFirstLaunch: false,
         allowsSiteJavaScript: false,
         hidesBrowserChrome: false,
+        visuallyHidesBrowserChrome: false,
         prefersMobileUserAgent: false,
         requiresLocation: false
     )
@@ -35,7 +37,8 @@ struct ShellFeatures {
         restoresPreviousTabs: false,
         loadDefaultURLOnFirstLaunch: true,
         allowsSiteJavaScript: false,
-        hidesBrowserChrome: true,
+        hidesBrowserChrome: false,
+        visuallyHidesBrowserChrome: true,
         prefersMobileUserAgent: false,
         requiresLocation: false
     )

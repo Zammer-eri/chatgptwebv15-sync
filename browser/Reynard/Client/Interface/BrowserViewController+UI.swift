@@ -161,10 +161,6 @@ extension BrowserViewController: AddressBarDelegate, BottomToolbarDelegate {
     }
     
     private func activeTabBarHeight() -> CGFloat {
-        guard !ShellConfig.current.features.hidesBrowserChrome else {
-            return 0
-        }
-
         let activeTabs = tabManager.selectedTabMode == .private ? tabManager.privateTabs : tabManager.regularTabs
         guard usesPadChrome,
               activeTabs.count > 1 else {
@@ -642,12 +638,6 @@ final class BrowserUI {
             return
         }
 
-        if ShellConfig.current.features.hidesBrowserChrome && !controller.tabOverviewPresentation.isVisible {
-            applyShellFullscreenLayoutState()
-            controller.updateNavigationButtons()
-            return
-        }
-        
         setAddressBarHost(isPad: pad)
         setKeyboardDismissButtonHost(isPad: pad)
         ui.topBar.topConstraint.constant = resolvedPadTopInset()
@@ -761,17 +751,52 @@ final class BrowserUI {
         ui.addressBar.setHidePlaceholderIcon(controller.usesTopPhoneAddressBar || controller.usesPadChrome)
         
         controller.updateNavigationButtons()
+        applyShellVisualChromeState()
     }
-    
+
+    private func applyShellVisualChromeState() {
+        guard ShellConfig.current.features.visuallyHidesBrowserChrome else {
+            return
+        }
+
+        let ui = controller.browserUI
+        let hideChrome = !controller.tabOverviewPresentation.isVisible
+        let chromeAlpha: CGFloat = hideChrome ? 0 : 1
+        let chromeInteractionEnabled = !hideChrome
+
+        [
+            ui.topBar.barView,
+            ui.topBar.safeAreaFillView,
+            ui.tabBar.collectionView,
+            ui.bottomContainer.containerView,
+            ui.bottomContainer.bottomSafeAreaFillView,
+            ui.addressBar,
+            ui.bottomToolbar
+        ].forEach { view in
+            view.alpha = chromeAlpha
+            view.isUserInteractionEnabled = chromeInteractionEnabled
+        }
+
+        ui.keyboardDismissButton.button.alpha = hideChrome ? 0 : ui.keyboardDismissButton.button.alpha
+        ui.keyboardDismissButton.button.isUserInteractionEnabled = chromeInteractionEnabled
+        ui.addressBar.setShadowEnabled(hideChrome ? false : !controller.usesPadChrome)
+
+        if hideChrome {
+            ui.topBar.barView.backgroundColor = .clear
+            ui.topBar.safeAreaFillView.backgroundColor = .clear
+            ui.bottomContainer.containerView.backgroundColor = .clear
+            ui.bottomContainer.bottomSafeAreaFillView.backgroundColor = .clear
+            ui.tabBar.collectionView.backgroundColor = .clear
+        } else {
+            ui.topBar.barView.backgroundColor = .systemGray6
+            ui.topBar.safeAreaFillView.backgroundColor = .systemGray6
+            ui.bottomContainer.containerView.backgroundColor = controller.isSearchFocused && !controller.usesPadChrome ? .clear : .systemGray6
+            ui.bottomContainer.bottomSafeAreaFillView.backgroundColor = controller.isSearchFocused && !controller.usesPadChrome ? .clear : .systemGray6
+            ui.tabBar.collectionView.backgroundColor = .systemGray6
+        }
+    }
+
     private func applyMediaFullscreenLayoutState() {
-        applyHiddenChromeLayoutState()
-    }
-
-    private func applyShellFullscreenLayoutState() {
-        applyHiddenChromeLayoutState()
-    }
-
-    private func applyHiddenChromeLayoutState() {
         let ui = controller.browserUI
         let pad = controller.usesPadChrome
         
@@ -887,6 +912,7 @@ final class BrowserUI {
                 ui.bottomToolbar.alpha = focused ? 0 : 1
             }
             ui.keyboardDismissButton.button.alpha = dismissButtonTargetAlpha
+            self.applyShellVisualChromeState()
             self.controller.view.layoutIfNeeded()
             self.updatePhoneDismissKeyboardButtonShadowPath()
         }
@@ -916,14 +942,9 @@ final class BrowserUI {
         let duration = info[UIResponder.keyboardAnimationDurationUserInfoKey] as? TimeInterval ?? 0.25
         let curveRaw = info[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt ?? 7
         let curve = UIView.AnimationOptions(rawValue: curveRaw << 16)
-        if ShellConfig.current.features.hidesBrowserChrome {
-            resetFocusedInputRelocation()
-        } else {
-            requestFocusedInputMetricsIfNeeded(duration: duration, curve: curve)
-        }
+        requestFocusedInputMetricsIfNeeded(duration: duration, curve: curve)
         
-        let shouldDockChromeToKeyboard = !ShellConfig.current.features.hidesBrowserChrome
-        && !controller.usesPadChrome
+        let shouldDockChromeToKeyboard = !controller.usesPadChrome
         && controller.isSearchFocused
         && !controller.tabOverviewPresentation.isVisible
         && keyboardHeight > 0
@@ -1050,8 +1071,7 @@ final class BrowserUI {
     private func resolvedGeckoPhoneVerticalOffset(
         shouldShowGeckoBehindKeyboard: Bool
     ) -> CGFloat {
-        guard !ShellConfig.current.features.hidesBrowserChrome,
-              !controller.isSearchFocused,
+        guard !controller.isSearchFocused,
               !controller.tabOverviewPresentation.isVisible,
               !shouldShowGeckoBehindKeyboard,
               keyboardHeight > 0,
