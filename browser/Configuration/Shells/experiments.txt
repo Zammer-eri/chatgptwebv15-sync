@@ -64,6 +64,17 @@ What must not change:
 - Do not remove the bottom container object/path.
 - Do not alter keyboard/focus/viewport code.
 
+Correction: ChatGPT shell 0.3.1 restores 62415178 shell surface behavior
+
+What changes:
+- Use the 62415178 two-finger utility-panel tap gesture.
+- Use the 62415178 refresh flow: recovery overlay, cache clear, session recovery.
+- Use the 62415178 dynamic utility panel layout with Android UA and Downloads rows.
+
+What must not change:
+- Do not restore 62415178 keyboard/layout changes.
+- Do not restore TimeAware or page-runtime helpers.
+
 Next candidate: ChatGPT shell 0.2.6 zero hidden spacer edge test
 
 What changes:

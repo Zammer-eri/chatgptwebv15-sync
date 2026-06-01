@@ -6,13 +6,19 @@
 //  Reynard updates only need a small hook from BrowserViewController.
 //
 
-import ObjectiveC
 import GeckoView
+import ObjectiveC
 import UIKit
 
 private enum ShellSurfaceAssociatedKeys {
     static var utilityPanel = 0
     static var utilityPanelVisible = 0
+    static var recoveryOverlay = 0
+    static var recoveryPill = 0
+    static var recoveryLabel = 0
+    static var recoveryVisible = 0
+    static var recoveryToken = 0
+    static var recoveryShownAt = 0
 }
 
 extension BrowserViewController {
@@ -22,6 +28,7 @@ extension BrowserViewController {
         }
 
         if ShellConfig.current.features.usesUtilityPanel {
+            configureShellRecoveryOverlay()
             configureShellUtilityPanel()
         }
 
@@ -54,21 +61,121 @@ extension BrowserViewController {
         }
     }
 
+    private var shellRecoveryOverlay: UIVisualEffectView {
+        if let overlay = objc_getAssociatedObject(self, &ShellSurfaceAssociatedKeys.recoveryOverlay) as? UIVisualEffectView {
+            return overlay
+        }
+
+        let overlay = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterialDark))
+        objc_setAssociatedObject(self, &ShellSurfaceAssociatedKeys.recoveryOverlay, overlay, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        return overlay
+    }
+
+    private var shellRecoveryPill: UIVisualEffectView {
+        if let pill = objc_getAssociatedObject(self, &ShellSurfaceAssociatedKeys.recoveryPill) as? UIVisualEffectView {
+            return pill
+        }
+
+        let pill = UIVisualEffectView(effect: UIBlurEffect(style: .systemChromeMaterial))
+        objc_setAssociatedObject(self, &ShellSurfaceAssociatedKeys.recoveryPill, pill, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        return pill
+    }
+
+    private var shellRecoveryLabel: UILabel {
+        if let label = objc_getAssociatedObject(self, &ShellSurfaceAssociatedKeys.recoveryLabel) as? UILabel {
+            return label
+        }
+
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.text = "Refreshing"
+        label.font = .systemFont(ofSize: 16, weight: .semibold)
+        label.textColor = .label
+        objc_setAssociatedObject(self, &ShellSurfaceAssociatedKeys.recoveryLabel, label, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        return label
+    }
+
+    private var isShellRecoveryOverlayVisible: Bool {
+        get {
+            (objc_getAssociatedObject(self, &ShellSurfaceAssociatedKeys.recoveryVisible) as? NSNumber)?.boolValue ?? false
+        }
+        set {
+            objc_setAssociatedObject(
+                self,
+                &ShellSurfaceAssociatedKeys.recoveryVisible,
+                NSNumber(value: newValue),
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
+        }
+    }
+
+    private var shellRecoveryOverlayToken: UUID {
+        get {
+            (objc_getAssociatedObject(self, &ShellSurfaceAssociatedKeys.recoveryToken) as? UUID) ?? UUID()
+        }
+        set {
+            objc_setAssociatedObject(self, &ShellSurfaceAssociatedKeys.recoveryToken, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        }
+    }
+
+    private var shellRecoveryOverlayShownAt: Date? {
+        get {
+            objc_getAssociatedObject(self, &ShellSurfaceAssociatedKeys.recoveryShownAt) as? Date
+        }
+        set {
+            objc_setAssociatedObject(self, &ShellSurfaceAssociatedKeys.recoveryShownAt, newValue, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        }
+    }
+
     private func configureShellGestures() {
-        let refreshGesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleShellRefreshGesture(_:)))
-        refreshGesture.edges = .left
-        refreshGesture.cancelsTouchesInView = false
-        view.addGestureRecognizer(refreshGesture)
+        let reloadGesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleShellReloadGesture(_:)))
+        reloadGesture.edges = .left
+        reloadGesture.cancelsTouchesInView = false
+        view.addGestureRecognizer(reloadGesture)
 
-        let dismissKeyboardGesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleShellDismissKeyboardGesture(_:)))
-        dismissKeyboardGesture.edges = .right
-        dismissKeyboardGesture.cancelsTouchesInView = false
-        view.addGestureRecognizer(dismissKeyboardGesture)
+        let keyboardDismissGesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleShellKeyboardDismissGesture(_:)))
+        keyboardDismissGesture.edges = .right
+        keyboardDismissGesture.cancelsTouchesInView = false
+        view.addGestureRecognizer(keyboardDismissGesture)
 
-        let settingsGesture = UITapGestureRecognizer(target: self, action: #selector(handleShellSettingsGesture(_:)))
-        settingsGesture.numberOfTapsRequired = 2
-        settingsGesture.cancelsTouchesInView = false
-        view.addGestureRecognizer(settingsGesture)
+        let utilityGesture = UITapGestureRecognizer(target: self, action: #selector(handleUtilityPanelTap(_:)))
+        utilityGesture.numberOfTouchesRequired = 2
+        utilityGesture.numberOfTapsRequired = 1
+        utilityGesture.cancelsTouchesInView = false
+        view.addGestureRecognizer(utilityGesture)
+    }
+
+    private func configureShellRecoveryOverlay() {
+        let overlay = shellRecoveryOverlay
+        let pill = shellRecoveryPill
+        let label = shellRecoveryLabel
+
+        overlay.translatesAutoresizingMaskIntoConstraints = false
+        overlay.alpha = 0
+        overlay.isHidden = true
+        overlay.isUserInteractionEnabled = false
+
+        pill.translatesAutoresizingMaskIntoConstraints = false
+        pill.layer.cornerCurve = .continuous
+        pill.layer.cornerRadius = 18
+        pill.clipsToBounds = true
+        pill.contentView.addSubview(label)
+
+        overlay.contentView.addSubview(pill)
+        view.addSubview(overlay)
+
+        NSLayoutConstraint.activate([
+            overlay.topAnchor.constraint(equalTo: view.topAnchor),
+            overlay.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            overlay.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            overlay.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            pill.centerXAnchor.constraint(equalTo: overlay.contentView.centerXAnchor),
+            pill.centerYAnchor.constraint(equalTo: overlay.contentView.centerYAnchor),
+            label.leadingAnchor.constraint(equalTo: pill.contentView.leadingAnchor, constant: 18),
+            label.trailingAnchor.constraint(equalTo: pill.contentView.trailingAnchor, constant: -18),
+            label.topAnchor.constraint(equalTo: pill.contentView.topAnchor, constant: 10),
+            label.bottomAnchor.constraint(equalTo: pill.contentView.bottomAnchor, constant: -10),
+        ])
     }
 
     private func configureShellUtilityPanel() {
@@ -98,7 +205,7 @@ extension BrowserViewController {
         panel.alpha = 0
     }
 
-    @objc private func handleShellRefreshGesture(_ gesture: UIScreenEdgePanGestureRecognizer) {
+    @objc private func handleShellReloadGesture(_ gesture: UIScreenEdgePanGestureRecognizer) {
         guard gesture.state == .ended || gesture.state == .recognized else {
             return
         }
@@ -107,10 +214,15 @@ extension BrowserViewController {
             return
         }
 
-        refreshSelectedTabLikeBrowserChrome()
+        guard let tab = tabManager.selectedTab else {
+            return
+        }
+
+        setShellRecoveryOverlayVisible(true, animated: true)
+        reloadTabAfterClearingAppCache(tab)
     }
 
-    @objc private func handleShellDismissKeyboardGesture(_ gesture: UIScreenEdgePanGestureRecognizer) {
+    @objc private func handleShellKeyboardDismissGesture(_ gesture: UIScreenEdgePanGestureRecognizer) {
         guard gesture.state == .ended || gesture.state == .recognized else {
             return
         }
@@ -122,7 +234,7 @@ extension BrowserViewController {
         view.endEditing(true)
     }
 
-    @objc private func handleShellSettingsGesture(_ gesture: UITapGestureRecognizer) {
+    @objc private func handleUtilityPanelTap(_ gesture: UITapGestureRecognizer) {
         guard gesture.state == .ended || gesture.state == .recognized else {
             return
         }
@@ -130,29 +242,122 @@ extension BrowserViewController {
         setShellUtilityPanelVisible(true, animated: true)
     }
 
-    private func refreshSelectedTabLikeBrowserChrome() {
-        guard let selectedTab = tabManager.selectedTab else {
-            return
+    private func reloadTabAfterClearingAppCache(_ tab: Tab) {
+        tab.session.stop()
+        clearAppCacheForReload { [weak self, weak tab] in
+            guard let self,
+                  let tab else {
+                return
+            }
+            self.tabManager.recover(tab)
+            self.hideShellRecoveryOverlayAfterSettleDelay()
         }
+    }
 
-        if selectedTab.isLoading {
-            selectedTab.session.stop()
-            return
+    private func clearAppCacheForReload(completion: @escaping () -> Void) {
+        DispatchQueue.global(qos: .userInitiated).async {
+            let fileManager = FileManager.default
+            let cacheURLs = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)
+            let temporaryURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+
+            URLCache.shared.removeAllCachedResponses()
+
+            for directoryURL in cacheURLs + [temporaryURL] {
+                guard let contents = try? fileManager.contentsOfDirectory(
+                    at: directoryURL,
+                    includingPropertiesForKeys: nil,
+                    options: [.skipsSubdirectoryDescendants]
+                ) else {
+                    continue
+                }
+
+                for itemURL in contents {
+                    try? fileManager.removeItem(at: itemURL)
+                }
+            }
+
+            DispatchQueue.main.async {
+                completion()
+            }
         }
-
-        selectedTab.session.reload()
     }
 
     private func reloadSelectedTabWithCurrentSettings() {
-        guard let selectedTab = tabManager.selectedTab else {
+        guard let tab = tabManager.selectedTab else {
             return
         }
 
-        let url = selectedTab.url ?? ShellConfig.current.defaultURL?.absoluteString ?? "https://chatgpt.com"
-        selectedTab.session.updateSettings(
-            GeckoSessionController.shared.sessionSettings(for: url, tabID: selectedTab.id)
+        let url = tab.url ?? ShellConfig.current.defaultURL?.absoluteString ?? "https://chatgpt.com"
+        tab.session.updateSettings(
+            GeckoSessionController.shared.sessionSettings(for: url, tabID: tab.id)
         )
-        selectedTab.session.reload()
+        tabManager.reload(tab)
+    }
+
+    private func setShellRecoveryOverlayVisible(_ visible: Bool, animated: Bool) {
+        let overlay = shellRecoveryOverlay
+        let pill = shellRecoveryPill
+        guard visible != isShellRecoveryOverlayVisible || overlay.isHidden else {
+            return
+        }
+
+        isShellRecoveryOverlayVisible = visible
+        if visible {
+            shellRecoveryOverlayShownAt = Date()
+            overlay.isHidden = false
+            view.bringSubviewToFront(overlay)
+            pill.transform = CGAffineTransform(scaleX: 0.96, y: 0.96)
+            let token = UUID()
+            shellRecoveryOverlayToken = token
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { [weak self] in
+                guard let self,
+                      self.shellRecoveryOverlayToken == token,
+                      self.isShellRecoveryOverlayVisible else {
+                    return
+                }
+                self.setShellRecoveryOverlayVisible(false, animated: true)
+            }
+        }
+
+        let animations = {
+            overlay.alpha = visible ? 1 : 0
+            pill.transform = visible ? .identity : CGAffineTransform(scaleX: 0.98, y: 0.98)
+        }
+        let completion: (Bool) -> Void = { _ in
+            if !visible {
+                overlay.isHidden = true
+                self.shellRecoveryOverlayShownAt = nil
+            }
+        }
+
+        if animated {
+            UIView.animate(
+                withDuration: visible ? 0.18 : 0.22,
+                delay: 0,
+                options: [.beginFromCurrentState, .allowUserInteraction],
+                animations: animations,
+                completion: completion
+            )
+        } else {
+            animations()
+            completion(true)
+        }
+    }
+
+    private func hideShellRecoveryOverlayAfterSettleDelay() {
+        let minimumVisibleDuration: TimeInterval = 2.0
+        let elapsed = shellRecoveryOverlayShownAt.map { Date().timeIntervalSince($0) } ?? minimumVisibleDuration
+        let delay = max(0, minimumVisibleDuration - elapsed)
+        let token = shellRecoveryOverlayToken
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+            guard let self,
+                  self.shellRecoveryOverlayToken == token,
+                  self.isShellRecoveryOverlayVisible else {
+                return
+            }
+            self.setShellRecoveryOverlayVisible(false, animated: true)
+        }
     }
 
     private func setShellUtilityPanelVisible(_ visible: Bool, animated: Bool) {
@@ -193,10 +398,20 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     private let cardView = UIView()
     private let homeContent = UIView()
     private let downloadsContent = UIView()
+    private let homeStackView = UIStackView()
+    private let downloadsRow = UIControl()
     private let androidUASwitch = UISwitch()
     private let saveButton = UIButton(type: .system)
     private var cardSideConstraint: NSLayoutConstraint?
+    private var cardHeightConstraint: NSLayoutConstraint?
+    private var saveButtonHeightConstraint: NSLayoutConstraint?
     private var savedAndroidUserAgent = false
+    private var activePanel: Panel = .home
+
+    private enum Panel {
+        case home
+        case downloads
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -217,7 +432,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         cardView.layer.shadowOpacity = 0.25
         cardView.layer.shadowRadius = 28
         cardView.layer.shadowOffset = CGSize(width: 0, height: 12)
-        cardView.clipsToBounds = false
+        cardView.clipsToBounds = true
 
         addSubview(blurView)
         addSubview(dimView)
@@ -225,6 +440,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         cardView.addSubview(homeContent)
         cardView.addSubview(downloadsContent)
         cardSideConstraint = cardView.widthAnchor.constraint(equalToConstant: 280)
+        cardHeightConstraint = cardView.heightAnchor.constraint(equalToConstant: 188)
 
         NSLayoutConstraint.activate([
             blurView.topAnchor.constraint(equalTo: topAnchor),
@@ -242,7 +458,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
             cardView.leadingAnchor.constraint(greaterThanOrEqualTo: leadingAnchor, constant: 18),
             cardView.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -18),
             cardSideConstraint!,
-            cardView.heightAnchor.constraint(equalTo: cardView.widthAnchor),
+            cardHeightConstraint!,
 
             homeContent.topAnchor.constraint(equalTo: cardView.topAnchor),
             homeContent.bottomAnchor.constraint(equalTo: cardView.bottomAnchor),
@@ -257,6 +473,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
 
         configureHomeContent()
         configureDownloadsContent()
+        downloadsContent.isHidden = true
 
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(backgroundTapped))
         tapGesture.delegate = self
@@ -275,6 +492,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         let availableWidth = max(220, bounds.width - 56)
         let availableHeight = max(220, bounds.height - safeAreaInsets.top - safeAreaInsets.bottom - 80)
         cardSideConstraint?.constant = min(336, min(availableWidth, availableHeight))
+        updateCardHeight(animated: false)
     }
 
     func syncControls() {
@@ -294,7 +512,17 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     }
 
     func showHome(animated: Bool) {
-        switchContent(to: homeContent, from: downloadsContent, animated: animated)
+        let previous = contentView(for: activePanel)
+        activePanel = .home
+        switchContent(to: homeContent, from: previous, animated: animated)
+        updateCardHeight(animated: animated)
+    }
+
+    func showDownloads(animated: Bool) {
+        let previous = contentView(for: activePanel)
+        activePanel = .downloads
+        switchContent(to: downloadsContent, from: previous, animated: animated)
+        updateCardHeight(animated: animated)
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
@@ -305,10 +533,9 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     }
 
     private func configureHomeContent() {
-        let stackView = UIStackView()
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        stackView.axis = .vertical
-        stackView.spacing = 12
+        homeStackView.translatesAutoresizingMaskIntoConstraints = false
+        homeStackView.axis = .vertical
+        homeStackView.spacing = 12
 
         let uaLabel = UILabel()
         uaLabel.text = "Android User Agent"
@@ -326,7 +553,6 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         uaRow.addSubview(uaLabel)
         uaRow.addSubview(androidUASwitch)
 
-        let downloadsRow = UIControl()
         downloadsRow.translatesAutoresizingMaskIntoConstraints = false
         downloadsRow.backgroundColor = .tertiarySystemBackground
         downloadsRow.layer.cornerRadius = 14
@@ -353,18 +579,21 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         saveButton.layer.cornerRadius = 14
         saveButton.layer.cornerCurve = .continuous
         saveButton.addTarget(self, action: #selector(saveUserAgentTapped), for: .touchUpInside)
-        saveButton.isHidden = true
+        saveButton.isEnabled = false
         saveButton.alpha = 0
+        saveButtonHeightConstraint = saveButton.heightAnchor.constraint(equalToConstant: 0)
 
-        stackView.addArrangedSubview(uaRow)
-        stackView.addArrangedSubview(downloadsRow)
-        stackView.addArrangedSubview(saveButton)
-        homeContent.addSubview(stackView)
+        homeStackView.addArrangedSubview(uaRow)
+        homeStackView.addArrangedSubview(downloadsRow)
+        homeStackView.addArrangedSubview(saveButton)
+        homeStackView.setCustomSpacing(12, after: uaRow)
+        homeStackView.setCustomSpacing(0, after: downloadsRow)
+        homeContent.addSubview(homeStackView)
 
         NSLayoutConstraint.activate([
-            stackView.leadingAnchor.constraint(equalTo: homeContent.leadingAnchor, constant: 16),
-            stackView.trailingAnchor.constraint(equalTo: homeContent.trailingAnchor, constant: -16),
-            stackView.centerYAnchor.constraint(equalTo: homeContent.centerYAnchor),
+            homeStackView.leadingAnchor.constraint(equalTo: homeContent.leadingAnchor, constant: 16),
+            homeStackView.trailingAnchor.constraint(equalTo: homeContent.trailingAnchor, constant: -16),
+            homeStackView.centerYAnchor.constraint(equalTo: homeContent.centerYAnchor),
 
             uaRow.heightAnchor.constraint(equalToConstant: 72),
             uaLabel.leadingAnchor.constraint(equalTo: uaRow.leadingAnchor, constant: 16),
@@ -381,7 +610,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
             chevronView.widthAnchor.constraint(equalToConstant: 14),
             chevronView.heightAnchor.constraint(equalToConstant: 18),
 
-            saveButton.heightAnchor.constraint(equalToConstant: 48),
+            saveButtonHeightConstraint!,
         ])
     }
 
@@ -429,6 +658,13 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     }
 
     private func switchContent(to incoming: UIView, from outgoing: UIView, animated: Bool) {
+        guard incoming !== outgoing else {
+            incoming.isHidden = false
+            incoming.alpha = 1
+            incoming.transform = .identity
+            return
+        }
+
         incoming.isHidden = false
         incoming.alpha = animated ? 0 : 1
         incoming.transform = animated ? CGAffineTransform(scaleX: 0.98, y: 0.98) : .identity
@@ -452,27 +688,53 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         }
     }
 
-    private func updateSaveButton(animated: Bool) {
-        let changed = androidUASwitch.isOn != savedAndroidUserAgent
-        if changed {
-            saveButton.isHidden = false
+    private func updateCardHeight(animated: Bool) {
+        let side = cardSideConstraint?.constant ?? 280
+        let saveHeight: CGFloat = androidUASwitch.isOn != savedAndroidUserAgent ? 60 : 0
+        let homeHeight: CGFloat = 72 + 12 + 72 + saveHeight + 32
+        let targetHeight: CGFloat
+        switch activePanel {
+        case .home:
+            targetHeight = homeHeight
+        case .downloads:
+            targetHeight = side
         }
 
+        let applyHeight = {
+            self.cardHeightConstraint?.constant = min(targetHeight, side)
+        }
+
+        guard animated else {
+            applyHeight()
+            return
+        }
+
+        UIView.animate(withDuration: 0.22, delay: 0, options: [.curveEaseInOut]) {
+            applyHeight()
+            self.layoutIfNeeded()
+        }
+    }
+
+    private func updateSaveButton(animated: Bool) {
+        let changed = androidUASwitch.isOn != savedAndroidUserAgent
         let updates = {
             self.saveButton.alpha = changed ? 1 : 0
             self.saveButton.isEnabled = changed
+            self.saveButtonHeightConstraint?.constant = changed ? 48 : 0
+            self.homeStackView.setCustomSpacing(changed ? 12 : 0, after: self.downloadsRow)
+            self.homeStackView.layoutIfNeeded()
             self.homeContent.layoutIfNeeded()
+            self.cardView.layoutIfNeeded()
+            self.updateCardHeight(animated: false)
+            self.layoutIfNeeded()
         }
 
         guard animated else {
             updates()
-            saveButton.isHidden = !changed
             return
         }
 
-        UIView.animate(withDuration: 0.18, delay: 0, options: [.curveEaseInOut], animations: updates) { _ in
-            self.saveButton.isHidden = !changed
-        }
+        UIView.animate(withDuration: 0.22, delay: 0, options: [.curveEaseInOut], animations: updates)
     }
 
     @objc private func closeTapped() {
@@ -490,7 +752,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     }
 
     @objc private func downloadsTapped() {
-        switchContent(to: downloadsContent, from: homeContent, animated: true)
+        showDownloads(animated: true)
     }
 
     @objc private func backTapped() {
@@ -499,5 +761,14 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
 
     @objc private func androidUASwitchChanged() {
         updateSaveButton(animated: true)
+    }
+
+    private func contentView(for panel: Panel) -> UIView {
+        switch panel {
+        case .home:
+            return homeContent
+        case .downloads:
+            return downloadsContent
+        }
     }
 }

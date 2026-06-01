@@ -634,6 +634,64 @@ final class TabManagerImplementation: NSObject, TabManager {
         let searchTarget = searchURL(for: trimmedValue)
         loadURL(searchTarget, in: tab)
     }
+
+    func reload(_ tab: Tab) {
+        let target = tab.url?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let target,
+              !target.isEmpty,
+              target.lowercased() != "about:blank" else {
+            let fallbackURL = ShellConfig.current.defaultURL?.absoluteString ?? "https://chatgpt.com"
+            browse(to: fallbackURL, in: tab)
+            return
+        }
+
+        tab.session.updateSettings(GeckoSessionController.shared.sessionSettings(for: target, tabID: tab.id))
+        tab.session.reload()
+    }
+
+    func recover(_ tab: Tab) {
+        guard let location = tabLocation(for: tab.id) else {
+            return
+        }
+
+        let target = tab.url?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let recoveredURL: String
+        if let target,
+           !target.isEmpty,
+           target.lowercased() != "about:blank" {
+            recoveredURL = target
+        } else {
+            recoveredURL = ShellConfig.current.defaultURL?.absoluteString ?? "https://chatgpt.com"
+        }
+
+        let oldSession = tab.session
+        let newSession = createSession(windowId: nil, isPrivate: tab.isPrivate)
+        bindDelegates(to: newSession, for: tab)
+        newSession.updateSettings(GeckoSessionController.shared.sessionSettings(for: recoveredURL, tabID: tab.id))
+
+        tab.session = newSession
+        tab.pendingRestoreURL = nil
+        tab.pendingDisplayText = recoveredURL
+        tab.suppressInitialNavigation = false
+        tab.sessionCanGoBack = false
+        tab.sessionCanGoForward = false
+        tab.canNavigateBack = false
+        tab.canNavigateForward = false
+        tab.isLoading = false
+        tab.progress = 0
+
+        if selectedTab === tab {
+            newSession.setActive(true)
+            newSession.setFocused(true)
+        }
+
+        delegate?.tabManagerDidChangeTabs(self)
+        notifyUpdate(at: location.index, mode: location.mode, reason: .location)
+        notifyUpdate(at: location.index, mode: location.mode, reason: .navigationState)
+        closeSession(oldSession)
+        loadURL(recoveredURL, in: tab)
+        persistState()
+    }
     
     func goBack() {
         guard let tab = selectedTab else {
