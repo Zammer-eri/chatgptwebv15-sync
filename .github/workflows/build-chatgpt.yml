@@ -21,7 +21,7 @@ env:
 
 jobs:
   build-chatgpt-source:
-    name: Build ChatGPT shell from Reynard base
+    name: Build ChatGPT app
     runs-on: macos-26
     timeout-minutes: 360
 

@@ -15,8 +15,8 @@
   let insertingLineBreak = false;
   let dispatchingSyntheticReturn = false;
   let suppressComposerSubmitUntil = 0;
-  const wiredTargets = new win.WeakSet();
   const listenerOptions = { capture: true, passive: false };
+  const passiveCaptureOptions = { capture: true, passive: true };
 
   const editableElement = target => {
     const element =
@@ -264,35 +264,23 @@
     }
   };
 
-  const wireTarget = target => {
-    if (!target || wiredTargets.has(target)) {
-      return;
+  const markComposerEditable = target => {
+    const editable = editableElement(target);
+    if (editable && isComposerEditable(editable)) {
+      editable.setAttribute("enterkeyhint", "enter");
     }
+  };
 
-    wiredTargets.add(target);
+  for (const target of [win, doc]) {
     target.addEventListener("keydown", handleReturn, listenerOptions);
     target.addEventListener("keypress", handleReturn, listenerOptions);
     target.addEventListener("beforeinput", handleBeforeInput, listenerOptions);
     target.addEventListener("submit", handleSubmit, listenerOptions);
-  };
+  }
 
-  const syncReturnHint = () => {
-    for (const editable of doc.querySelectorAll(COMPOSER_SELECTOR)) {
-      if (isComposerEditable(editable)) {
-        editable.setAttribute("enterkeyhint", "enter");
-        wireTarget(editable);
-        wireTarget(editable.closest(COMPOSER_ROOT_SELECTOR));
-      }
-    }
-  };
-
-  wireTarget(win);
-  wireTarget(doc);
-  wireTarget(doc.documentElement);
-
-  new win.MutationObserver(syncReturnHint).observe(doc.documentElement, {
-    childList: true,
-    subtree: true,
-  });
-  syncReturnHint();
+  doc.addEventListener("focusin", event => markComposerEditable(event.target), true);
+  doc.addEventListener("touchstart", event => markComposerEditable(event.target), passiveCaptureOptions);
+  doc.addEventListener("pointerdown", event => markComposerEditable(event.target), passiveCaptureOptions);
+  doc.addEventListener("DOMContentLoaded", () => markComposerEditable(doc.activeElement), true);
+  markComposerEditable(doc.activeElement);
 })(typeof globalThis !== "undefined" ? globalThis : this);
