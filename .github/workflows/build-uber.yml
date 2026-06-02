@@ -29,7 +29,64 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Build Uber shell package
+      - name: Prepare shell profile and runner
         uses: ./.github/actions/build-shell-source
         with:
           shell_target: uber
+          stage: prepare-runner
+
+      - name: Prepare Gecko source and cache
+        id: prepare_gecko
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: uber
+          stage: prepare-gecko
+
+      - name: Prepare JIT native bridge
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: uber
+          stage: prepare-app
+
+      - name: Build Gecko engine
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: uber
+          stage: build-gecko
+          gecko_cache_hit: ${{ steps.prepare_gecko.outputs.gecko_cache_hit }}
+
+      - name: Publish shared Gecko engine artifact
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: uber
+          stage: publish-engine
+
+      - name: Archive Uber app
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: uber
+          stage: archive-app
+
+      - name: Package Uber TIPA
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: uber
+          stage: package-app
+
+      - name: Verify Uber package
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: uber
+          stage: verify-package
+
+      - name: Upload Uber artifacts
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: uber
+          stage: upload-artifacts
+
+      - name: Publish Uber rolling prerelease
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: uber
+          stage: publish-shell-release

@@ -1,4 +1,4 @@
-name: Build Engine
+name: Build Shared Gecko Engine
 
 on:
   workflow_dispatch:
@@ -29,9 +29,36 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Build engine artifact
+      - name: Prepare shell profile and runner
         uses: ./.github/actions/build-shell-source
         with:
           shell_target: browser
+          stage: prepare-runner
+          package_app: "false"
+          publish_shell_release: "false"
+
+      - name: Prepare Gecko source and cache
+        id: prepare_gecko
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: browser
+          stage: prepare-gecko
+          package_app: "false"
+          publish_shell_release: "false"
+
+      - name: Build Gecko engine
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: browser
+          stage: build-gecko
+          package_app: "false"
+          publish_shell_release: "false"
+          gecko_cache_hit: ${{ steps.prepare_gecko.outputs.gecko_cache_hit }}
+
+      - name: Publish shared Gecko engine artifact
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: browser
+          stage: publish-engine
           package_app: "false"
           publish_shell_release: "false"

@@ -5,6 +5,9 @@ inputs:
   shell_target:
     description: Shell target profile to build.
     required: true
+  stage:
+    description: Pipeline stage to run.
+    required: true
   package_app:
     description: Build and publish the shell IPA after preparing the engine.
     required: false
@@ -13,17 +16,28 @@ inputs:
     description: Publish the shell rolling prerelease.
     required: false
     default: "true"
+  gecko_cache_hit:
+    description: Cache hit result from the prepare-gecko stage.
+    required: false
+    default: "false"
+
+outputs:
+  gecko_cache_hit:
+    description: Whether the exact Gecko object cache was restored.
+    value: ${{ steps.restore-gecko-cache.outputs.cache-hit }}
 
 runs:
   using: composite
   steps:
     - name: Load shell profile
+      if: inputs.stage == 'prepare-runner'
       shell: bash
       env:
         SHELL_TARGET: ${{ inputs.shell_target }}
       run: python3 tools/release/load-shell-profile.py "$SHELL_TARGET"
 
     - name: Select Xcode 26
+      if: inputs.stage == 'prepare-runner'
       shell: bash
       run: |
         set -euo pipefail
@@ -42,6 +56,7 @@ runs:
         df -h
 
     - name: Restore Rust tooling cache
+      if: inputs.stage == 'prepare-runner'
       id: restore-rust-cache
       uses: actions/cache/restore@v4
       with:
@@ -54,6 +69,7 @@ runs:
           reynard-rust-tools-${{ runner.os }}-
 
     - name: Install packaging tools
+      if: inputs.stage == 'prepare-runner'
       shell: bash
       run: |
         set +e
@@ -76,7 +92,7 @@ runs:
         fi
 
     - name: Save Rust tooling cache
-      if: steps.restore-rust-cache.outputs.cache-hit != 'true'
+      if: inputs.stage == 'prepare-runner' && steps.restore-rust-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
         path: |
@@ -86,7 +102,7 @@ runs:
         key: reynard-rust-tools-${{ runner.os }}-cbindgen-v1
 
     - name: Upload tool install log
-      if: failure()
+      if: inputs.stage == 'prepare-runner' && failure()
       uses: actions/upload-artifact@v4
       with:
         name: install-tools-log
@@ -94,18 +110,22 @@ runs:
         if-no-files-found: ignore
 
     - name: Make scripts executable
+      if: inputs.stage == 'prepare-gecko'
       shell: bash
       run: find tools browser/Scripts -name "*.sh" -exec chmod +x {} +
 
     - name: Sync Firefox source
+      if: inputs.stage == 'prepare-gecko'
       shell: bash
       run: ./tools/development/update-gecko.sh
 
     - name: Apply Reynard Gecko patches
+      if: inputs.stage == 'prepare-gecko'
       shell: bash
       run: ./tools/development/apply-patches.sh
 
     - name: Compute engine fingerprint
+      if: inputs.stage == 'prepare-gecko'
       shell: bash
       run: |
         set -euo pipefail
@@ -115,11 +135,12 @@ runs:
         echo "REYNARD_GECKO_SOURCE_BUILT=0" >> "$GITHUB_ENV"
 
     - name: Sync idevice source
-      if: inputs.package_app == 'true'
+      if: inputs.stage == 'prepare-app' && inputs.package_app == 'true'
       shell: bash
       run: git submodule update --init --recursive support/idevice
 
     - name: Restore Gecko object cache
+      if: inputs.stage == 'prepare-gecko'
       id: restore-gecko-cache
       uses: actions/cache/restore@v4
       with:
@@ -131,7 +152,7 @@ runs:
           reynard-gecko-source-0.4-${{ runner.os }}-
 
     - name: Restore Gecko dist release artifact
-      if: steps.restore-gecko-cache.outputs.cache-hit != 'true'
+      if: inputs.stage == 'prepare-gecko' && steps.restore-gecko-cache.outputs.cache-hit != 'true'
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
@@ -165,7 +186,7 @@ runs:
         echo "Restored Gecko dist from release artifact."
 
     - name: Restore JIT native bridge cache
-      if: inputs.package_app == 'true'
+      if: inputs.stage == 'prepare-app' && inputs.package_app == 'true'
       id: restore-idevice-cache
       uses: actions/cache/restore@v4
       with:
@@ -177,7 +198,7 @@ runs:
           reynard-idevice-ffi-source-${{ runner.os }}-
 
     - name: Build idevice FFI
-      if: inputs.package_app == 'true'
+      if: inputs.stage == 'prepare-app' && inputs.package_app == 'true'
       shell: bash
       env:
         IDEVICE_CACHE_HIT: ${{ steps.restore-idevice-cache.outputs.cache-hit }}
@@ -190,7 +211,7 @@ runs:
         ./tools/development/build-idevice.sh
 
     - name: Save JIT native bridge cache
-      if: inputs.package_app == 'true' && steps.restore-idevice-cache.outputs.cache-hit != 'true'
+      if: inputs.stage == 'prepare-app' && inputs.package_app == 'true' && steps.restore-idevice-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
         path: |
@@ -199,9 +220,10 @@ runs:
         key: reynard-idevice-ffi-source-${{ runner.os }}-${{ hashFiles('tools/development/build-idevice.sh', '.gitmodules') }}
 
     - name: Build Gecko from source
+      if: inputs.stage == 'build-gecko'
       shell: bash
       env:
-        GECKO_CACHE_HIT: ${{ steps.restore-gecko-cache.outputs.cache-hit }}
+        GECKO_CACHE_HIT: ${{ inputs.gecko_cache_hit }}
       run: |
         set +e
         mkdir -p dist
@@ -227,7 +249,7 @@ runs:
         echo "REYNARD_GECKO_SOURCE_BUILT=1" >> "$GITHUB_ENV"
 
     - name: Save Gecko object cache
-      if: steps.restore-gecko-cache.outputs.cache-hit != 'true'
+      if: inputs.stage == 'build-gecko' && inputs.gecko_cache_hit != 'true'
       uses: actions/cache/save@v4
       with:
         path: |
@@ -236,7 +258,7 @@ runs:
         key: reynard-gecko-source-0.4-${{ runner.os }}-${{ hashFiles('engine/release.txt', 'patches/**/*.patch', 'tools/development/build-gecko.sh') }}
 
     - name: Upload Gecko build log
-      if: failure()
+      if: inputs.stage == 'build-gecko' && failure()
       uses: actions/upload-artifact@v4
       with:
         name: gecko-build-log
@@ -244,7 +266,7 @@ runs:
         if-no-files-found: ignore
 
     - name: Publish Gecko dist release artifact
-      if: env.REYNARD_GECKO_SOURCE_BUILT == '1'
+      if: inputs.stage == 'publish-engine' && env.REYNARD_GECKO_SOURCE_BUILT == '1'
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
@@ -289,7 +311,7 @@ runs:
           --clobber
 
     - name: Archive shell app
-      if: inputs.package_app == 'true'
+      if: inputs.stage == 'archive-app' && inputs.package_app == 'true'
       shell: bash
       env:
         REYNARD_SKIP_CODE_SIGNING: "1"
@@ -311,7 +333,7 @@ runs:
         fi
 
     - name: Upload archive app log
-      if: failure() && inputs.package_app == 'true'
+      if: inputs.stage == 'archive-app' && failure() && inputs.package_app == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: archive-app-log
@@ -319,14 +341,14 @@ runs:
         if-no-files-found: ignore
 
     - name: Package TrollStore TIPA
-      if: inputs.package_app == 'true'
+      if: inputs.stage == 'package-app' && inputs.package_app == 'true'
       shell: bash
       env:
         REYNARD_TROLLSTORE_ONLY: "1"
       run: ./tools/release/create-ipa.sh
 
     - name: Verify package
-      if: inputs.package_app == 'true'
+      if: inputs.stage == 'verify-package' && inputs.package_app == 'true'
       shell: bash
       run: |
         set -euo pipefail
@@ -398,7 +420,7 @@ runs:
         PY
 
     - name: Upload workflow artifacts
-      if: inputs.package_app == 'true'
+      if: inputs.stage == 'upload-artifacts' && inputs.package_app == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: Shell-Source-Build
@@ -408,7 +430,7 @@ runs:
         if-no-files-found: error
 
     - name: Publish rolling prerelease
-      if: inputs.package_app == 'true' && inputs.publish_shell_release == 'true'
+      if: inputs.stage == 'publish-shell-release' && inputs.package_app == 'true' && inputs.publish_shell_release == 'true'
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}

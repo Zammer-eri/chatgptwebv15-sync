@@ -32,7 +32,64 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Build ChatGPT shell package
+      - name: Prepare shell profile and runner
         uses: ./.github/actions/build-shell-source
         with:
           shell_target: chatgpt
+          stage: prepare-runner
+
+      - name: Prepare Gecko source and cache
+        id: prepare_gecko
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: chatgpt
+          stage: prepare-gecko
+
+      - name: Prepare JIT native bridge
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: chatgpt
+          stage: prepare-app
+
+      - name: Build Gecko engine
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: chatgpt
+          stage: build-gecko
+          gecko_cache_hit: ${{ steps.prepare_gecko.outputs.gecko_cache_hit }}
+
+      - name: Publish shared Gecko engine artifact
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: chatgpt
+          stage: publish-engine
+
+      - name: Archive ChatGPT app
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: chatgpt
+          stage: archive-app
+
+      - name: Package ChatGPT TIPA
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: chatgpt
+          stage: package-app
+
+      - name: Verify ChatGPT package
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: chatgpt
+          stage: verify-package
+
+      - name: Upload ChatGPT artifacts
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: chatgpt
+          stage: upload-artifacts
+
+      - name: Publish ChatGPT rolling prerelease
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: chatgpt
+          stage: publish-shell-release

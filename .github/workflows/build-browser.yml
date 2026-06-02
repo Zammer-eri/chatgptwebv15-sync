@@ -29,7 +29,64 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Build browser baseline package
+      - name: Prepare shell profile and runner
         uses: ./.github/actions/build-shell-source
         with:
           shell_target: browser
+          stage: prepare-runner
+
+      - name: Prepare Gecko source and cache
+        id: prepare_gecko
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: browser
+          stage: prepare-gecko
+
+      - name: Prepare JIT native bridge
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: browser
+          stage: prepare-app
+
+      - name: Build Gecko engine
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: browser
+          stage: build-gecko
+          gecko_cache_hit: ${{ steps.prepare_gecko.outputs.gecko_cache_hit }}
+
+      - name: Publish shared Gecko engine artifact
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: browser
+          stage: publish-engine
+
+      - name: Archive browser app
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: browser
+          stage: archive-app
+
+      - name: Package browser TIPA
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: browser
+          stage: package-app
+
+      - name: Verify browser package
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: browser
+          stage: verify-package
+
+      - name: Upload browser artifacts
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: browser
+          stage: upload-artifacts
+
+      - name: Publish browser rolling prerelease
+        uses: ./.github/actions/build-shell-source
+        with:
+          shell_target: browser
+          stage: publish-shell-release
