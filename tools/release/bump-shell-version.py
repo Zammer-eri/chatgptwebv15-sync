@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-PROFILE_DIR = ROOT_DIR / "browser" / "Configuration" / "Shells"
+APP_DIR = ROOT_DIR / "apps"
 BUMP_TYPES = {
     "patch": (0, 0, 1),
     "fix": (0, 0, 1),
@@ -45,7 +45,7 @@ def main() -> int:
         print(f"Unknown bump type: {bump_type}", file=sys.stderr)
         return 2
 
-    profile_path = PROFILE_DIR / f"{target}.xcconfig"
+    profile_path = APP_DIR / target / "app.xcconfig"
     if not profile_path.exists():
         print(f"Missing shell profile: {profile_path}", file=sys.stderr)
         return 2

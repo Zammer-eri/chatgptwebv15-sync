@@ -33,10 +33,10 @@ xcconfig_value() {
 }
 
 CURRENT_VERSION="$(xcconfig_value CURRENT_VERSION 0.2.0)"
-SHELL_TARGET="$(xcconfig_value SHELL_TARGET chatgpt)"
-SHELL_URL_SCHEME="$(xcconfig_value SHELL_URL_SCHEME chatgptshell)"
-SHELL_PACKAGE_BASENAME="$(xcconfig_value SHELL_PACKAGE_BASENAME ChatGPT-Shell)"
-APP_BUNDLE_IDENTIFIER="$(xcconfig_value SHELL_BUNDLE_IDENTIFIER com.chatgpt.shell)"
+SHELL_TARGET="$(xcconfig_value SHELL_TARGET browser)"
+SHELL_URL_SCHEME="$(xcconfig_value SHELL_URL_SCHEME reynard)"
+SHELL_PACKAGE_BASENAME="$(xcconfig_value SHELL_PACKAGE_BASENAME Reynard)"
+APP_BUNDLE_IDENTIFIER="$(xcconfig_value SHELL_BUNDLE_IDENTIFIER com.minh-ton.Reynard)"
 HELPER_BUNDLE_IDENTIFIER="${SHELL_HELPER_BUNDLE_IDENTIFIER:-$APP_BUNDLE_IDENTIFIER.Helper}"
 OPENIN_BUNDLE_IDENTIFIER="${SHELL_OPENIN_BUNDLE_IDENTIFIER:-$APP_BUNDLE_IDENTIFIER.OpenIn}"
 PACKAGE_OPENIN_EXTENSION="$(xcconfig_value SHELL_PACKAGE_OPENIN_EXTENSION "")"
@@ -97,8 +97,7 @@ if [ "$PACKAGE_OPENIN_EXTENSION" != "1" ]; then
 	rm -rf "$APP_PATH/PlugIns/OpenIn.appex"
 fi
 
-# I absolutely hate Apple for this
-# Why is my bundle identifier just become unavailable for no reason?
+# Normalize bundle identifiers after archive packaging rewrites them.
 plutil -replace CFBundleShortVersionString -string "$CURRENT_VERSION" "$APP_PATH/Info.plist"
 plutil -replace CFBundleIdentifier -string "$APP_BUNDLE_IDENTIFIER" "$APP_PATH/Info.plist"
 if [ "$SHELL_TARGET" != "browser" ]; then

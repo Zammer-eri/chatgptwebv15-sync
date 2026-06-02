@@ -276,7 +276,8 @@ final class TabManagerImplementation: NSObject, TabManager {
     }
 
     private func shouldOpenNewSessionExternallyFromChatGPT(targetURLString: String, sourceURLString: String?) -> Bool {
-        guard let targetURL = remoteURL(from: targetURLString),
+        guard ShellConfig.current.target == .chatGPT,
+              let targetURL = remoteURL(from: targetURLString),
               isChatGPTURL(sourceURLString),
               !shouldKeepEmbeddedNewSessionForChatGPT(targetURL) else {
             return false
@@ -286,7 +287,8 @@ final class TabManagerImplementation: NSObject, TabManager {
     }
 
     private func shouldOpenExternallyFromChatGPT(targetURLString: String, sourceURLString: String?) -> Bool {
-        guard let targetURL = remoteURL(from: targetURLString),
+        guard ShellConfig.current.target == .chatGPT,
+              let targetURL = remoteURL(from: targetURLString),
               isChatGPTURL(sourceURLString),
               !shouldKeepEmbeddedForChatGPT(targetURL) else {
             return false
@@ -749,7 +751,7 @@ final class TabManagerImplementation: NSObject, TabManager {
         guard let target,
               !target.isEmpty,
               target.lowercased() != "about:blank" else {
-            let fallbackURL = ShellConfig.current.defaultURL?.absoluteString ?? "https://chatgpt.com"
+            let fallbackURL = ShellConfig.current.defaultURL?.absoluteString ?? "about:blank"
             browse(to: fallbackURL, in: tab)
             return
         }
@@ -770,7 +772,7 @@ final class TabManagerImplementation: NSObject, TabManager {
            target.lowercased() != "about:blank" {
             recoveredURL = target
         } else {
-            recoveredURL = ShellConfig.current.defaultURL?.absoluteString ?? "https://chatgpt.com"
+            recoveredURL = ShellConfig.current.defaultURL?.absoluteString ?? "about:blank"
         }
 
         let oldSession = tab.session

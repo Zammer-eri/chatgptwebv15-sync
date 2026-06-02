@@ -2,7 +2,7 @@
 //  ShellLegacyDownloadsManagerView.swift
 //  Reynard
 //
-//  Shell-only copy of the compact downloads UI from 62415178.
+//  Compact downloads UI used by shell targets.
 //
 
 import MobileCoreServices

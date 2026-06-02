@@ -2,8 +2,7 @@
 //  ShellSurfaceFeatures.swift
 //  Reynard
 //
-//  Shell-only gestures and utility UI. Keep this layer isolated so upstream
-//  Reynard updates only need a small hook from BrowserViewController.
+//  Shell-only gestures and utility UI, isolated from the upstream browser UI.
 //
 
 import GeckoView
@@ -287,7 +286,7 @@ extension BrowserViewController {
             return
         }
 
-        let url = tab.url ?? ShellConfig.current.defaultURL?.absoluteString ?? "https://chatgpt.com"
+        let url = tab.url ?? ShellConfig.current.defaultURL?.absoluteString ?? "about:blank"
         tab.session.updateSettings(
             GeckoSessionController.shared.sessionSettings(for: url, tabID: tab.id)
         )

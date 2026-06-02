@@ -7,9 +7,9 @@ ROOT_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/../.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
 PROJECT_PATH="$ROOT_DIR/browser/Reynard.xcodeproj"
 XCCONFIG_PATH="$ROOT_DIR/browser/Configuration/Reynard.xcconfig"
-SHELL_PROFILE_DIR="$ROOT_DIR/browser/Configuration/Shells"
-SELECTED_SHELL_TARGET="${SHELL_TARGET:-chatgpt}"
-SHELL_PROFILE_PATH="$SHELL_PROFILE_DIR/$SELECTED_SHELL_TARGET.xcconfig"
+APP_DIR="$ROOT_DIR/apps"
+SELECTED_SHELL_TARGET="${SHELL_TARGET:-browser}"
+SHELL_PROFILE_PATH="$APP_DIR/$SELECTED_SHELL_TARGET/app.xcconfig"
 
 case "$SELECTED_SHELL_TARGET" in
 	""|*[!abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-]*)

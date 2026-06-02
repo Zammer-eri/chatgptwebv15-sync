@@ -1,0 +1,354 @@
+name: Build Reynard shell package
+description: Shared source-build pipeline for shell targets built on the Reynard base.
+
+inputs:
+  shell_target:
+    description: Shell target profile to build.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Load shell profile
+      shell: bash
+      env:
+        SHELL_TARGET: ${{ inputs.shell_target }}
+      run: python3 tools/release/load-shell-profile.py "$SHELL_TARGET"
+
+    - name: Select Xcode 26
+      shell: bash
+      run: |
+        set -euo pipefail
+        for xcode in /Applications/Xcode_26.5.app /Applications/Xcode_26.5.0.app /Applications/Xcode.app; do
+          if [ -d "$xcode" ]; then
+            sudo xcode-select -s "$xcode"
+            break
+          fi
+        done
+        sw_vers
+        xcodebuild -version
+        xcrun --sdk iphoneos --show-sdk-version
+        python3 --version
+        rustc --version
+        cargo --version
+        df -h
+
+    - name: Restore Rust tooling cache
+      id: restore-rust-cache
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          ~/.cargo/bin/cbindgen
+          ~/.cargo/git
+          ~/.cargo/registry
+        key: reynard-rust-tools-${{ runner.os }}-cbindgen-v1
+        restore-keys: |
+          reynard-rust-tools-${{ runner.os }}-
+
+    - name: Install packaging tools
+      shell: bash
+      run: |
+        set +e
+        mkdir -p dist
+        {
+          set -euo pipefail
+          brew list ldid >/dev/null 2>&1 || brew install ldid
+          brew list lld >/dev/null 2>&1 || brew install lld
+          LLD_PREFIX="$(brew --prefix lld)"
+          test -x "$LLD_PREFIX/bin/ld64.lld"
+          echo "$LLD_PREFIX/bin" >> "$GITHUB_PATH"
+          echo "REYNARD_LINKER=lld" >> "$GITHUB_ENV"
+          rustup target add aarch64-apple-ios
+          command -v cbindgen >/dev/null 2>&1 || cargo install cbindgen --locked
+        } 2>&1 | tee dist/install-tools.log
+        status=${PIPESTATUS[0]}
+        if [ "$status" -ne 0 ]; then
+          echo "::error title=Install packaging tools failed::$(tail -80 dist/install-tools.log | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g')"
+          exit "$status"
+        fi
+
+    - name: Save Rust tooling cache
+      if: steps.restore-rust-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          ~/.cargo/bin/cbindgen
+          ~/.cargo/git
+          ~/.cargo/registry
+        key: reynard-rust-tools-${{ runner.os }}-cbindgen-v1
+
+    - name: Upload tool install log
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: install-tools-log
+        path: dist/install-tools.log
+        if-no-files-found: ignore
+
+    - name: Make scripts executable
+      shell: bash
+      run: find tools browser/Scripts -name "*.sh" -exec chmod +x {} +
+
+    - name: Sync Firefox source
+      shell: bash
+      run: ./tools/development/update-gecko.sh
+
+    - name: Apply Reynard Gecko patches
+      shell: bash
+      run: ./tools/development/apply-patches.sh
+
+    - name: Sync idevice source
+      shell: bash
+      run: git submodule update --init --recursive support/idevice
+
+    - name: Restore Gecko object cache
+      id: restore-gecko-cache
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          engine/firefox/obj-aarch64-apple-ios
+          ~/.mozbuild
+        key: reynard-gecko-source-0.4-${{ runner.os }}-${{ hashFiles('engine/release.txt', 'patches/**/*.patch', 'tools/development/build-gecko.sh') }}
+        restore-keys: |
+          reynard-gecko-source-0.4-${{ runner.os }}-
+
+    - name: Restore JIT native bridge cache
+      id: restore-idevice-cache
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          support/idevice/target
+          browser/Reynard/JIT/libidevice_ffi.a
+        key: reynard-idevice-ffi-source-${{ runner.os }}-${{ hashFiles('tools/development/build-idevice.sh', '.gitmodules') }}
+        restore-keys: |
+          reynard-idevice-ffi-source-${{ runner.os }}-
+
+    - name: Build idevice FFI
+      shell: bash
+      env:
+        IDEVICE_CACHE_HIT: ${{ steps.restore-idevice-cache.outputs.cache-hit }}
+      run: |
+        set -euo pipefail
+        if [ "$IDEVICE_CACHE_HIT" = "true" ] && [ -f browser/Reynard/JIT/libidevice_ffi.a ]; then
+          echo "Exact idevice cache hit; libidevice_ffi.a exists. Skipping cargo build."
+          exit 0
+        fi
+        ./tools/development/build-idevice.sh
+
+    - name: Save JIT native bridge cache
+      if: steps.restore-idevice-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          support/idevice/target
+          browser/Reynard/JIT/libidevice_ffi.a
+        key: reynard-idevice-ffi-source-${{ runner.os }}-${{ hashFiles('tools/development/build-idevice.sh', '.gitmodules') }}
+
+    - name: Build Gecko from source
+      shell: bash
+      env:
+        GECKO_CACHE_HIT: ${{ steps.restore-gecko-cache.outputs.cache-hit }}
+      run: |
+        set +e
+        mkdir -p dist
+        if [ "$GECKO_CACHE_HIT" = "true" ] && \
+           [ -f engine/firefox/obj-aarch64-apple-ios/dist/bin/XUL ] && \
+           [ -f engine/firefox/obj-aarch64-apple-ios/dist/include/mozilla-config.h ]; then
+          echo "Exact Gecko cache hit; required source-built outputs exist. Skipping mach build." | tee dist/build-gecko.log
+          exit 0
+        fi
+        ./tools/development/build-gecko.sh 2>&1 | tee dist/build-gecko.log
+        status=${PIPESTATUS[0]}
+        if [ "$status" -ne 0 ]; then
+          {
+            echo "## Build Gecko failure"
+            echo
+            echo '```text'
+            tail -200 dist/build-gecko.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error title=Build Gecko failed::$(tail -20 dist/build-gecko.log | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g')"
+          exit "$status"
+        fi
+
+    - name: Save Gecko object cache
+      if: steps.restore-gecko-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          engine/firefox/obj-aarch64-apple-ios
+          ~/.mozbuild
+        key: reynard-gecko-source-0.4-${{ runner.os }}-${{ hashFiles('engine/release.txt', 'patches/**/*.patch', 'tools/development/build-gecko.sh') }}
+
+    - name: Upload Gecko build log
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: gecko-build-log
+        path: dist/build-gecko.log
+        if-no-files-found: ignore
+
+    - name: Archive shell app
+      shell: bash
+      env:
+        REYNARD_SKIP_CODE_SIGNING: "1"
+      run: |
+        set +e
+        ARCHIVE_LOG="${RUNNER_TEMP:-/tmp}/archive-app.log"
+        ./tools/release/build-app.sh 2>&1 | tee "$ARCHIVE_LOG"
+        status=${PIPESTATUS[0]}
+        if [ "$status" -ne 0 ]; then
+          {
+            echo "## Archive shell app failure"
+            echo
+            echo '```text'
+            tail -200 "$ARCHIVE_LOG"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error title=Archive shell app failed::$(tail -20 "$ARCHIVE_LOG" | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g')"
+          exit "$status"
+        fi
+
+    - name: Upload archive app log
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: archive-app-log
+        path: ${{ runner.temp }}/archive-app.log
+        if-no-files-found: ignore
+
+    - name: Package TrollStore TIPA
+      shell: bash
+      env:
+        REYNARD_TROLLSTORE_ONLY: "1"
+      run: ./tools/release/create-ipa.sh
+
+    - name: Verify package
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 - <<'PY'
+        import hashlib
+        import os
+        import plistlib
+        import zipfile
+        from pathlib import Path
+
+        package_basename = os.environ.get("SHELL_PACKAGE_BASENAME", "Reynard")
+        tipa = Path("dist") / f"{package_basename}-TrollStore.tipa"
+        if not tipa.exists():
+            raise SystemExit(f"missing {tipa}")
+
+        with zipfile.ZipFile(tipa) as archive:
+            names = set(archive.namelist())
+            required = [
+                "Payload/Reynard.app/Reynard",
+                "Payload/Reynard.app/PlugIns/Reynard Helper.appex/Reynard Helper",
+                "Payload/Reynard.app/Frameworks/GeckoView.framework/GeckoView",
+                "Payload/Reynard.app/Frameworks/GeckoView.framework/XUL",
+                "Payload/Reynard.app/ptrace_jit",
+            ]
+            if os.environ.get("SHELL_TARGET", "browser") == "browser" or os.environ.get("SHELL_PACKAGE_OPENIN_EXTENSION") == "1":
+                required.append("Payload/Reynard.app/PlugIns/OpenIn.appex/OpenIn")
+            missing = [name for name in required if name not in names]
+            if missing:
+                raise SystemExit(f"missing package members: {missing}")
+            info = plistlib.loads(archive.read("Payload/Reynard.app/Info.plist"))
+
+        expected_version = os.environ.get("CURRENT_VERSION")
+        actual_version = info.get("CFBundleShortVersionString")
+        if expected_version and actual_version != expected_version:
+            raise SystemExit(f"version mismatch: expected {expected_version}, got {actual_version}")
+
+        sha256 = hashlib.sha256(tipa.read_bytes()).hexdigest()
+        report = "\n".join([
+            "# Reynard Shell Build",
+            "",
+            f"- target: `{os.environ.get('SHELL_TARGET', 'browser')}`",
+            f"- display name: `{os.environ.get('SHELL_DISPLAY_NAME', 'Reynard')}`",
+            f"- bundle id: `{info.get('CFBundleIdentifier')}`",
+            f"- package: `{tipa.name}`",
+            f"- sha256: `{sha256}`",
+            f"- bytes: {tipa.stat().st_size}",
+            f"- version: {info.get('CFBundleShortVersionString')}",
+            f"- build: {info.get('CFBundleVersion')}",
+            f"- minimum iOS: {info.get('MinimumOSVersion')}",
+            f"- Xcode: {info.get('DTXcode')} {info.get('DTXcodeBuild')}",
+            "",
+            "Built from this repository using the Reynard browser base and Gecko patches.",
+            "No upstream IPA payload extraction is used.",
+            "",
+        ])
+        Path("dist").joinpath(f"{package_basename}-source-build.md").write_text(report, encoding="utf-8")
+        print(report)
+        PY
+
+    - name: Upload workflow artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: Shell-Source-Build
+        path: |
+          dist/*-TrollStore.tipa
+          dist/*-source-build.md
+        if-no-files-found: error
+
+    - name: Publish rolling prerelease
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+
+        NOTES_FILE="$(mktemp)"
+        RELEASE_TAG="${SHELL_RELEASE_TAG:-${SHELL_TARGET}-rolling}"
+        PACKAGE_FILE="dist/${SHELL_PACKAGE_BASENAME:-Reynard}-TrollStore.tipa"
+        REPORT_FILE="dist/${SHELL_PACKAGE_BASENAME:-Reynard}-source-build.md"
+
+        test -f "$PACKAGE_FILE"
+        test -f "$REPORT_FILE"
+
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git tag -f "$RELEASE_TAG" "$GITHUB_SHA"
+        git push origin "refs/tags/$RELEASE_TAG" --force
+
+        {
+          echo "Rolling shell source build for commit $GITHUB_SHA."
+          echo
+          echo "Shell target: $SHELL_TARGET"
+          echo "Display name: $SHELL_DISPLAY_NAME"
+          echo "Bundle id: $SHELL_BUNDLE_IDENTIFIER"
+          echo "Version: $CURRENT_VERSION"
+          echo
+          echo "Asset:"
+          echo "- $(basename "$PACKAGE_FILE"): Reynard-based shell package."
+          echo
+          echo "No upstream IPA payload extraction is used."
+        } > "$NOTES_FILE"
+
+        if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+          gh release edit "$RELEASE_TAG" \
+            --title "Rolling $SHELL_DISPLAY_NAME Source Build" \
+            --notes-file "$NOTES_FILE" \
+            --prerelease \
+            --latest=false \
+            --target "$GITHUB_SHA"
+        else
+          gh release create "$RELEASE_TAG" \
+            --title "Rolling $SHELL_DISPLAY_NAME Source Build" \
+            --notes-file "$NOTES_FILE" \
+            --prerelease \
+            --latest=false \
+            --target "$GITHUB_SHA"
+        fi
+
+        gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' > /tmp/shell-release-assets.txt
+        while IFS= read -r asset; do
+          [ -n "$asset" ] || continue
+          gh release delete-asset "$RELEASE_TAG" "$asset" --yes
+        done < /tmp/shell-release-assets.txt
+
+        gh release upload "$RELEASE_TAG" \
+          "$PACKAGE_FILE" \
+          "$REPORT_FILE" \
+          --clobber

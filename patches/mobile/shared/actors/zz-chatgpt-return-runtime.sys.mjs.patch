@@ -139,12 +139,12 @@ diff --git a/mobile/shared/actors/GeckoViewContentChild.sys.mjs b/mobile/shared/
 +      }
 +
 +      let inserted = false;
-+      if (selectionInside(editable) && doc.execCommand?.("insertLineBreak")) {
++      if (insertManualBreak(editable)) {
++        inserted = true;
++      } else if (selectionInside(editable) && doc.execCommand?.("insertLineBreak")) {
 +        inserted = true;
 +      } else if (selectionInside(editable) && doc.execCommand?.("insertParagraph")) {
 +        inserted = true;
-+      } else {
-+        inserted = insertManualBreak(editable);
 +      }
 +
 +      if (inserted) {

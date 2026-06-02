@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-PROFILE_DIR = ROOT_DIR / "browser" / "Configuration" / "Shells"
+APP_DIR = ROOT_DIR / "apps"
 ALLOWED_KEYS = {
     "CURRENT_VERSION",
     "SHELL_TARGET",
@@ -49,12 +49,12 @@ def write_github_env(values: dict[str, str]) -> None:
 
 
 def main() -> int:
-    target = (sys.argv[1] if len(sys.argv) > 1 else os.environ.get("SHELL_TARGET", "chatgpt")).strip().lower()
+    target = (sys.argv[1] if len(sys.argv) > 1 else os.environ.get("SHELL_TARGET", "browser")).strip().lower()
     if not re.fullmatch(r"[a-z0-9_-]+", target):
         print(f"Invalid shell target: {target}", file=sys.stderr)
         return 2
 
-    profile_path = PROFILE_DIR / f"{target}.xcconfig"
+    profile_path = APP_DIR / target / "app.xcconfig"
     if not profile_path.exists():
         print(f"Missing shell profile: {profile_path}", file=sys.stderr)
         return 2

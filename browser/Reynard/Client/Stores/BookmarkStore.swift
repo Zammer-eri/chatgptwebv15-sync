@@ -67,14 +67,22 @@ final class BookmarkStore {
         static let favoritesFolderTitle = "Favorites"
     }
     
-    private static let defaultFavoriteBookmarks: [(title: String, urlString: String)] = [
+    private static var defaultFavoriteBookmarks: [(title: String, urlString: String)] {
+        var bookmarks = defaultBrowserFavoriteBookmarks
+        if ShellConfig.current.target != .browser,
+           let defaultURL = ShellConfig.current.defaultURL {
+            bookmarks.append((ShellConfig.current.displayName, defaultURL.absoluteString))
+        }
+        return bookmarks
+    }
+
+    private static let defaultBrowserFavoriteBookmarks: [(title: String, urlString: String)] = [
         ("Apple", "https://www.apple.com/"),
         ("Google", "https://www.google.com/"),
         ("Facebook", "https://facebook.com/"),
         ("Reddit", "https://www.reddit.com/"),
         ("YouTube", "https://youtube.com/"),
-        ("GitHub", "https://github.com/"),
-        ("ChatGPT", "https://chatgpt.com/")
+        ("GitHub", "https://github.com/")
     ]
     
     private struct StorageURLs {

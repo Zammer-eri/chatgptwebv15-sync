@@ -1,24 +1,27 @@
-name: Build Browser
+name: Build ChatGPT
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 permissions:
   contents: write
 
 concurrency:
-  group: build-browser-${{ github.ref }}
+  group: build-chatgpt-${{ github.ref }}
   cancel-in-progress: true
 
 env:
   HOMEBREW_NO_AUTO_UPDATE: "1"
   HOMEBREW_NO_INSTALL_CLEANUP: "1"
   RUST_BACKTRACE: "1"
-  SHELL_TARGET: browser
+  SHELL_TARGET: chatgpt
 
 jobs:
-  build-browser-source:
-    name: Build browser baseline from Reynard base
+  build-chatgpt-source:
+    name: Build ChatGPT shell from Reynard base
     runs-on: macos-26
     timeout-minutes: 360
 
@@ -29,7 +32,7 @@ jobs:
           fetch-depth: 1
           submodules: false
 
-      - name: Build browser baseline package
+      - name: Build ChatGPT shell package
         uses: ./.github/actions/build-shell-source
         with:
-          shell_target: browser
+          shell_target: chatgpt
