@@ -13,8 +13,10 @@
   const COMPOSER_ROOT_SELECTOR =
     'form,[data-testid*="composer"],[class*="composer"],main';
   let insertingLineBreak = false;
-  let allowNativeLineBreakUntil = 0;
+  let dispatchingSyntheticReturn = false;
   let suppressComposerSubmitUntil = 0;
+  const wiredTargets = new win.WeakSet();
+  const listenerOptions = { capture: true, passive: false };
 
   const editableElement = target => {
     const element =
@@ -63,6 +65,13 @@
 
   const dispatchSelectionChange = () => {
     doc.dispatchEvent(new win.Event("selectionchange", { bubbles: true }));
+  };
+
+  const editableText = editable => {
+    if (editable instanceof win.HTMLTextAreaElement) {
+      return editable.value;
+    }
+    return editable.textContent || "";
   };
 
   const selectionInside = editable => {
@@ -161,31 +170,45 @@
     insertLineBreak(event.target);
   };
 
-  const makeReturnBehaveLikeShiftEnter = event => {
-    if (event.shiftKey) {
-      return true;
+  const dispatchSyntheticShiftEnter = editable => {
+    if (!editable || dispatchingSyntheticReturn) {
+      return false;
     }
 
+    dispatchingSyntheticReturn = true;
     try {
-      Object.defineProperty(event, "shiftKey", {
-        configurable: true,
-        get: () => true,
+      const synthetic = new win.KeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        shiftKey: true,
       });
+      for (const [key, value] of [
+        ["keyCode", 13],
+        ["which", 13],
+        ["charCode", 0],
+      ]) {
+        try {
+          Object.defineProperty(synthetic, key, {
+            configurable: true,
+            get: () => value,
+          });
+        } catch (_) {}
+      }
+      editable.dispatchEvent(synthetic);
+      return true;
     } catch (_) {
       return false;
+    } finally {
+      dispatchingSyntheticReturn = false;
     }
-
-    if (!event.shiftKey) {
-      return false;
-    }
-
-    allowNativeLineBreakUntil = win.performance.now() + 500;
-    suppressComposerSubmitUntil = win.performance.now() + 500;
-    return true;
   };
 
   const handleReturn = event => {
     if (
+      dispatchingSyntheticReturn ||
       event.key !== "Enter" ||
       event.isComposing ||
       event.shiftKey ||
@@ -197,18 +220,25 @@
       return;
     }
 
-    if (makeReturnBehaveLikeShiftEnter(event)) {
-      return;
-    }
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    suppressComposerSubmitUntil = win.performance.now() + 500;
 
-    forceReturnToLineBreak(event);
+    const editable = editableElement(event.target) || activeComposerEditable();
+    const beforeText = editable ? editableText(editable) : "";
+    if (dispatchSyntheticShiftEnter(editable)) {
+      win.setTimeout(() => {
+        if (editable && editableText(editable) === beforeText) {
+          insertLineBreak(editable);
+        }
+      }, 50);
+    } else {
+      insertLineBreak(editable || event.target);
+    }
   };
 
   const handleBeforeInput = event => {
-    if (
-      win.performance.now() <= allowNativeLineBreakUntil &&
-      isComposerEditable(event.target)
-    ) {
+    if (dispatchingSyntheticReturn) {
       return;
     }
 
@@ -234,20 +264,31 @@
     }
   };
 
+  const wireTarget = target => {
+    if (!target || wiredTargets.has(target)) {
+      return;
+    }
+
+    wiredTargets.add(target);
+    target.addEventListener("keydown", handleReturn, listenerOptions);
+    target.addEventListener("keypress", handleReturn, listenerOptions);
+    target.addEventListener("beforeinput", handleBeforeInput, listenerOptions);
+    target.addEventListener("submit", handleSubmit, listenerOptions);
+  };
+
   const syncReturnHint = () => {
     for (const editable of doc.querySelectorAll(COMPOSER_SELECTOR)) {
       if (isComposerEditable(editable)) {
         editable.setAttribute("enterkeyhint", "enter");
+        wireTarget(editable);
+        wireTarget(editable.closest(COMPOSER_ROOT_SELECTOR));
       }
     }
   };
 
-  for (const target of [win, doc]) {
-    target.addEventListener("keydown", handleReturn, true);
-    target.addEventListener("keypress", handleReturn, true);
-    target.addEventListener("beforeinput", handleBeforeInput, true);
-    target.addEventListener("submit", handleSubmit, true);
-  }
+  wireTarget(win);
+  wireTarget(doc);
+  wireTarget(doc.documentElement);
 
   new win.MutationObserver(syncReturnHint).observe(doc.documentElement, {
     childList: true,

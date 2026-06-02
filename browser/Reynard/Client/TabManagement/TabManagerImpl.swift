@@ -1000,7 +1000,19 @@ extension TabManagerImplementation: ContentDelegate {
     func onWebAppManifest(session: GeckoSession, manifest: Any) {}
     
     func onSlowScript(session: GeckoSession, scriptFileName: String) async -> SlowScriptResponse {
-        .halt
+        guard ShellConfig.current.target == .chatGPT,
+              let location = tabLocation(for: session) else {
+            return .halt
+        }
+
+        let tab = tabs(for: location.mode)[location.index]
+        if isChatGPTURL(tab.url) ||
+            isChatGPTURL(tab.pendingDisplayText) ||
+            isChatGPTURL(tab.pendingRestoreURL) {
+            return .resume
+        }
+
+        return .halt
     }
     
     func onShowDynamicToolbar(session: GeckoSession) {}
