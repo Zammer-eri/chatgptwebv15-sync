@@ -18,6 +18,7 @@ private enum ShellSurfaceAssociatedKeys {
     static var recoveryVisible = 0
     static var recoveryToken = 0
     static var recoveryShownAt = 0
+    static var keyboardVisible = 0
 }
 
 extension BrowserViewController {
@@ -126,22 +127,43 @@ extension BrowserViewController {
         }
     }
 
+    private var isShellKeyboardVisible: Bool {
+        get {
+            (objc_getAssociatedObject(self, &ShellSurfaceAssociatedKeys.keyboardVisible) as? NSNumber)?.boolValue ?? false
+        }
+        set {
+            objc_setAssociatedObject(
+                self,
+                &ShellSurfaceAssociatedKeys.keyboardVisible,
+                NSNumber(value: newValue),
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
+        }
+    }
+
     private func configureShellGestures() {
         let reloadGesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleShellReloadGesture(_:)))
-        reloadGesture.edges = .left
+        reloadGesture.edges = .right
         reloadGesture.cancelsTouchesInView = false
         view.addGestureRecognizer(reloadGesture)
 
-        let keyboardDismissGesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleShellKeyboardDismissGesture(_:)))
-        keyboardDismissGesture.edges = .right
-        keyboardDismissGesture.cancelsTouchesInView = false
-        view.addGestureRecognizer(keyboardDismissGesture)
-
-        let utilityGesture = UITapGestureRecognizer(target: self, action: #selector(handleUtilityPanelTap(_:)))
-        utilityGesture.numberOfTouchesRequired = 2
-        utilityGesture.numberOfTapsRequired = 1
+        let utilityGesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleShellUtilityPanelGesture(_:)))
+        utilityGesture.edges = .left
         utilityGesture.cancelsTouchesInView = false
         view.addGestureRecognizer(utilityGesture)
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(shellKeyboardWillChangeFrame(_:)),
+            name: UIResponder.keyboardWillChangeFrameNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(shellKeyboardWillHide(_:)),
+            name: UIResponder.keyboardWillHideNotification,
+            object: nil
+        )
     }
 
     private func configureShellRecoveryOverlay() {
@@ -209,7 +231,12 @@ extension BrowserViewController {
             return
         }
 
-        guard gesture.translation(in: view).x > 24 else {
+        guard gesture.translation(in: view).x < -24 else {
+            return
+        }
+
+        if isShellKeyboardVisible {
+            dismissKeyboard()
             return
         }
 
@@ -221,24 +248,29 @@ extension BrowserViewController {
         reloadTabAfterClearingAppCache(tab)
     }
 
-    @objc private func handleShellKeyboardDismissGesture(_ gesture: UIScreenEdgePanGestureRecognizer) {
+    @objc private func handleShellUtilityPanelGesture(_ gesture: UIScreenEdgePanGestureRecognizer) {
         guard gesture.state == .ended || gesture.state == .recognized else {
             return
         }
 
-        guard gesture.translation(in: view).x < -24 else {
-            return
-        }
-
-        view.endEditing(true)
-    }
-
-    @objc private func handleUtilityPanelTap(_ gesture: UITapGestureRecognizer) {
-        guard gesture.state == .ended || gesture.state == .recognized else {
+        guard gesture.translation(in: view).x > 24 else {
             return
         }
 
         setShellUtilityPanelVisible(true, animated: true)
+    }
+
+    @objc private func shellKeyboardWillChangeFrame(_ notification: Notification) {
+        guard let frameValue = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue else {
+            return
+        }
+
+        let frame = view.convert(frameValue.cgRectValue, from: nil)
+        isShellKeyboardVisible = frame.minY < view.bounds.maxY
+    }
+
+    @objc private func shellKeyboardWillHide(_: Notification) {
+        isShellKeyboardVisible = false
     }
 
     private func reloadTabAfterClearingAppCache(_ tab: Tab) {
