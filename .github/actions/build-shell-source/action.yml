@@ -5,6 +5,14 @@ inputs:
   shell_target:
     description: Shell target profile to build.
     required: true
+  package_app:
+    description: Build and publish the shell IPA after preparing the engine.
+    required: false
+    default: "true"
+  publish_shell_release:
+    description: Publish the shell rolling prerelease.
+    required: false
+    default: "true"
 
 runs:
   using: composite
@@ -97,7 +105,17 @@ runs:
       shell: bash
       run: ./tools/development/apply-patches.sh
 
+    - name: Compute engine fingerprint
+      shell: bash
+      run: |
+        set -euo pipefail
+        echo "REYNARD_ENGINE_FINGERPRINT=$(python3 tools/development/engine-fingerprint.py)" >> "$GITHUB_ENV"
+        echo "REYNARD_ENGINE_RELEASE_TAG=engine-0.4-rolling" >> "$GITHUB_ENV"
+        echo "REYNARD_ENGINE_ARTIFACT_RESTORED=0" >> "$GITHUB_ENV"
+        echo "REYNARD_GECKO_SOURCE_BUILT=0" >> "$GITHUB_ENV"
+
     - name: Sync idevice source
+      if: inputs.package_app == 'true'
       shell: bash
       run: git submodule update --init --recursive support/idevice
 
@@ -112,7 +130,42 @@ runs:
         restore-keys: |
           reynard-gecko-source-0.4-${{ runner.os }}-
 
+    - name: Restore Gecko dist release artifact
+      if: steps.restore-gecko-cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        mkdir -p dist/engine-artifact
+
+        if ! gh release download "$REYNARD_ENGINE_RELEASE_TAG" \
+          --repo "$GITHUB_REPOSITORY" \
+          --pattern reynard-engine-dist.tar.gz \
+          --pattern reynard-engine-dist.json \
+          --dir dist/engine-artifact >/dev/null 2>&1; then
+          echo "No matching engine release artifact available."
+          exit 0
+        fi
+
+        manifest_fingerprint="$(python3 -c 'import json, pathlib; print(json.loads(pathlib.Path("dist/engine-artifact/reynard-engine-dist.json").read_text(encoding="utf-8")).get("fingerprint", ""))')"
+
+        if [ "$manifest_fingerprint" != "$REYNARD_ENGINE_FINGERPRINT" ]; then
+          echo "Engine artifact fingerprint mismatch; source build required."
+          exit 0
+        fi
+
+        rm -rf engine/firefox/obj-aarch64-apple-ios/dist
+        mkdir -p engine/firefox/obj-aarch64-apple-ios
+        tar -xzf dist/engine-artifact/reynard-engine-dist.tar.gz -C engine/firefox/obj-aarch64-apple-ios
+
+        test -f engine/firefox/obj-aarch64-apple-ios/dist/bin/XUL
+        test -f engine/firefox/obj-aarch64-apple-ios/dist/include/mozilla-config.h
+        echo "REYNARD_ENGINE_ARTIFACT_RESTORED=1" >> "$GITHUB_ENV"
+        echo "Restored Gecko dist from release artifact."
+
     - name: Restore JIT native bridge cache
+      if: inputs.package_app == 'true'
       id: restore-idevice-cache
       uses: actions/cache/restore@v4
       with:
@@ -124,6 +177,7 @@ runs:
           reynard-idevice-ffi-source-${{ runner.os }}-
 
     - name: Build idevice FFI
+      if: inputs.package_app == 'true'
       shell: bash
       env:
         IDEVICE_CACHE_HIT: ${{ steps.restore-idevice-cache.outputs.cache-hit }}
@@ -136,7 +190,7 @@ runs:
         ./tools/development/build-idevice.sh
 
     - name: Save JIT native bridge cache
-      if: steps.restore-idevice-cache.outputs.cache-hit != 'true'
+      if: inputs.package_app == 'true' && steps.restore-idevice-cache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
       with:
         path: |
@@ -151,10 +205,10 @@ runs:
       run: |
         set +e
         mkdir -p dist
-        if [ "$GECKO_CACHE_HIT" = "true" ] && \
+        if { [ "$GECKO_CACHE_HIT" = "true" ] || [ "${REYNARD_ENGINE_ARTIFACT_RESTORED:-0}" = "1" ]; } && \
            [ -f engine/firefox/obj-aarch64-apple-ios/dist/bin/XUL ] && \
            [ -f engine/firefox/obj-aarch64-apple-ios/dist/include/mozilla-config.h ]; then
-          echo "Exact Gecko cache hit; required source-built outputs exist. Skipping mach build." | tee dist/build-gecko.log
+          echo "Verified Gecko dist exists. Skipping mach build." | tee dist/build-gecko.log
           exit 0
         fi
         ./tools/development/build-gecko.sh 2>&1 | tee dist/build-gecko.log
@@ -170,6 +224,7 @@ runs:
           echo "::error title=Build Gecko failed::$(tail -20 dist/build-gecko.log | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g; s/\n/%0A/g')"
           exit "$status"
         fi
+        echo "REYNARD_GECKO_SOURCE_BUILT=1" >> "$GITHUB_ENV"
 
     - name: Save Gecko object cache
       if: steps.restore-gecko-cache.outputs.cache-hit != 'true'
@@ -188,7 +243,53 @@ runs:
         path: dist/build-gecko.log
         if-no-files-found: ignore
 
+    - name: Publish Gecko dist release artifact
+      if: env.REYNARD_GECKO_SOURCE_BUILT == '1'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        ./tools/development/package-engine-dist.sh dist
+
+        notes_file="$(mktemp)"
+        {
+          echo "Reynard Gecko engine dist."
+          echo
+          echo "Fingerprint: $REYNARD_ENGINE_FINGERPRINT"
+          echo "Commit: $GITHUB_SHA"
+          echo
+          echo "Used by shell app builds as fallback when the GitHub cache is missing."
+        } > "$notes_file"
+
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git tag -f "$REYNARD_ENGINE_RELEASE_TAG" "$GITHUB_SHA"
+        git push origin "refs/tags/$REYNARD_ENGINE_RELEASE_TAG" --force
+
+        if gh release view "$REYNARD_ENGINE_RELEASE_TAG" >/dev/null 2>&1; then
+          gh release edit "$REYNARD_ENGINE_RELEASE_TAG" \
+            --title "Reynard Gecko Engine Dist" \
+            --notes-file "$notes_file" \
+            --prerelease \
+            --latest=false \
+            --target "$GITHUB_SHA"
+        else
+          gh release create "$REYNARD_ENGINE_RELEASE_TAG" \
+            --title "Reynard Gecko Engine Dist" \
+            --notes-file "$notes_file" \
+            --prerelease \
+            --latest=false \
+            --target "$GITHUB_SHA"
+        fi
+
+        gh release upload "$REYNARD_ENGINE_RELEASE_TAG" \
+          dist/reynard-engine-dist.tar.gz \
+          dist/reynard-engine-dist.json \
+          --clobber
+
     - name: Archive shell app
+      if: inputs.package_app == 'true'
       shell: bash
       env:
         REYNARD_SKIP_CODE_SIGNING: "1"
@@ -210,7 +311,7 @@ runs:
         fi
 
     - name: Upload archive app log
-      if: failure()
+      if: failure() && inputs.package_app == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: archive-app-log
@@ -218,17 +319,20 @@ runs:
         if-no-files-found: ignore
 
     - name: Package TrollStore TIPA
+      if: inputs.package_app == 'true'
       shell: bash
       env:
         REYNARD_TROLLSTORE_ONLY: "1"
       run: ./tools/release/create-ipa.sh
 
     - name: Verify package
+      if: inputs.package_app == 'true'
       shell: bash
       run: |
         set -euo pipefail
         python3 - <<'PY'
         import hashlib
+        import json
         import os
         import plistlib
         import zipfile
@@ -248,8 +352,18 @@ runs:
                 "Payload/Reynard.app/Frameworks/GeckoView.framework/XUL",
                 "Payload/Reynard.app/ptrace_jit",
             ]
-            if os.environ.get("SHELL_TARGET", "browser") == "browser" or os.environ.get("SHELL_PACKAGE_OPENIN_EXTENSION") == "1":
+            shell_target = os.environ.get("SHELL_TARGET", "browser")
+            if shell_target == "browser" or os.environ.get("SHELL_PACKAGE_OPENIN_EXTENSION") == "1":
                 required.append("Payload/Reynard.app/PlugIns/OpenIn.appex/OpenIn")
+            runtime_dir = Path("apps") / shell_target / "runtime"
+            if runtime_dir.is_dir():
+                manifest_path = runtime_dir / "manifest.json"
+                required.append("Payload/Reynard.app/ShellRuntime/manifest.json")
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                for script in manifest.get("scripts", []):
+                    file_name = script.get("file")
+                    if file_name:
+                        required.append(f"Payload/Reynard.app/ShellRuntime/{file_name}")
             missing = [name for name in required if name not in names]
             if missing:
                 raise SystemExit(f"missing package members: {missing}")
@@ -284,6 +398,7 @@ runs:
         PY
 
     - name: Upload workflow artifacts
+      if: inputs.package_app == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: Shell-Source-Build
@@ -293,6 +408,7 @@ runs:
         if-no-files-found: error
 
     - name: Publish rolling prerelease
+      if: inputs.package_app == 'true' && inputs.publish_shell_release == 'true'
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}

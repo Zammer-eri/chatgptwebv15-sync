@@ -93,6 +93,14 @@ if [ -z "$APP_PATH" ]; then
 	exit 1
 fi
 
+RUNTIME_SRC="$ROOT_DIR/apps/$SHELL_TARGET/runtime"
+RUNTIME_DST="$APP_PATH/ShellRuntime"
+rm -rf "$RUNTIME_DST"
+if [ -d "$RUNTIME_SRC" ]; then
+	mkdir -p "$RUNTIME_DST"
+	cp -R "$RUNTIME_SRC/." "$RUNTIME_DST/"
+fi
+
 if [ "$PACKAGE_OPENIN_EXTENSION" != "1" ]; then
 	rm -rf "$APP_PATH/PlugIns/OpenIn.appex"
 fi

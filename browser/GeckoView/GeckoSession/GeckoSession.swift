@@ -87,6 +87,7 @@ public class GeckoSession {
     }()
     
     lazy var mediaSessionHandler = newMediaSessionHandler(self)
+    lazy var shellRuntimeScriptHandler = ShellRuntimeScriptHandler(session: self)
     public var mediaSessionDelegate: MediaSessionDelegate? {
         get { mediaSessionHandler.delegate(as: MediaSessionDelegate.self) }
         set { mediaSessionHandler.setDelegate(newValue) }
@@ -108,6 +109,10 @@ public class GeckoSession {
                 dispatcher.addListener(type: type, listener: sessionHandler)
             }
         }
+        dispatcher.addListener(
+            type: ShellRuntimeScriptHandler.eventType,
+            listener: shellRuntimeScriptHandler
+        )
         
         AddonRuntime.shared.register(sessionListener: addonSessionListener)
     }

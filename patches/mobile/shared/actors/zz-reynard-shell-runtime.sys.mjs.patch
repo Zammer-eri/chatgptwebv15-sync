@@ -1,0 +1,133 @@
+diff --git a/mobile/shared/actors/GeckoViewContentParent.sys.mjs b/mobile/shared/actors/GeckoViewContentParent.sys.mjs
+--- a/mobile/shared/actors/GeckoViewContentParent.sys.mjs
++++ b/mobile/shared/actors/GeckoViewContentParent.sys.mjs
+@@ -24,8 +24,13 @@ export class GeckoViewContentParent extends GeckoViewActorParent {
+   async receiveMessage(aMsg) {
+     switch (aMsg.name) {
+       case "GeckoView:PinOnScreen": {
+         return this.eventDispatcher.sendRequest(
+           "GeckoView:PinOnScreen",
+           aMsg.data
+         );
+       }
++      case "ReynardShell:GetPageRuntime": {
++        return this.eventDispatcher.sendRequestForResult(
++          "ReynardShell:GetPageRuntime",
++          aMsg.data
++        );
++      }
+       default: {
+         return super.receiveMessage(aMsg);
+       }
+diff --git a/mobile/shared/actors/GeckoViewContentChild.sys.mjs b/mobile/shared/actors/GeckoViewContentChild.sys.mjs
+--- a/mobile/shared/actors/GeckoViewContentChild.sys.mjs
++++ b/mobile/shared/actors/GeckoViewContentChild.sys.mjs
+@@ -33,8 +33,9 @@ export class GeckoViewContentChild extends GeckoViewActorChild {
+   actorCreated() {
+     this.pageShow = new Promise(resolve => {
+       this.receivedPageShow = resolve;
+     });
++    this.installReynardShellRuntime();
+   }
+@@ -123,8 +124,106 @@ export class GeckoViewContentChild extends GeckoViewActorChild {
+     return {
+       bottomRatio: Math.max(0, Math.min(2, bounds.bottom / viewportHeight)),
+     };
+   }
++  installReynardShellRuntime() {
++    const run = async () => {
++      const win = this.contentWindow;
++      const doc = win?.document;
++      if (!win || !doc?.nodePrincipal) {
++        return;
++      }
++
++      let payload;
++      try {
++        payload = await this.sendQuery("ReynardShell:GetPageRuntime", {
++          url: win.location?.href || "",
++          host: win.location?.hostname || "",
++        });
++      } catch (error) {
++        debug`Cannot request Reynard shell runtime: ${error}`;
++        return;
++      }
++
++      const scripts = Array.isArray(payload?.scripts) ? payload.scripts : [];
++      if (!scripts.length) {
++        return;
++      }
++
++      if (!doc.__reynardShellRuntimeScriptsInstalled) {
++        doc.__reynardShellRuntimeScriptsInstalled = new Set();
++      }
++
++      for (const script of scripts) {
++        const id = String(script?.id || "");
++        const source = String(script?.source || "");
++        if (!id || !source || doc.__reynardShellRuntimeScriptsInstalled.has(id)) {
++          continue;
++        }
++
++        try {
++          const sandbox = Cu.Sandbox([doc.nodePrincipal], {
++            sandboxName: `Reynard shell runtime: ${id}`,
++            sandboxPrototype: win,
++            sameZoneAs: win,
++            originAttributes: doc.nodePrincipal.originAttributes,
++            wantXrays: false,
++          });
++          Cu.evalInSandbox(
++            source,
++            sandbox,
++            null,
++            `reynard-shell-runtime-${id}.js`,
++            1
++          );
++          doc.__reynardShellRuntimeScriptsInstalled.add(id);
++        } catch (error) {
++          debug`Cannot install Reynard shell runtime script ${id}: ${error}`;
++        }
++      }
++    };
++
++    const scheduleRun = delay => {
++      const win = this.contentWindow;
++      if (!win) {
++        return;
++      }
++      win.setTimeout(() => {
++        run();
++      }, delay);
++    };
++
++    scheduleRun(0);
++
++    const win = this.contentWindow;
++    if (!win || this._reynardShellRuntimeListenersInstalled) {
++      return;
++    }
++
++    this._reynardShellRuntimeListenersInstalled = true;
++    for (const eventName of ["DOMContentLoaded", "pageshow", "load"]) {
++      win.addEventListener(eventName, () => scheduleRun(0), {
++        capture: true,
++        mozSystemGroup: true,
++      });
++    }
++    for (const delay of [250, 1000, 2500]) {
++      scheduleRun(delay);
++    }
++  }
++
+   collectSessionState() {
+     const { docShell, contentWindow } = this;
+     const history = lazy.SessionHistory.collect(docShell);
+     let formdata = SessionStoreUtils.collectFormData(contentWindow);
+@@ -293,8 +392,9 @@ export class GeckoViewContentChild extends GeckoViewActorChild {
+     switch (aEvent.type) {
+       case "pageshow": {
++        this.installReynardShellRuntime();
+         this.receivedPageShow();
+         break;
+       }
