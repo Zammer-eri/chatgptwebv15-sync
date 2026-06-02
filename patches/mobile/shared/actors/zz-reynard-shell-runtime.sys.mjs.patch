@@ -1,39 +1,14 @@
-diff --git a/mobile/shared/actors/GeckoViewContentParent.sys.mjs b/mobile/shared/actors/GeckoViewContentParent.sys.mjs
---- a/mobile/shared/actors/GeckoViewContentParent.sys.mjs
-+++ b/mobile/shared/actors/GeckoViewContentParent.sys.mjs
-@@ -24,8 +24,13 @@ export class GeckoViewContentParent extends GeckoViewActorParent {
-   async receiveMessage(aMsg) {
-     switch (aMsg.name) {
-       case "GeckoView:PinOnScreen": {
-         return this.eventDispatcher.sendRequest(
-           "GeckoView:PinOnScreen",
-           aMsg.data
-         );
-       }
-+      case "ReynardShell:GetPageRuntime": {
-+        return this.eventDispatcher.sendRequestForResult(
-+          "ReynardShell:GetPageRuntime",
-+          aMsg.data
-+        );
-+      }
-       default: {
-         return super.receiveMessage(aMsg);
-       }
 diff --git a/mobile/shared/actors/GeckoViewContentChild.sys.mjs b/mobile/shared/actors/GeckoViewContentChild.sys.mjs
+index 2e7831c3da..b5c925867a 100644
 --- a/mobile/shared/actors/GeckoViewContentChild.sys.mjs
 +++ b/mobile/shared/actors/GeckoViewContentChild.sys.mjs
-@@ -33,8 +33,9 @@ export class GeckoViewContentChild extends GeckoViewActorChild {
-   actorCreated() {
+@@ -34,4 +34,5 @@ export class GeckoViewContentChild extends GeckoViewActorChild {
      this.pageShow = new Promise(resolve => {
        this.receivedPageShow = resolve;
      });
 +    this.installReynardShellRuntime();
    }
-@@ -123,8 +124,106 @@ export class GeckoViewContentChild extends GeckoViewActorChild {
-     return {
-       bottomRatio: Math.max(0, Math.min(2, bounds.bottom / viewportHeight)),
-     };
-   }
+@@ -164,1 +165,87 @@ export class GeckoViewContentChild extends GeckoViewActorChild {
 +  installReynardShellRuntime() {
 +    const run = async () => {
 +      const win = this.contentWindow;
@@ -120,14 +95,28 @@ diff --git a/mobile/shared/actors/GeckoViewContentChild.sys.mjs b/mobile/shared/
 +    }
 +  }
 +
-   collectSessionState() {
-     const { docShell, contentWindow } = this;
-     const history = lazy.SessionHistory.collect(docShell);
-     let formdata = SessionStoreUtils.collectFormData(contentWindow);
-@@ -293,8 +392,9 @@ export class GeckoViewContentChild extends GeckoViewActorChild {
+   orientation() {
+@@ -303,5 +389,6 @@ export class GeckoViewContentChild extends GeckoViewActorChild {
      switch (aEvent.type) {
        case "pageshow": {
 +        this.installReynardShellRuntime();
          this.receivedPageShow();
          break;
+       }
+diff --git a/mobile/shared/actors/GeckoViewContentParent.sys.mjs b/mobile/shared/actors/GeckoViewContentParent.sys.mjs
+index ebe505d0ba..d9770d79d0 100644
+--- a/mobile/shared/actors/GeckoViewContentParent.sys.mjs
++++ b/mobile/shared/actors/GeckoViewContentParent.sys.mjs
+@@ -32,6 +32,12 @@ export class GeckoViewContentParent extends GeckoViewActorParent {
+           aMsg.data
+         );
+       }
++      case "ReynardShell:GetPageRuntime": {
++        return this.eventDispatcher.sendRequestForResult(
++          "ReynardShell:GetPageRuntime",
++          aMsg.data
++        );
++      }
+       default: {
+         return super.receiveMessage(aMsg);
        }
