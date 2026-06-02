@@ -14,6 +14,7 @@ struct ShellFeatures {
     let visualChromePhoneBottomHeight: Int?
     let usesShellGestures: Bool
     let usesUtilityPanel: Bool
+    let usesSingleTabSession: Bool
     let prefersMobileUserAgent: Bool
     let requiresLocation: Bool
 
@@ -26,6 +27,7 @@ struct ShellFeatures {
         visualChromePhoneBottomHeight: nil,
         usesShellGestures: false,
         usesUtilityPanel: false,
+        usesSingleTabSession: false,
         prefersMobileUserAgent: false,
         requiresLocation: false
     )
@@ -39,6 +41,7 @@ struct ShellFeatures {
         visualChromePhoneBottomHeight: 0,
         usesShellGestures: true,
         usesUtilityPanel: true,
+        usesSingleTabSession: true,
         prefersMobileUserAgent: false,
         requiresLocation: false
     )

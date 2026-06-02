@@ -327,6 +327,10 @@ final class TabManagerImplementation: NSObject, TabManager {
         host == domain || host.hasSuffix("." + domain)
     }
 
+    private var usesSingleTabShellSession: Bool {
+        ShellConfig.current.features.usesSingleTabSession
+    }
+
     @discardableResult
     private func requestExternalOpen(_ value: String) -> Bool {
         guard let url = remoteURL(from: value) else {
@@ -945,6 +949,11 @@ extension TabManagerImplementation: ContentDelegate {
     }
     
     func onCloseRequest(session: GeckoSession) {
+        if usesSingleTabShellSession {
+            session.load(ShellConfig.current.defaultURL?.absoluteString ?? "about:blank")
+            return
+        }
+
         guard let location = tabLocation(for: session) else {
             return
         }
@@ -978,6 +987,11 @@ extension TabManagerImplementation: ContentDelegate {
     }
     
     func onCrash(session: GeckoSession) {
+        if usesSingleTabShellSession {
+            session.reload()
+            return
+        }
+
         guard let location = tabLocation(for: session) else {
             return
         }
@@ -985,6 +999,11 @@ extension TabManagerImplementation: ContentDelegate {
     }
     
     func onKill(session: GeckoSession) {
+        if usesSingleTabShellSession {
+            session.reload()
+            return
+        }
+
         guard let location = tabLocation(for: session) else {
             return
         }
@@ -1123,6 +1142,15 @@ extension TabManagerImplementation: NavigationDelegate {
                sourceURLString: tabs(for: sourceLocation.mode)[sourceLocation.index].url
            ),
            requestExternalOpen(uri) {
+            return nil
+        }
+
+        if usesSingleTabShellSession {
+            if let sourceLocation = tabLocation(for: session) {
+                loadURL(uri, in: tabs(for: sourceLocation.mode)[sourceLocation.index])
+            } else if let tab = selectedTab {
+                loadURL(uri, in: tab)
+            }
             return nil
         }
 
