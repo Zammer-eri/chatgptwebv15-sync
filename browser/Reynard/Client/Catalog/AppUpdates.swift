@@ -20,6 +20,10 @@ final class AppUpdates: NSObject {
     
     private override init() {
         super.init()
+
+        guard ShellConfig.current.features.checksForAppUpdates else {
+            return
+        }
         
         guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
         let sideloadIPA = docs.appendingPathComponent("Reynard.ipa")

@@ -1583,6 +1583,14 @@ extension BrowserViewController: UICollectionViewDataSource, UICollectionViewDel
     }
     
     func restoreTabOverviewMode() {
+        guard ShellConfig.current.features.restoresPreviousTabs else {
+            browserUI.tabOverviewBarButtons.modeControl.selectedSegmentIndex = TabOverviewCollection.Mode.regularTabs.rawValue
+            browserUI.tabOverviewCollection.setMode(.regularTabs, in: browserUI.tabOverview.containerView, animated: false)
+            browserUI.tabOverviewBarButtons.setTabCount(regularTabCount())
+            refreshOverviewCardAnimationSnapshot()
+            return
+        }
+
         let snapshot = TabManagementStore.shared.loadSnapshot()
         let restoredMode: TabMode
         if snapshot.selectedTabMode == .private,
@@ -1613,7 +1621,9 @@ extension BrowserViewController: UICollectionViewDataSource, UICollectionViewDel
     @objc func tabOverviewModeChanged(_ segmentedControl: UISegmentedControl) {
         let mode = TabOverviewCollection.Mode(rawValue: segmentedControl.selectedSegmentIndex) ?? .regularTabs
         browserUI.tabOverviewCollection.setMode(mode, in: browserUI.tabOverview.containerView, animated: true)
-        TabManagementStore.shared.saveLastTabOverview(mode == .privateTabs ? .private : .regular)
+        if ShellConfig.current.features.restoresPreviousTabs {
+            TabManagementStore.shared.saveLastTabOverview(mode == .privateTabs ? .private : .regular)
+        }
         browserUI.tabOverviewBarButtons.setTabCount(regularTabCount())
     }
     

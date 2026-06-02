@@ -33,7 +33,9 @@ final class AddonController: NSObject, AddonEmbedderDelegate {
     func start() async {
         AddonRuntime.shared.delegate = self
         _ = try? await AddonRuntime.shared.list()
-        updateController.start()
+        if ShellConfig.current.features.runsAutomaticAddonUpdates {
+            updateController.start()
+        }
         controller?.refreshAddressBar()
     }
     

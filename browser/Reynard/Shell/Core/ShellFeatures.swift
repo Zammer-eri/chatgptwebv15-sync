@@ -17,6 +17,10 @@ struct ShellFeatures {
     let usesSingleTabSession: Bool
     let prefersMobileUserAgent: Bool
     let requiresLocation: Bool
+    let checksForAppUpdates: Bool
+    let runsAutomaticAddonUpdates: Bool
+    let recordsBrowsingHistory: Bool
+    let loadsFavicons: Bool
 
     static let browser = ShellFeatures(
         restoresPreviousTabs: true,
@@ -29,7 +33,11 @@ struct ShellFeatures {
         usesUtilityPanel: false,
         usesSingleTabSession: false,
         prefersMobileUserAgent: false,
-        requiresLocation: false
+        requiresLocation: false,
+        checksForAppUpdates: true,
+        runsAutomaticAddonUpdates: true,
+        recordsBrowsingHistory: true,
+        loadsFavicons: true
     )
 
     static let webApp = ShellFeatures(
@@ -43,6 +51,10 @@ struct ShellFeatures {
         usesUtilityPanel: true,
         usesSingleTabSession: true,
         prefersMobileUserAgent: false,
-        requiresLocation: false
+        requiresLocation: false,
+        checksForAppUpdates: false,
+        runsAutomaticAddonUpdates: false,
+        recordsBrowsingHistory: false,
+        loadsFavicons: false
     )
 }

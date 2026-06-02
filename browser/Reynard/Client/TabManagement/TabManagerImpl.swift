@@ -44,9 +44,9 @@ final class TabManagerImplementation: NSObject, TabManager {
     }
     
     private weak var delegate: TabManagerDelegate?
-    private let store: TabManagementStore
-    private let faviconStore: FaviconStore
-    private let historyStore: HistoryStore
+    private let store: TabManagementStore?
+    private let faviconStore: FaviconStore?
+    private let historyStore: HistoryStore?
     private let sessionStore: TabSessionStore
     private var faviconTasks: [UUID: Task<Void, Never>] = [:]
     private var selectionCounter = 0
@@ -58,16 +58,16 @@ final class TabManagerImplementation: NSObject, TabManager {
     
     init(
         delegate: TabManagerDelegate?,
-        store: TabManagementStore = .shared,
+        store: TabManagementStore? = nil,
         sessionStore: TabSessionStore = .shared,
-        faviconStore: FaviconStore = .shared,
-        historyStore: HistoryStore = .shared
+        faviconStore: FaviconStore? = nil,
+        historyStore: HistoryStore? = nil
     ) {
         self.delegate = delegate
-        self.store = store
+        self.store = ShellConfig.current.features.restoresPreviousTabs ? (store ?? .shared) : nil
         self.sessionStore = sessionStore
-        self.faviconStore = faviconStore
-        self.historyStore = historyStore
+        self.faviconStore = ShellConfig.current.features.loadsFavicons ? (faviconStore ?? .shared) : nil
+        self.historyStore = ShellConfig.current.features.recordsBrowsingHistory ? (historyStore ?? .shared) : nil
     }
     
     private func closeSession(_ session: GeckoSession) {
@@ -82,6 +82,10 @@ final class TabManagerImplementation: NSObject, TabManager {
     }
     
     private func persistState() {
+        guard let store else {
+            return
+        }
+
         store.saveTabs(
             regularTabs: regularTabs,
             privateTabs: privateTabs,
@@ -224,10 +228,10 @@ final class TabManagerImplementation: NSObject, TabManager {
             return
         }
         
-        historyStore.recordVisit(url: url, title: tab.title)
+        historyStore?.recordVisit(url: url, title: tab.title)
         if let title,
            !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            historyStore.updateTitle(for: url, title: title)
+            historyStore?.updateTitle(for: url, title: title)
         }
     }
     
@@ -351,6 +355,10 @@ final class TabManagerImplementation: NSObject, TabManager {
     }
     
     private func cachedFavicon(for value: String?) -> UIImage? {
+        guard let faviconStore else {
+            return nil
+        }
+
         guard let url = remoteURL(from: value) else {
             return nil
         }
@@ -361,6 +369,10 @@ final class TabManagerImplementation: NSObject, TabManager {
     private func scheduleFaviconUpdate(forTabAt index: Int, mode: TabMode? = nil) {
         let mode = mode ?? selectedTabMode
         guard tabs(for: mode).indices.contains(index) else {
+            return
+        }
+
+        guard let faviconStore else {
             return
         }
         
@@ -383,7 +395,7 @@ final class TabManagerImplementation: NSObject, TabManager {
                 return
             }
             
-            let image = await self.faviconStore.resolveFavicon(for: url)
+            let image = await faviconStore.resolveFavicon(for: url)
             guard !Task.isCancelled else {
                 return
             }
@@ -410,6 +422,10 @@ final class TabManagerImplementation: NSObject, TabManager {
     }
     
     private func restoreTabsIfNeeded() -> Bool {
+        guard let store else {
+            return false
+        }
+
         guard regularTabs.isEmpty && privateTabs.isEmpty else {
             return true
         }
@@ -911,7 +927,7 @@ final class TabManagerImplementation: NSObject, TabManager {
         
         let tab = tabs(for: selectedTabMode)[index]
         tab.thumbnail = image
-        store.saveThumbnail(image, for: tab.id)
+        store?.saveThumbnail(image, for: tab.id)
     }
     
     private func createSession(windowId: String?, isPrivate: Bool) -> GeckoSession {
@@ -935,7 +951,7 @@ extension TabManagerImplementation: ContentDelegate {
         tab.title = title
         if !tab.isPrivate,
            let url = remoteURL(from: tab.url) {
-            historyStore.updateTitle(for: url, title: title)
+            historyStore?.updateTitle(for: url, title: title)
         }
         notifyUpdate(at: location.index, mode: location.mode, reason: .title)
         persistState()
@@ -1102,7 +1118,7 @@ extension TabManagerImplementation: NavigationDelegate {
             return
         }
         
-        historyStore.recordVisit(url: url, title: tab.title)
+        historyStore?.recordVisit(url: url, title: tab.title)
     }
     
     func onCanGoBack(session: GeckoSession, canGoBack: Bool) {
