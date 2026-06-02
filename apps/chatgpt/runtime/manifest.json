@@ -1,3 +1,9 @@
 {
-  "scripts": []
+  "scripts": [
+    {
+      "id": "chatgpt-return-key",
+      "file": "return-key.js",
+      "matches": ["chatgpt.com", "*.chatgpt.com"]
+    }
+  ]
 }
