@@ -99,6 +99,10 @@ final class TabManagerImplementation: NSObject, TabManager {
             return privateTabs
         }
     }
+
+    private var recoveryLoadFlags: Int {
+        GeckoSessionLoadFlags.bypassCache | GeckoSessionLoadFlags.replaceHistory
+    }
     
     private func selectedIndex(for mode: TabMode) -> Int {
         switch mode {
@@ -150,9 +154,9 @@ final class TabManagerImplementation: NSObject, TabManager {
         }
     }
     
-    private func loadURL(_ url: String, in tab: Tab) {
+    private func loadURL(_ url: String, in tab: Tab, flags: Int = GeckoSessionLoadFlags.none) {
         tab.session.updateSettings(GeckoSessionController.shared.sessionSettings(for: url, tabID: tab.id))
-        tab.session.load(url)
+        tab.session.load(url, flags: flags)
     }
     
     private func applyNavigationState(to tab: Tab) {
@@ -804,7 +808,7 @@ final class TabManagerImplementation: NSObject, TabManager {
         notifyUpdate(at: location.index, mode: location.mode, reason: .location)
         notifyUpdate(at: location.index, mode: location.mode, reason: .navigationState)
         closeSession(oldSession)
-        loadURL(recoveredURL, in: tab)
+        loadURL(recoveredURL, in: tab, flags: recoveryLoadFlags)
         persistState()
     }
     

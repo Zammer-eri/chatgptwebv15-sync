@@ -27,6 +27,7 @@ public struct GeckoSessionSettings {
 
 public enum GeckoSessionLoadFlags {
     public static let none = 0
+    public static let bypassCache = 1 << 0
     public static let replaceHistory = 1 << 6
 }
 

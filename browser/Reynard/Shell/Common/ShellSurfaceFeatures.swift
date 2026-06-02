@@ -254,29 +254,62 @@ extension BrowserViewController {
     }
 
     private func clearAppCacheForReload(completion: @escaping () -> Void) {
-        DispatchQueue.global(qos: .userInitiated).async {
-            let fileManager = FileManager.default
-            let cacheURLs = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)
-            let temporaryURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+        Task {
+            await clearGeckoSiteDataForReload()
+            await clearLocalAppCacheForReload()
 
-            URLCache.shared.removeAllCachedResponses()
+            await MainActor.run {
+                completion()
+            }
+        }
+    }
 
-            for directoryURL in cacheURLs + [temporaryURL] {
-                guard let contents = try? fileManager.contentsOfDirectory(
-                    at: directoryURL,
-                    includingPropertiesForKeys: nil,
-                    options: [.skipsSubdirectoryDescendants]
-                ) else {
-                    continue
-                }
+    private func clearGeckoSiteDataForReload() async {
+        guard ShellConfig.current.target == .chatGPT else {
+            return
+        }
 
-                for itemURL in contents {
-                    try? fileManager.removeItem(at: itemURL)
-                }
+        let flags = GeckoRuntime.ClearDataFlags.networkCache |
+            GeckoRuntime.ClearDataFlags.imageCache |
+            GeckoRuntime.ClearDataFlags.domStorages
+
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                try? await GeckoRuntime.clearBaseDomainData("chatgpt.com", flags: flags)
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
             }
 
-            DispatchQueue.main.async {
-                completion()
+            await group.next()
+            group.cancelAll()
+        }
+    }
+
+    private func clearLocalAppCacheForReload() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let fileManager = FileManager.default
+                let cacheURLs = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)
+                let temporaryURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
+
+                URLCache.shared.removeAllCachedResponses()
+
+                for directoryURL in cacheURLs + [temporaryURL] {
+                    guard let contents = try? fileManager.contentsOfDirectory(
+                        at: directoryURL,
+                        includingPropertiesForKeys: nil,
+                        options: [.skipsSubdirectoryDescendants]
+                    ) else {
+                        continue
+                    }
+
+                    for itemURL in contents {
+                        try? fileManager.removeItem(at: itemURL)
+                    }
+                }
+
+                continuation.resume()
             }
         }
     }

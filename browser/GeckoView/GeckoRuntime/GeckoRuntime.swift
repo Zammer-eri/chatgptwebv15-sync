@@ -35,6 +35,12 @@ class GeckoRuntimeImpl: NSObject, SwiftGeckoViewRuntime {
 
 public class GeckoRuntime {
     static let runtime = GeckoRuntimeImpl()
+
+    public enum ClearDataFlags {
+        public static let networkCache = 1 << 1
+        public static let imageCache = 1 << 2
+        public static let domStorages = 1 << 4
+    }
     
     public static var version: String {
         return GeckoRuntimeBridge.version()
@@ -52,5 +58,15 @@ public class GeckoRuntime {
         process: GeckoProcessExtension
     ) {
         ChildProcessInit(xpcConnection, process, runtime)
+    }
+
+    public static func clearBaseDomainData(_ baseDomain: String, flags: Int) async throws {
+        _ = try await GeckoEventDispatcherWrapper.runtimeInstance.query(
+            type: "GeckoView:ClearBaseDomainData",
+            message: [
+                "baseDomain": baseDomain,
+                "flags": flags,
+            ]
+        )
     }
 }
