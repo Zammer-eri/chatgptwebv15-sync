@@ -13,6 +13,7 @@
   const COMPOSER_ROOT_SELECTOR =
     'form,[data-testid*="composer"],[class*="composer"],main';
   let insertingLineBreak = false;
+  let allowNativeLineBreakUntil = 0;
   let suppressComposerSubmitUntil = 0;
 
   const editableElement = target => {
@@ -86,7 +87,7 @@
     return true;
   };
 
-  const insertManualBreak = editable => {
+  const insertTextNewline = editable => {
     const selection = doc.getSelection?.();
     if (!selection || selection.rangeCount === 0) {
       return false;
@@ -98,15 +99,10 @@
     }
 
     range.deleteContents();
-    const br = doc.createElement("br");
-    range.insertNode(br);
-
-    if (!br.nextSibling) {
-      br.parentNode?.appendChild(doc.createElement("br"));
-    }
-
-    placeCaretAfter(br);
-    dispatchInput(editable, "insertLineBreak", "\n");
+    const newline = doc.createTextNode("\n");
+    range.insertNode(newline);
+    placeCaretAfter(newline);
+    dispatchInput(editable, "insertText", "\n");
     return true;
   };
 
@@ -131,7 +127,12 @@
         return true;
       }
 
-      if (insertManualBreak(editable)) {
+      if (selectionInside(editable) && doc.execCommand?.("insertText", false, "\n")) {
+        dispatchInput(editable, "insertText", "\n");
+        return true;
+      }
+
+      if (insertTextNewline(editable)) {
         return true;
       }
 
@@ -147,7 +148,7 @@
 
       return false;
     } catch (_) {
-      return insertManualBreak(editable);
+      return insertTextNewline(editable);
     } finally {
       insertingLineBreak = false;
     }
@@ -158,6 +159,29 @@
     event.stopImmediatePropagation();
     suppressComposerSubmitUntil = win.performance.now() + 500;
     insertLineBreak(event.target);
+  };
+
+  const makeReturnBehaveLikeShiftEnter = event => {
+    if (event.shiftKey) {
+      return true;
+    }
+
+    try {
+      Object.defineProperty(event, "shiftKey", {
+        configurable: true,
+        get: () => true,
+      });
+    } catch (_) {
+      return false;
+    }
+
+    if (!event.shiftKey) {
+      return false;
+    }
+
+    allowNativeLineBreakUntil = win.performance.now() + 500;
+    suppressComposerSubmitUntil = win.performance.now() + 500;
+    return true;
   };
 
   const handleReturn = event => {
@@ -172,10 +196,22 @@
     ) {
       return;
     }
+
+    if (makeReturnBehaveLikeShiftEnter(event)) {
+      return;
+    }
+
     forceReturnToLineBreak(event);
   };
 
   const handleBeforeInput = event => {
+    if (
+      win.performance.now() <= allowNativeLineBreakUntil &&
+      isComposerEditable(event.target)
+    ) {
+      return;
+    }
+
     if (
       insertingLineBreak ||
       (event.inputType !== "insertParagraph" &&
