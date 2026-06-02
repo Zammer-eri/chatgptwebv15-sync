@@ -335,55 +335,6 @@ final class TabManagerImplementation: NSObject, TabManager {
         ShellConfig.current.features.usesSingleTabSession
     }
 
-    private func closeAndForgetTab(_ tab: Tab) {
-        cancelFaviconTask(for: tab.id)
-        GeckoSessionController.shared.clearOverrides(forTabID: tab.id)
-        sessionStore.removeSession(for: tab.id)
-        closeSession(tab.session)
-    }
-
-    private func collapseToExistingShellTab(selecting: Bool) -> Int? {
-        guard usesSingleTabShellSession else {
-            return nil
-        }
-
-        if regularTabs.isEmpty {
-            let removedTabs = privateTabs
-            privateTabs.forEach(closeAndForgetTab)
-            privateTabs.removeAll(keepingCapacity: false)
-            selectedPrivateTabIndex = -1
-            selectedTabMode = .regular
-            if !removedTabs.isEmpty {
-                delegate?.tabManagerDidChangeTabs(self)
-            }
-            return nil
-        }
-
-        let keepIndex = regularTabs.indices.contains(selectedRegularTabIndex) ? selectedRegularTabIndex : 0
-        let keptTab = regularTabs[keepIndex]
-        let removedTabs = regularTabs.enumerated()
-            .compactMap { index, tab in index == keepIndex ? nil : tab } + privateTabs
-
-        regularTabs = [keptTab]
-        privateTabs.removeAll(keepingCapacity: false)
-        selectedRegularTabIndex = 0
-        selectedPrivateTabIndex = -1
-        selectedTabMode = .regular
-
-        removedTabs.forEach(closeAndForgetTab)
-        if !removedTabs.isEmpty {
-            delegate?.tabManagerDidChangeTabs(self)
-        }
-
-        if selecting {
-            selectTab(at: 0, mode: .regular)
-        } else {
-            persistState()
-        }
-
-        return 0
-    }
-
     @discardableResult
     private func requestExternalOpen(_ value: String) -> Bool {
         guard let url = remoteURL(from: value) else {
@@ -564,13 +515,8 @@ final class TabManagerImplementation: NSObject, TabManager {
     
     @discardableResult
     func addTab(selecting: Bool, windowId: String? = nil, at insertionIndex: Int? = nil, isPrivate: Bool = false) -> Int {
-        if let shellIndex = collapseToExistingShellTab(selecting: selecting) {
-            return shellIndex
-        }
-
-        let tabIsPrivate = usesSingleTabShellSession ? false : isPrivate
-        let tab = makeTab(windowId: windowId, isPrivate: tabIsPrivate)
-        let mode: TabMode = tabIsPrivate ? .private : .regular
+        let tab = makeTab(windowId: windowId, isPrivate: isPrivate)
+        let mode: TabMode = isPrivate ? .private : .regular
         let count = tabs(for: mode).count
         let index = min(max(insertionIndex ?? count, 0), count)
         
@@ -607,22 +553,8 @@ final class TabManagerImplementation: NSObject, TabManager {
     
     @discardableResult
     func addTab(using session: GeckoSession, url: String, title: String?, selecting: Bool, at insertionIndex: Int?, isPrivate: Bool = false) -> Int {
-        if let shellIndex = collapseToExistingShellTab(selecting: selecting),
-           let tab = selectedTab {
-            closeSession(session)
-            if let title,
-               !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                tab.title = title
-            }
-            browse(to: url, in: tab)
-            notifyUpdate(at: shellIndex, mode: .regular, reason: .title)
-            return shellIndex
-        }
-
-        let tabIsPrivate = usesSingleTabShellSession ? false : isPrivate
-        session.isPrivateMode = tabIsPrivate
-        let tab = Tab(session: session, isPrivate: tabIsPrivate)
-        let mode: TabMode = tabIsPrivate ? .private : .regular
+        let tab = Tab(session: session, isPrivate: isPrivate)
+        let mode: TabMode = isPrivate ? .private : .regular
         bindDelegates(to: session, for: tab)
         applyTransferredState(to: tab, url: url, title: title)
         recordNavigation(url, for: tab)
@@ -719,12 +651,6 @@ final class TabManagerImplementation: NSObject, TabManager {
         guard tabs(for: mode).indices.contains(index) else {
             return
         }
-
-        if usesSingleTabShellSession {
-            let tab = tabs(for: mode)[index]
-            browse(to: ShellConfig.current.defaultURL?.absoluteString ?? "about:blank", in: tab)
-            return
-        }
         
         let wasSelected = mode == selectedTabMode && index == selectedTabIndex
         let removedTab: Tab
@@ -769,15 +695,6 @@ final class TabManagerImplementation: NSObject, TabManager {
     func removeAllTabs(mode: TabMode? = nil) {
         let mode = mode ?? selectedTabMode
         guard !tabs(for: mode).isEmpty else {
-            return
-        }
-
-        if usesSingleTabShellSession {
-            guard let tab = selectedTab else {
-                createInitialTab()
-                return
-            }
-            browse(to: ShellConfig.current.defaultURL?.absoluteString ?? "about:blank", in: tab)
             return
         }
         
@@ -1106,15 +1023,20 @@ extension TabManagerImplementation: ContentDelegate {
     func onWebAppManifest(session: GeckoSession, manifest: Any) {}
     
     func onSlowScript(session: GeckoSession, scriptFileName: String) async -> SlowScriptResponse {
-        guard ShellConfig.current.target == .chatGPT,
-              let location = tabLocation(for: session) else {
+        guard ShellConfig.current.target == .chatGPT else {
             return .halt
         }
 
-        let tab = tabs(for: location.mode)[location.index]
-        if isChatGPTURL(tab.url) ||
-            isChatGPTURL(tab.pendingDisplayText) ||
-            isChatGPTURL(tab.pendingRestoreURL) {
+        let tab: Tab?
+        if let location = tabLocation(for: session) {
+            tab = tabs(for: location.mode)[location.index]
+        } else {
+            tab = selectedTab
+        }
+
+        if isChatGPTURL(tab?.url) ||
+            isChatGPTURL(tab?.pendingDisplayText) ||
+            isChatGPTURL(tab?.pendingRestoreURL) {
             return .resume
         }
 
