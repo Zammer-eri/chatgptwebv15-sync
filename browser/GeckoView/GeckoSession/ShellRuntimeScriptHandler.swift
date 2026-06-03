@@ -18,6 +18,11 @@ final class ShellRuntimeScriptHandler: GeckoEventListenerInternal {
 private final class ShellRuntimeScriptStore {
     static let shared = ShellRuntimeScriptStore()
 
+    private enum Defaults {
+        static let timeAwareEnabledKey = "ReynardShell.TimeAware.enabled"
+        static let timeAwareTimeZoneKey = "ReynardShell.TimeAware.timeZone"
+    }
+
     private struct Script {
         let id: String
         let file: String
@@ -87,7 +92,7 @@ private final class ShellRuntimeScriptStore {
 
     private func source(for script: Script) -> String? {
         if let source = cachedSources[script.file] {
-            return source
+            return runtimeSettingsBootstrapSource() + "\n" + source
         }
 
         guard let runtimeDirectory else {
@@ -102,7 +107,33 @@ private final class ShellRuntimeScriptStore {
         }
 
         cachedSources[script.file] = source
-        return source
+        return runtimeSettingsBootstrapSource() + "\n" + source
+    }
+
+    private func runtimeSettingsBootstrapSource() -> String {
+        let defaults = UserDefaults.standard
+        let timeAwareEnabled = defaults.object(forKey: Defaults.timeAwareEnabledKey) == nil
+            ? true
+            : defaults.bool(forKey: Defaults.timeAwareEnabledKey)
+        let timeZone = defaults.string(forKey: Defaults.timeAwareTimeZoneKey)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let settings: [String: Any] = [
+            "timeAware": [
+                "enabled": timeAwareEnabled,
+                "timeZone": timeZone,
+            ],
+        ]
+
+        guard let data = try? JSONSerialization.data(withJSONObject: settings),
+              let json = String(data: data, encoding: .utf8) else {
+            return ""
+        }
+
+        return """
+        ;(function(root) {
+          root.__reynardShellRuntimeSettings = \(json);
+        })(typeof globalThis !== "undefined" ? globalThis : this);
+        """
     }
 
     private func normalizedHost(from host: String?) -> String {

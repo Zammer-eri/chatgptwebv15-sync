@@ -49,7 +49,16 @@
     }
   };
 
-  const isEnabled = () => storageValue("enabled") !== "false";
+  const nativeTimeAwareSettings = () =>
+    win.__reynardShellRuntimeSettings?.timeAware || {};
+
+  const isEnabled = () => {
+    const nativeEnabled = nativeTimeAwareSettings().enabled;
+    if (typeof nativeEnabled === "boolean") {
+      return nativeEnabled;
+    }
+    return storageValue("enabled") !== "false";
+  };
 
   const visible = element => {
     const rect = element?.getBoundingClientRect?.();
@@ -113,7 +122,8 @@
   };
 
   const resolvedTimeZone = () => {
-    const override = storageValue("timeZone").trim();
+    const nativeTimeZone = String(nativeTimeAwareSettings().timeZone || "").trim();
+    const override = nativeTimeZone || storageValue("timeZone").trim();
     if (override) {
       try {
         new Intl.DateTimeFormat("en-US", { timeZone: override }).format(new Date());
