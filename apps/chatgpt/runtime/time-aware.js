@@ -88,6 +88,10 @@
     }
   };
 
+  const dispatchSelectionChange = () => {
+    doc.dispatchEvent(new win.Event("selectionchange", { bubbles: true }));
+  };
+
   const resolvedTimeZone = () => {
     const override = storageValue("timeZone").trim();
     if (override) {
@@ -145,6 +149,7 @@
     range.collapse(false);
     selection.removeAllRanges();
     selection.addRange(range);
+    dispatchSelectionChange();
   };
 
   const placeCaretAfter = node => {
@@ -158,6 +163,34 @@
     range.setEndAfter(node);
     selection.removeAllRanges();
     selection.addRange(range);
+    dispatchSelectionChange();
+  };
+
+  const selectionInside = editable => {
+    const selection = doc.getSelection?.();
+    if (!selection || selection.rangeCount === 0) {
+      return false;
+    }
+    return editable.contains(selection.getRangeAt(0).commonAncestorContainer);
+  };
+
+  const insertTextNewline = editable => {
+    const selection = doc.getSelection?.();
+    if (!selection || selection.rangeCount === 0) {
+      return false;
+    }
+
+    const range = selection.getRangeAt(0);
+    if (!editable.contains(range.commonAncestorContainer)) {
+      return false;
+    }
+
+    range.deleteContents();
+    const newline = doc.createTextNode("\n");
+    range.insertNode(newline);
+    placeCaretAfter(newline);
+    dispatchInput(editable, "insertText", "\n");
+    return true;
   };
 
   const appendTextNodes = (editable, text) => {
@@ -196,33 +229,44 @@
   };
 
   const insertEditorLineBreak = editable => {
+    if (editable instanceof win.HTMLTextAreaElement) {
+      const start = editable.selectionStart ?? editable.value.length;
+      const end = editable.selectionEnd ?? start;
+      editable.setRangeText("\n", start, end, "end");
+      dispatchInput(editable, "insertLineBreak", "\n");
+      return true;
+    }
+
     try {
-      if (doc.execCommand?.("insertLineBreak")) {
-        dispatchInput(editable, "insertLineBreak", "\n");
+      if (selectionInside(editable) && doc.execCommand?.("insertText", false, "\n")) {
+        dispatchInput(editable, "insertText", "\n");
         return true;
       }
     } catch (_) {}
 
-    try {
-      const selection = doc.getSelection?.();
-      if (!selection || selection.rangeCount === 0) {
-        return false;
-      }
-
-      const range = selection.getRangeAt(0);
-      if (!editable.contains(range.commonAncestorContainer)) {
-        return false;
-      }
-
-      const br = doc.createElement("br");
-      range.deleteContents();
-      range.insertNode(br);
-      placeCaretAfter(br);
-      dispatchInput(editable, "insertLineBreak", "\n");
+    if (insertTextNewline(editable)) {
       return true;
-    } catch (_) {
-      return false;
     }
+
+    try {
+      if (selectionInside(editable) && doc.execCommand?.("insertLineBreak")) {
+        dispatchInput(editable, "insertLineBreak", "\n");
+        return true;
+      }
+    } catch (_) {
+      return insertTextNewline(editable);
+    }
+
+    try {
+      if (selectionInside(editable) && doc.execCommand?.("insertParagraph")) {
+        dispatchInput(editable, "insertLineBreak", "\n");
+        return true;
+      }
+    } catch (_) {
+      return insertTextNewline(editable);
+    }
+
+    return false;
   };
 
   const insertEditorText = (editable, text) => {
