@@ -52,6 +52,27 @@
   const nativeTimeAwareSettings = () =>
     win.__reynardShellRuntimeSettings?.timeAware || {};
 
+  const syncNativeSettingsToStorage = () => {
+    const settings = nativeTimeAwareSettings();
+    try {
+      if (typeof settings.enabled === "boolean") {
+        win.localStorage?.setItem(
+          STORAGE_PREFIX + "enabled",
+          settings.enabled ? "true" : "false"
+        );
+      }
+
+      if (typeof settings.timeZone === "string") {
+        const timeZone = settings.timeZone.trim();
+        if (timeZone) {
+          win.localStorage?.setItem(STORAGE_PREFIX + "timeZone", timeZone);
+        } else {
+          win.localStorage?.removeItem(STORAGE_PREFIX + "timeZone");
+        }
+      }
+    } catch (_) {}
+  };
+
   const isEnabled = () => {
     const nativeEnabled = nativeTimeAwareSettings().enabled;
     if (typeof nativeEnabled === "boolean") {
@@ -452,6 +473,7 @@
   };
 
   const stampComposer = async editable => {
+    syncNativeSettingsToStorage();
     if (!isEnabled() || !editable) {
       return false;
     }
@@ -571,4 +593,5 @@
 
   doc.addEventListener("click", handleSendClick, listenerOptions);
   doc.addEventListener("submit", handleSubmit, listenerOptions);
+  syncNativeSettingsToStorage();
 })(typeof globalThis !== "undefined" ? globalThis : this);

@@ -34,6 +34,7 @@ private enum ShellTimeAwareSettings {
         }
         set {
             UserDefaults.standard.set(newValue, forKey: enabledKey)
+            UserDefaults.standard.synchronize()
         }
     }
 
@@ -50,6 +51,7 @@ private enum ShellTimeAwareSettings {
             } else {
                 UserDefaults.standard.set(value, forKey: timeZoneKey)
             }
+            UserDefaults.standard.synchronize()
         }
     }
 }
@@ -255,7 +257,7 @@ extension BrowserViewController {
             ShellTimeAwareSettings.isEnabled = enabled
             ShellTimeAwareSettings.timeZoneIdentifier = timeZoneIdentifier
             self.setShellUtilityPanelVisible(false, animated: true)
-            self.reloadSelectedTabWithCurrentSettings()
+            self.reloadSelectedTabForRuntimeSettings()
         }
         panel.onRequestManualTimeZone = { [weak self] currentValue, completion in
             self?.presentShellTimeZonePrompt(currentValue: currentValue, completion: completion)
@@ -440,6 +442,18 @@ extension BrowserViewController {
             GeckoSessionController.shared.sessionSettings(for: url, tabID: tab.id)
         )
         tabManager.reload(tab)
+    }
+
+    private func reloadSelectedTabForRuntimeSettings() {
+        guard let tab = tabManager.selectedTab else {
+            return
+        }
+
+        let url = tab.url ?? ShellConfig.current.defaultURL?.absoluteString ?? "about:blank"
+        tab.session.updateSettings(
+            GeckoSessionController.shared.sessionSettings(for: url, tabID: tab.id)
+        )
+        tab.session.load(url, flags: GeckoSessionLoadFlags.bypassCache | GeckoSessionLoadFlags.replaceHistory)
     }
 
     private func setShellRecoveryOverlayVisible(_ visible: Bool, animated: Bool) {
@@ -1190,27 +1204,43 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
 
     private func suggestedTimeZoneIdentifiers() -> [String] {
         let candidates = [
+            savedTimeAwareTimeZoneIdentifier,
             TimeZone.current.identifier,
-            "Europe/Paris",
-            "Europe/London",
-            "America/New_York",
-            "America/Los_Angeles",
-            "Asia/Dubai",
-            "Asia/Riyadh",
-            "Asia/Tokyo",
-            "Australia/Sydney",
-            "UTC",
+            localePrimaryTimeZoneIdentifier(),
         ]
 
         var seen = Set<String>()
         return candidates.compactMap { identifier in
-            guard TimeZone(identifier: identifier) != nil,
+            guard let identifier = normalizedTimeZoneIdentifier(identifier),
+                  TimeZone(identifier: identifier) != nil,
                   !seen.contains(identifier) else {
                 return nil
             }
             seen.insert(identifier)
             return identifier
         }
+    }
+
+    private func localePrimaryTimeZoneIdentifier() -> String? {
+        guard let regionCode = Locale.current.regionCode?.uppercased() else {
+            return nil
+        }
+
+        let primaryTimeZonesByRegion = [
+            "AE": "Asia/Dubai",
+            "AU": "Australia/Sydney",
+            "BE": "Europe/Brussels",
+            "CA": "America/Toronto",
+            "DE": "Europe/Berlin",
+            "FR": "Europe/Paris",
+            "GB": "Europe/London",
+            "JP": "Asia/Tokyo",
+            "NL": "Europe/Amsterdam",
+            "SA": "Asia/Riyadh",
+            "US": "America/New_York",
+        ]
+
+        return primaryTimeZonesByRegion[regionCode]
     }
 
     private func normalizedTimeZoneIdentifier(_ identifier: String?) -> String? {
