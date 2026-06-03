@@ -14,12 +14,16 @@
     'form,[data-testid*="composer"],[class*="composer"],main';
   const STORAGE_PREFIX = "reynard.timeAware.";
   const listenerOptions = { capture: true, passive: false };
-  const passiveCaptureOptions = { capture: true, passive: true };
+  const TIMESTAMP_PATTERN = /---\s*Timestamp:\s+[A-Z][a-z]{2},/;
+  const SYNTHETIC_RETURN_DELAY_MS = 60;
+  const SEND_AFTER_STAMP_DELAY_MS = 100;
+
+  let dispatchingSyntheticReturn = false;
   let forwardingClick = false;
   let forwardingSubmit = false;
-  let lastStamp = null;
-  const RECENT_STAMP_MS = 1200;
-  const TIMESTAMP_PATTERN = /---\s*Timestamp:\s+[A-Z][a-z]{2},/;
+  let sendFlowActive = false;
+
+  const delay = ms => new Promise(resolve => win.setTimeout(resolve, ms));
 
   const storageValue = key => {
     try {
@@ -70,7 +74,7 @@
     if (editable instanceof win.HTMLTextAreaElement) {
       return editable.value;
     }
-    return editable.textContent || "";
+    return editable?.textContent || "";
   };
 
   const dispatchInput = (element, inputType, data) => {
@@ -136,8 +140,6 @@
     return `Timestamp: ${parts.weekday}, ${parts.month} ${parts.day}, ${parts.year} at ${parts.hour}:${parts.minute} ${parts.dayPeriod} ${zoneLabel}`;
   };
 
-  const timestampText = () => `\n\n---\n${timestampLine()}`;
-
   const placeCaretAtEnd = editable => {
     const selection = doc.getSelection?.();
     if (!selection || editable instanceof win.HTMLTextAreaElement) {
@@ -155,7 +157,7 @@
   const placeCaretAfter = node => {
     const selection = doc.getSelection?.();
     if (!selection) {
-      return;
+      return false;
     }
 
     const range = doc.createRange();
@@ -164,6 +166,7 @@
     selection.removeAllRanges();
     selection.addRange(range);
     dispatchSelectionChange();
+    return true;
   };
 
   const selectionInside = editable => {
@@ -193,42 +196,7 @@
     return true;
   };
 
-  const appendTextNodes = (editable, text) => {
-    const selection = doc.getSelection?.();
-    if (!selection || selection.rangeCount === 0) {
-      return false;
-    }
-
-    const range = selection.getRangeAt(0);
-    if (!editable.contains(range.commonAncestorContainer)) {
-      return false;
-    }
-
-    const fragment = doc.createDocumentFragment();
-    let lastNode = null;
-    const lines = text.split("\n");
-    for (let index = 0; index < lines.length; index++) {
-      if (lines[index]) {
-        lastNode = doc.createTextNode(lines[index]);
-        fragment.appendChild(lastNode);
-      }
-
-      if (index < lines.length - 1) {
-        lastNode = doc.createElement("br");
-        fragment.appendChild(lastNode);
-      }
-    }
-
-    range.deleteContents();
-    range.insertNode(fragment);
-    if (lastNode) {
-      placeCaretAfter(lastNode);
-    }
-    dispatchInput(editable, "insertText", text);
-    return true;
-  };
-
-  const insertEditorLineBreak = editable => {
+  const insertFallbackLineBreak = editable => {
     if (editable instanceof win.HTMLTextAreaElement) {
       const start = editable.selectionStart ?? editable.value.length;
       const end = editable.selectionEnd ?? start;
@@ -269,29 +237,62 @@
     return false;
   };
 
-  const insertEditorText = (editable, text) => {
+  const dispatchSyntheticShiftEnter = editable => {
+    if (!editable || dispatchingSyntheticReturn) {
+      return false;
+    }
+
+    dispatchingSyntheticReturn = true;
     try {
-      if (doc.execCommand?.("insertText", false, text)) {
-        dispatchInput(editable, "insertText", text);
+      const synthetic = new win.KeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        shiftKey: true,
+      });
+      for (const [key, value] of [
+        ["keyCode", 13],
+        ["which", 13],
+        ["charCode", 0],
+      ]) {
+        try {
+          Object.defineProperty(synthetic, key, {
+            configurable: true,
+            get: () => value,
+          });
+        } catch (_) {}
+      }
+      editable.dispatchEvent(synthetic);
+      return true;
+    } catch (_) {
+      return false;
+    } finally {
+      dispatchingSyntheticReturn = false;
+    }
+  };
+
+  const insertReturnKeyLineBreak = async editable => {
+    editable.focus?.();
+
+    if (editable instanceof win.HTMLTextAreaElement) {
+      return insertFallbackLineBreak(editable);
+    }
+
+    placeCaretAtEnd(editable);
+    const beforeText = editableText(editable);
+    if (dispatchSyntheticShiftEnter(editable)) {
+      await delay(SYNTHETIC_RETURN_DELAY_MS);
+      if (editableText(editable) !== beforeText) {
         return true;
       }
-    } catch (_) {}
+    }
 
-    return appendTextNodes(editable, text);
+    return insertFallbackLineBreak(editable);
   };
 
-  const appendTimestampBlock = (editable, line) => {
-    placeCaretAtEnd(editable);
-    return (
-      insertEditorLineBreak(editable) &&
-      insertEditorLineBreak(editable) &&
-      insertEditorText(editable, "---") &&
-      insertEditorLineBreak(editable) &&
-      insertEditorText(editable, line)
-    );
-  };
-
-  const appendText = (editable, text) => {
+  const insertEditorText = (editable, text) => {
     editable.focus?.();
 
     if (editable instanceof win.HTMLTextAreaElement) {
@@ -302,19 +303,7 @@
       return true;
     }
 
-    const timestampPrefix = "\n\n---\n";
-    if (text.startsWith(timestampPrefix)) {
-      const line = text.slice(timestampPrefix.length);
-      if (appendTimestampBlock(editable, line)) {
-        return true;
-      }
-    }
-
     placeCaretAtEnd(editable);
-    if (appendTextNodes(editable, text)) {
-      return true;
-    }
-
     try {
       if (doc.execCommand?.("insertText", false, text)) {
         dispatchInput(editable, "insertText", text);
@@ -323,12 +312,39 @@
     } catch (_) {}
 
     try {
-      editable.appendChild(doc.createTextNode(text));
+      const selection = doc.getSelection?.();
+      if (!selection || selection.rangeCount === 0) {
+        return false;
+      }
+      const range = selection.getRangeAt(0);
+      if (!editable.contains(range.commonAncestorContainer)) {
+        return false;
+      }
+      const node = doc.createTextNode(text);
+      range.deleteContents();
+      range.insertNode(node);
+      placeCaretAfter(node);
       dispatchInput(editable, "insertText", text);
       return true;
     } catch (_) {
       return false;
     }
+  };
+
+  const appendTimestampBlock = async editable => {
+    if (!(await insertReturnKeyLineBreak(editable))) {
+      return false;
+    }
+    if (!(await insertReturnKeyLineBreak(editable))) {
+      return false;
+    }
+    if (!insertEditorText(editable, "---")) {
+      return false;
+    }
+    if (!(await insertReturnKeyLineBreak(editable))) {
+      return false;
+    }
+    return insertEditorText(editable, timestampLine());
   };
 
   const buttonLabel = button =>
@@ -399,52 +415,65 @@
     return isLikelySendButton(button) ? button : null;
   };
 
-  const stampComposer = editable => {
+  const stampComposer = async editable => {
     if (!isEnabled() || !editable) {
-      return { ok: false, changed: false };
+      return false;
     }
 
     const currentText = editableText(editable);
-    if (!currentText.trim()) {
-      return { ok: false, changed: false };
+    if (!currentText.trim() || TIMESTAMP_PATTERN.test(currentText)) {
+      return false;
     }
 
-    const now = win.performance.now();
-    if (lastStamp?.editable === editable && now - lastStamp.at < RECENT_STAMP_MS) {
-      return { ok: true, changed: false };
-    }
-
-    if (
-      currentText.includes(lastStamp?.text || "\u0000") ||
-      TIMESTAMP_PATTERN.test(currentText)
-    ) {
-      return { ok: true, changed: false };
-    }
-
-    const text = timestampText();
-    if (!appendText(editable, text)) {
-      return { ok: false, changed: false };
-    }
-
-    lastStamp = { editable, text, at: now };
-    return { ok: true, changed: true };
+    return appendTimestampBlock(editable);
   };
 
-  const stampButtonComposer = button => stampComposer(composerForButton(button));
+  const forwardClick = button => {
+    forwardingClick = true;
+    try {
+      button.click();
+    } finally {
+      win.setTimeout(() => {
+        forwardingClick = false;
+      }, 0);
+    }
+  };
 
-  const handleEarlySend = event => {
-    if (forwardingClick || forwardingSubmit) {
+  const forwardSubmit = form => {
+    if (typeof form?.requestSubmit !== "function") {
+      return false;
+    }
+
+    forwardingSubmit = true;
+    try {
+      form.requestSubmit();
+    } finally {
+      win.setTimeout(() => {
+        forwardingSubmit = false;
+      }, 0);
+    }
+    return true;
+  };
+
+  const runSendFlow = async (editable, forward) => {
+    if (sendFlowActive) {
       return;
     }
 
-    const button = findSendButton(event.target);
-    if (button) {
-      stampButtonComposer(button);
+    sendFlowActive = true;
+    try {
+      await stampComposer(editable);
+      await delay(SEND_AFTER_STAMP_DELAY_MS);
+      forward();
+    } finally {
+      win.setTimeout(() => {
+        sendFlowActive = false;
+      }, 0);
     }
   };
 
   const handleSendClick = event => {
-    if (forwardingClick) {
+    if (forwardingClick || forwardingSubmit) {
       return;
     }
 
@@ -453,56 +482,40 @@
       return;
     }
 
-    const result = stampButtonComposer(button);
-    if (!result.ok || !result.changed) {
-      return;
-    }
-
     event.preventDefault();
     event.stopImmediatePropagation();
-
-    win.setTimeout(() => {
-      forwardingClick = true;
-      try {
-        button.click();
-      } finally {
-        win.setTimeout(() => {
-          forwardingClick = false;
-        }, 0);
-      }
-    }, 80);
+    runSendFlow(composerForButton(button), () => forwardClick(button));
   };
 
   const handleSubmit = event => {
-    if (forwardingSubmit) {
+    if (forwardingClick || forwardingSubmit) {
+      return;
+    }
+
+    if (sendFlowActive) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
       return;
     }
 
     const form = event.target;
     const editable = activeComposerEditable(form);
-    const result = stampComposer(editable);
-    if (!result.ok || !result.changed || typeof form?.requestSubmit !== "function") {
+    if (!editable || !editableText(editable).trim()) {
       return;
     }
 
     event.preventDefault();
     event.stopImmediatePropagation();
-
-    win.setTimeout(() => {
-      forwardingSubmit = true;
-      try {
-        form.requestSubmit();
-      } finally {
-        win.setTimeout(() => {
-          forwardingSubmit = false;
-        }, 0);
+    runSendFlow(editable, () => {
+      if (!forwardSubmit(form)) {
+        const button = form.querySelector?.("button[type='submit'],button,[role='button']");
+        if (button) {
+          forwardClick(button);
+        }
       }
-    }, 80);
+    });
   };
 
-  doc.addEventListener("pointerdown", handleEarlySend, passiveCaptureOptions);
-  doc.addEventListener("touchstart", handleEarlySend, passiveCaptureOptions);
-  doc.addEventListener("mousedown", handleEarlySend, passiveCaptureOptions);
   doc.addEventListener("click", handleSendClick, listenerOptions);
   doc.addEventListener("submit", handleSubmit, listenerOptions);
 })(typeof globalThis !== "undefined" ? globalThis : this);
