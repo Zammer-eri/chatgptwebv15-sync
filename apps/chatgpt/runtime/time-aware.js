@@ -14,7 +14,10 @@
     'form,[data-testid*="composer"],[class*="composer"],main';
   const STORAGE_PREFIX = "reynard.timeAware.";
   const listenerOptions = { capture: true, passive: false };
+  const passiveCaptureOptions = { capture: true, passive: true };
   let forwardingClick = false;
+  let forwardingSubmit = false;
+  let lastStamp = null;
 
   const storageValue = key => {
     try {
@@ -45,13 +48,13 @@
     return !!editable.closest(COMPOSER_ROOT_SELECTOR);
   };
 
-  const activeComposerEditable = rootElement => {
+  const activeComposerEditable = scope => {
     if (isComposerEditable(doc.activeElement)) {
       return editableElement(doc.activeElement);
     }
 
-    const scope = rootElement || doc;
-    const editables = Array.from(scope.querySelectorAll?.(COMPOSER_SELECTOR) || []);
+    const rootElement = scope?.querySelectorAll ? scope : doc;
+    const editables = Array.from(rootElement.querySelectorAll(COMPOSER_SELECTOR));
     for (let index = editables.length - 1; index >= 0; index--) {
       const editable = editables[index];
       if (isComposerEditable(editable) && visible(editable)) {
@@ -87,7 +90,7 @@
     const override = storageValue("timeZone").trim();
     if (override) {
       try {
-        new Intl.DateTimeFormat(undefined, { timeZone: override }).format(new Date());
+        new Intl.DateTimeFormat("en-US", { timeZone: override }).format(new Date());
         return override;
       } catch (_) {}
     }
@@ -99,25 +102,35 @@
     }
   };
 
-  const timestampText = () => {
+  const timestampLine = () => {
     const now = new Date();
     const timeZone = resolvedTimeZone();
-    let localTime = "";
+    let parts = {};
 
     try {
-      localTime = new Intl.DateTimeFormat(undefined, {
-        dateStyle: "medium",
-        timeStyle: "medium",
-        timeZone: timeZone || undefined,
-        timeZoneName: "short",
-      }).format(now);
+      parts = Object.fromEntries(
+        new Intl.DateTimeFormat("en-US", {
+          weekday: "short",
+          month: "short",
+          day: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+          timeZone: timeZone || undefined,
+        })
+          .formatToParts(now)
+          .map(part => [part.type, part.value])
+      );
     } catch (_) {
-      localTime = now.toString();
+      return `Timestamp: ${now.toString()}${timeZone ? ` ${timeZone}` : ""}`;
     }
 
-    const zoneLabel = timeZone ? ` ${timeZone}` : "";
-    return `\n\n[Time context: ${localTime}${zoneLabel}; UTC ${now.toISOString()}]`;
+    const zoneLabel = timeZone || "Local";
+    return `Timestamp: ${parts.weekday}, ${parts.month} ${parts.day}, ${parts.year} at ${parts.hour}:${parts.minute} ${parts.dayPeriod} ${zoneLabel}`;
   };
+
+  const timestampText = () => `\n\n---\n${timestampLine()}`;
 
   const placeCaretAtEnd = editable => {
     const selection = doc.getSelection?.();
@@ -160,57 +173,108 @@
     }
   };
 
-  const findSendButton = target => {
-    const element =
-      target instanceof win.Element ? target : target?.parentElement || null;
-    const button = element?.closest?.("button,[role='button']");
-    if (!button || button.disabled || button.getAttribute("aria-disabled") === "true") {
-      return null;
-    }
-
-    const rootElement = button.closest(COMPOSER_ROOT_SELECTOR);
-    if (!rootElement) {
-      return null;
-    }
-
-    const label = [
+  const buttonLabel = button =>
+    [
       button.getAttribute("aria-label"),
       button.getAttribute("title"),
       button.getAttribute("data-testid"),
-      button.textContent,
       button.getAttribute("type"),
+      button.textContent,
     ]
       .filter(Boolean)
       .join(" ")
       .toLowerCase();
 
-    if (label.includes("stop") || label.includes("voice")) {
-      return null;
+  const composerForButton = button => {
+    const rootElement = button.closest(COMPOSER_ROOT_SELECTOR);
+    return activeComposerEditable(rootElement) || activeComposerEditable(doc);
+  };
+
+  const isLikelySendButton = button => {
+    if (!button || button.disabled || button.getAttribute("aria-disabled") === "true") {
+      return false;
+    }
+
+    const editable = composerForButton(button);
+    if (!editable || !editableText(editable).trim()) {
+      return false;
+    }
+
+    const label = buttonLabel(button);
+    if (
+      label.includes("stop") ||
+      label.includes("voice") ||
+      label.includes("microphone") ||
+      label.includes("attach") ||
+      label.includes("upload") ||
+      label.includes("menu")
+    ) {
+      return false;
     }
 
     if (
       label.includes("send") ||
       label.includes("submit") ||
+      label.includes("composer-submit") ||
       button.getAttribute("type") === "submit"
     ) {
-      return button;
+      return true;
     }
 
-    return null;
+    const rootElement = button.closest("form");
+    const editableRect = editable.getBoundingClientRect?.();
+    const buttonRect = button.getBoundingClientRect?.();
+    return (
+      !!rootElement &&
+      !!editableRect &&
+      !!buttonRect &&
+      visible(button) &&
+      buttonRect.left >= editableRect.left &&
+      buttonRect.right >= editableRect.right - 96
+    );
   };
 
-  const stampComposer = button => {
-    if (!isEnabled()) {
-      return false;
+  const findSendButton = target => {
+    const element =
+      target instanceof win.Element ? target : target?.parentElement || null;
+    const button = element?.closest?.("button,[role='button']");
+    return isLikelySendButton(button) ? button : null;
+  };
+
+  const stampComposer = editable => {
+    if (!isEnabled() || !editable || !editableText(editable).trim()) {
+      return { ok: false, changed: false };
     }
 
-    const rootElement = button?.closest?.(COMPOSER_ROOT_SELECTOR);
-    const editable = activeComposerEditable(rootElement);
-    if (!editable || !editableText(editable).trim()) {
-      return false;
+    const now = win.performance.now();
+    if (
+      lastStamp?.editable === editable &&
+      now - lastStamp.at < 1500 &&
+      editableText(editable).includes(lastStamp.text)
+    ) {
+      return { ok: true, changed: false };
     }
 
-    return appendText(editable, timestampText());
+    const text = timestampText();
+    if (!appendText(editable, text)) {
+      return { ok: false, changed: false };
+    }
+
+    lastStamp = { editable, text, at: now };
+    return { ok: true, changed: true };
+  };
+
+  const stampButtonComposer = button => stampComposer(composerForButton(button));
+
+  const handleEarlySend = event => {
+    if (forwardingClick || forwardingSubmit) {
+      return;
+    }
+
+    const button = findSendButton(event.target);
+    if (button) {
+      stampButtonComposer(button);
+    }
   };
 
   const handleSendClick = event => {
@@ -219,7 +283,12 @@
     }
 
     const button = findSendButton(event.target);
-    if (!button || !stampComposer(button)) {
+    if (!button) {
+      return;
+    }
+
+    const result = stampButtonComposer(button);
+    if (!result.ok || !result.changed) {
       return;
     }
 
@@ -238,5 +307,36 @@
     }, 80);
   };
 
+  const handleSubmit = event => {
+    if (forwardingSubmit) {
+      return;
+    }
+
+    const form = event.target;
+    const editable = activeComposerEditable(form);
+    const result = stampComposer(editable);
+    if (!result.ok || !result.changed || typeof form?.requestSubmit !== "function") {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+
+    win.setTimeout(() => {
+      forwardingSubmit = true;
+      try {
+        form.requestSubmit();
+      } finally {
+        win.setTimeout(() => {
+          forwardingSubmit = false;
+        }, 0);
+      }
+    }, 80);
+  };
+
+  doc.addEventListener("pointerdown", handleEarlySend, passiveCaptureOptions);
+  doc.addEventListener("touchstart", handleEarlySend, passiveCaptureOptions);
+  doc.addEventListener("mousedown", handleEarlySend, passiveCaptureOptions);
   doc.addEventListener("click", handleSendClick, listenerOptions);
+  doc.addEventListener("submit", handleSubmit, listenerOptions);
 })(typeof globalThis !== "undefined" ? globalThis : this);
