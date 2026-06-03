@@ -15,15 +15,31 @@
   const STORAGE_PREFIX = "reynard.timeAware.";
   const listenerOptions = { capture: true, passive: false };
   const TIMESTAMP_PATTERN = /---\s*Timestamp:\s+[A-Z][a-z]{2},/;
-  const SYNTHETIC_RETURN_DELAY_MS = 60;
-  const SEND_AFTER_STAMP_DELAY_MS = 100;
+  const SYNTHETIC_RETURN_MAX_FRAMES = 2;
 
   let dispatchingSyntheticReturn = false;
   let forwardingClick = false;
   let forwardingSubmit = false;
   let sendFlowActive = false;
 
-  const delay = ms => new Promise(resolve => win.setTimeout(resolve, ms));
+  const nextFrame = () =>
+    new Promise(resolve => {
+      if (typeof win.requestAnimationFrame === "function") {
+        win.requestAnimationFrame(() => resolve());
+      } else {
+        win.setTimeout(resolve, 0);
+      }
+    });
+
+  const waitForTextChange = async (editable, beforeText, maxFrames) => {
+    for (let frame = 0; frame < maxFrames; frame++) {
+      await nextFrame();
+      if (editableText(editable) !== beforeText) {
+        return true;
+      }
+    }
+    return false;
+  };
 
   const storageValue = key => {
     try {
@@ -177,6 +193,17 @@
     return editable.contains(selection.getRangeAt(0).commonAncestorContainer);
   };
 
+  const composerIsActive = editable =>
+    doc.activeElement === editable ||
+    editable.contains?.(doc.activeElement) ||
+    selectionInside(editable);
+
+  const focusIfNeeded = editable => {
+    if (!composerIsActive(editable)) {
+      editable.focus?.();
+    }
+  };
+
   const insertTextNewline = editable => {
     const selection = doc.getSelection?.();
     if (!selection || selection.rangeCount === 0) {
@@ -274,7 +301,7 @@
   };
 
   const insertReturnKeyLineBreak = async editable => {
-    editable.focus?.();
+    focusIfNeeded(editable);
 
     if (editable instanceof win.HTMLTextAreaElement) {
       return insertFallbackLineBreak(editable);
@@ -283,8 +310,7 @@
     placeCaretAtEnd(editable);
     const beforeText = editableText(editable);
     if (dispatchSyntheticShiftEnter(editable)) {
-      await delay(SYNTHETIC_RETURN_DELAY_MS);
-      if (editableText(editable) !== beforeText) {
+      if (await waitForTextChange(editable, beforeText, SYNTHETIC_RETURN_MAX_FRAMES)) {
         return true;
       }
     }
@@ -293,7 +319,7 @@
   };
 
   const insertEditorText = (editable, text) => {
-    editable.focus?.();
+    focusIfNeeded(editable);
 
     if (editable instanceof win.HTMLTextAreaElement) {
       const start = editable.value.length;
@@ -455,6 +481,21 @@
     return true;
   };
 
+  const dismissKeyboard = editable => {
+    const blurTarget = isComposerEditable(doc.activeElement)
+      ? editableElement(doc.activeElement)
+      : editable;
+
+    for (const delayMs of [0, 80]) {
+      win.setTimeout(() => {
+        try {
+          blurTarget?.blur?.();
+          doc.activeElement?.blur?.();
+        } catch (_) {}
+      }, delayMs);
+    }
+  };
+
   const runSendFlow = async (editable, forward) => {
     if (sendFlowActive) {
       return;
@@ -462,9 +503,11 @@
 
     sendFlowActive = true;
     try {
-      await stampComposer(editable);
-      await delay(SEND_AFTER_STAMP_DELAY_MS);
+      if (await stampComposer(editable)) {
+        await nextFrame();
+      }
       forward();
+      dismissKeyboard(editable);
     } finally {
       win.setTimeout(() => {
         sendFlowActive = false;
