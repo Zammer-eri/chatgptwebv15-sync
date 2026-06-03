@@ -18,6 +18,8 @@
   let forwardingClick = false;
   let forwardingSubmit = false;
   let lastStamp = null;
+  const RECENT_STAMP_MS = 1200;
+  const TIMESTAMP_PATTERN = /---\s*Timestamp:\s+[A-Z][a-z]{2},/;
 
   const storageValue = key => {
     try {
@@ -145,6 +147,106 @@
     selection.addRange(range);
   };
 
+  const placeCaretAfter = node => {
+    const selection = doc.getSelection?.();
+    if (!selection) {
+      return;
+    }
+
+    const range = doc.createRange();
+    range.setStartAfter(node);
+    range.setEndAfter(node);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  };
+
+  const appendTextNodes = (editable, text) => {
+    const selection = doc.getSelection?.();
+    if (!selection || selection.rangeCount === 0) {
+      return false;
+    }
+
+    const range = selection.getRangeAt(0);
+    if (!editable.contains(range.commonAncestorContainer)) {
+      return false;
+    }
+
+    const fragment = doc.createDocumentFragment();
+    let lastNode = null;
+    const lines = text.split("\n");
+    for (let index = 0; index < lines.length; index++) {
+      if (lines[index]) {
+        lastNode = doc.createTextNode(lines[index]);
+        fragment.appendChild(lastNode);
+      }
+
+      if (index < lines.length - 1) {
+        lastNode = doc.createElement("br");
+        fragment.appendChild(lastNode);
+      }
+    }
+
+    range.deleteContents();
+    range.insertNode(fragment);
+    if (lastNode) {
+      placeCaretAfter(lastNode);
+    }
+    dispatchInput(editable, "insertText", text);
+    return true;
+  };
+
+  const insertEditorLineBreak = editable => {
+    try {
+      if (doc.execCommand?.("insertLineBreak")) {
+        dispatchInput(editable, "insertLineBreak", "\n");
+        return true;
+      }
+    } catch (_) {}
+
+    try {
+      const selection = doc.getSelection?.();
+      if (!selection || selection.rangeCount === 0) {
+        return false;
+      }
+
+      const range = selection.getRangeAt(0);
+      if (!editable.contains(range.commonAncestorContainer)) {
+        return false;
+      }
+
+      const br = doc.createElement("br");
+      range.deleteContents();
+      range.insertNode(br);
+      placeCaretAfter(br);
+      dispatchInput(editable, "insertLineBreak", "\n");
+      return true;
+    } catch (_) {
+      return false;
+    }
+  };
+
+  const insertEditorText = (editable, text) => {
+    try {
+      if (doc.execCommand?.("insertText", false, text)) {
+        dispatchInput(editable, "insertText", text);
+        return true;
+      }
+    } catch (_) {}
+
+    return appendTextNodes(editable, text);
+  };
+
+  const appendTimestampBlock = (editable, line) => {
+    placeCaretAtEnd(editable);
+    return (
+      insertEditorLineBreak(editable) &&
+      insertEditorLineBreak(editable) &&
+      insertEditorText(editable, "---") &&
+      insertEditorLineBreak(editable) &&
+      insertEditorText(editable, line)
+    );
+  };
+
   const appendText = (editable, text) => {
     editable.focus?.();
 
@@ -156,7 +258,19 @@
       return true;
     }
 
+    const timestampPrefix = "\n\n---\n";
+    if (text.startsWith(timestampPrefix)) {
+      const line = text.slice(timestampPrefix.length);
+      if (appendTimestampBlock(editable, line)) {
+        return true;
+      }
+    }
+
     placeCaretAtEnd(editable);
+    if (appendTextNodes(editable, text)) {
+      return true;
+    }
+
     try {
       if (doc.execCommand?.("insertText", false, text)) {
         dispatchInput(editable, "insertText", text);
@@ -242,15 +356,23 @@
   };
 
   const stampComposer = editable => {
-    if (!isEnabled() || !editable || !editableText(editable).trim()) {
+    if (!isEnabled() || !editable) {
+      return { ok: false, changed: false };
+    }
+
+    const currentText = editableText(editable);
+    if (!currentText.trim()) {
       return { ok: false, changed: false };
     }
 
     const now = win.performance.now();
+    if (lastStamp?.editable === editable && now - lastStamp.at < RECENT_STAMP_MS) {
+      return { ok: true, changed: false };
+    }
+
     if (
-      lastStamp?.editable === editable &&
-      now - lastStamp.at < 1500 &&
-      editableText(editable).includes(lastStamp.text)
+      currentText.includes(lastStamp?.text || "\u0000") ||
+      TIMESTAMP_PATTERN.test(currentText)
     ) {
       return { ok: true, changed: false };
     }
