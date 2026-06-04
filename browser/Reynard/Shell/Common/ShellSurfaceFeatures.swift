@@ -552,6 +552,15 @@ private final class TimeZoneNavigationRow: UIControl {
     var value: String?
 }
 
+private final class UserAgentOptionRow: UIControl {
+    var useAndroidUserAgent = false
+    weak var checkmarkView: UIImageView?
+}
+
+private final class UserAgentValueRow: UIView {
+    weak var valueLabel: UILabel?
+}
+
 private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     var onClose: (() -> Void)?
     var onSaveUserAgent: ((Bool) -> Void)?
@@ -561,36 +570,42 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     private let dimView = UIView()
     private let cardView = UIView()
     private let homeContent = UIView()
+    private let userAgentContent = UIView()
     private let downloadsContent = UIView()
     private let timeAwareContent = UIView()
     private let timeZoneListContent = UIView()
     private let timeAwareScrollView = UIScrollView()
     private let homeStackView = UIStackView()
+    private let userAgentStackView = UIStackView()
     private let timeAwareStackView = UIStackView()
     private let timeZoneListStackView = UIStackView()
     private let timeZoneListTitleLabel = UILabel()
+    private let userAgentRow = UIControl()
     private let timeAwareRow = UIControl()
     private let downloadsRow = UIControl()
-    private let androidUASwitch = UISwitch()
     private let timeAwareEnabledSwitch = UISwitch()
     private let timeZoneButton = UIButton(type: .system)
+    private let userAgentSaveButton = UIButton(type: .system)
     private let timeAwareHintLabel = UILabel()
     private let timeAwareSaveButton = UIButton(type: .system)
-    private let saveButton = UIButton(type: .system)
     private var cardSideConstraint: NSLayoutConstraint?
     private var cardHeightConstraint: NSLayoutConstraint?
-    private var saveButtonHeightConstraint: NSLayoutConstraint?
+    private var userAgentSaveButtonHeightConstraint: NSLayoutConstraint?
     private var timeAwareSaveButtonHeightConstraint: NSLayoutConstraint?
     private var savedAndroidUserAgent = false
+    private var draftAndroidUserAgent = false
     private var savedTimeAwareEnabled = true
     private var savedTimeAwareTimeZoneIdentifier: String?
     private var draftTimeAwareTimeZoneIdentifier: String?
+    private var userAgentOptionRows: [UserAgentOptionRow] = []
+    private weak var userAgentValueRow: UserAgentValueRow?
     private var timeZoneListMode = TimeZoneListMode.suggestions
     private let showsTimeAwareSettings = ShellConfig.current.target == .chatGPT
     private var activePanel: Panel = .home
 
     private enum Panel {
         case home
+        case userAgent
         case timeAware
         case timeZoneList
         case downloads
@@ -610,6 +625,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         dimView.translatesAutoresizingMaskIntoConstraints = false
         cardView.translatesAutoresizingMaskIntoConstraints = false
         homeContent.translatesAutoresizingMaskIntoConstraints = false
+        userAgentContent.translatesAutoresizingMaskIntoConstraints = false
         downloadsContent.translatesAutoresizingMaskIntoConstraints = false
         timeAwareContent.translatesAutoresizingMaskIntoConstraints = false
         timeZoneListContent.translatesAutoresizingMaskIntoConstraints = false
@@ -629,6 +645,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         addSubview(dimView)
         addSubview(cardView)
         cardView.addSubview(homeContent)
+        cardView.addSubview(userAgentContent)
         cardView.addSubview(timeAwareContent)
         cardView.addSubview(timeZoneListContent)
         cardView.addSubview(downloadsContent)
@@ -658,6 +675,11 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
             homeContent.leadingAnchor.constraint(equalTo: cardView.leadingAnchor),
             homeContent.trailingAnchor.constraint(equalTo: cardView.trailingAnchor),
 
+            userAgentContent.topAnchor.constraint(equalTo: cardView.topAnchor),
+            userAgentContent.bottomAnchor.constraint(equalTo: cardView.bottomAnchor),
+            userAgentContent.leadingAnchor.constraint(equalTo: cardView.leadingAnchor),
+            userAgentContent.trailingAnchor.constraint(equalTo: cardView.trailingAnchor),
+
             timeAwareContent.topAnchor.constraint(equalTo: cardView.topAnchor),
             timeAwareContent.bottomAnchor.constraint(equalTo: cardView.bottomAnchor),
             timeAwareContent.leadingAnchor.constraint(equalTo: cardView.leadingAnchor),
@@ -675,11 +697,13 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         ])
 
         configureHomeContent()
+        configureUserAgentContent()
         if showsTimeAwareSettings {
             configureTimeAwareContent()
             configureTimeZoneListContent()
         }
         configureDownloadsContent()
+        userAgentContent.isHidden = true
         timeAwareContent.isHidden = true
         timeZoneListContent.isHidden = true
         downloadsContent.isHidden = true
@@ -705,7 +729,10 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
 
     func syncControls() {
         savedAndroidUserAgent = Prefs.CompatibilitySettings.useAndroidUserAgent
-        androidUASwitch.isOn = savedAndroidUserAgent
+        draftAndroidUserAgent = savedAndroidUserAgent
+        updateUserAgentValueRow()
+        updateUserAgentOptionRows()
+        updateUserAgentSaveButton(animated: false)
         if showsTimeAwareSettings {
             savedTimeAwareEnabled = ShellTimeAwareSettings.isEnabled
             savedTimeAwareTimeZoneIdentifier = ShellTimeAwareSettings.timeZoneIdentifier
@@ -713,7 +740,6 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
             timeAwareEnabledSwitch.isOn = savedTimeAwareEnabled
             updateTimeZoneButton()
         }
-        updateSaveButton(animated: false)
         if showsTimeAwareSettings {
             updateTimeAwareSaveButton(animated: false)
         }
@@ -733,6 +759,13 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         let previous = contentView(for: activePanel)
         activePanel = .home
         switchContent(to: homeContent, from: previous, animated: animated)
+        updateCardHeight(animated: animated)
+    }
+
+    func showUserAgent(animated: Bool) {
+        let previous = contentView(for: activePanel)
+        activePanel = .userAgent
+        switchContent(to: userAgentContent, from: previous, animated: animated)
         updateCardHeight(animated: animated)
     }
 
@@ -773,21 +806,23 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         homeStackView.axis = .vertical
         homeStackView.spacing = 12
 
-        let uaLabel = UILabel()
-        uaLabel.text = "Android User Agent"
-        uaLabel.font = .systemFont(ofSize: 17, weight: .medium)
-        uaLabel.translatesAutoresizingMaskIntoConstraints = false
+        userAgentRow.translatesAutoresizingMaskIntoConstraints = false
+        userAgentRow.backgroundColor = .tertiarySystemBackground
+        userAgentRow.layer.cornerRadius = 14
+        userAgentRow.layer.cornerCurve = .continuous
+        userAgentRow.addTarget(self, action: #selector(userAgentTapped), for: .touchUpInside)
 
-        androidUASwitch.addTarget(self, action: #selector(androidUASwitchChanged), for: .valueChanged)
-        androidUASwitch.translatesAutoresizingMaskIntoConstraints = false
+        let userAgentLabel = UILabel()
+        userAgentLabel.text = "User Agent"
+        userAgentLabel.font = .systemFont(ofSize: 17, weight: .medium)
+        userAgentLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        let uaRow = UIView()
-        uaRow.translatesAutoresizingMaskIntoConstraints = false
-        uaRow.backgroundColor = .tertiarySystemBackground
-        uaRow.layer.cornerRadius = 14
-        uaRow.layer.cornerCurve = .continuous
-        uaRow.addSubview(uaLabel)
-        uaRow.addSubview(androidUASwitch)
+        let userAgentChevronView = UIImageView(image: UIImage(systemName: "chevron.right"))
+        userAgentChevronView.translatesAutoresizingMaskIntoConstraints = false
+        userAgentChevronView.tintColor = .secondaryLabel
+        userAgentChevronView.contentMode = .scaleAspectFit
+        userAgentRow.addSubview(userAgentLabel)
+        userAgentRow.addSubview(userAgentChevronView)
 
         timeAwareRow.translatesAutoresizingMaskIntoConstraints = false
         timeAwareRow.backgroundColor = .tertiarySystemBackground
@@ -825,29 +860,15 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         downloadsRow.addSubview(downloadsLabel)
         downloadsRow.addSubview(chevronView)
 
-        saveButton.translatesAutoresizingMaskIntoConstraints = false
-        saveButton.setTitle("Save", for: .normal)
-        saveButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
-        saveButton.backgroundColor = .label
-        saveButton.tintColor = .systemBackground
-        saveButton.layer.cornerRadius = 14
-        saveButton.layer.cornerCurve = .continuous
-        saveButton.addTarget(self, action: #selector(saveUserAgentTapped), for: .touchUpInside)
-        saveButton.isEnabled = false
-        saveButton.alpha = 0
-        saveButtonHeightConstraint = saveButton.heightAnchor.constraint(equalToConstant: 0)
-
-        homeStackView.addArrangedSubview(uaRow)
+        homeStackView.addArrangedSubview(userAgentRow)
         if showsTimeAwareSettings {
             homeStackView.addArrangedSubview(timeAwareRow)
         }
         homeStackView.addArrangedSubview(downloadsRow)
-        homeStackView.addArrangedSubview(saveButton)
-        homeStackView.setCustomSpacing(12, after: uaRow)
+        homeStackView.setCustomSpacing(12, after: userAgentRow)
         if showsTimeAwareSettings {
             homeStackView.setCustomSpacing(12, after: timeAwareRow)
         }
-        homeStackView.setCustomSpacing(0, after: downloadsRow)
         homeContent.addSubview(homeStackView)
 
         NSLayoutConstraint.activate([
@@ -855,12 +876,14 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
             homeStackView.trailingAnchor.constraint(equalTo: homeContent.trailingAnchor, constant: -16),
             homeStackView.centerYAnchor.constraint(equalTo: homeContent.centerYAnchor),
 
-            uaRow.heightAnchor.constraint(equalToConstant: 72),
-            uaLabel.leadingAnchor.constraint(equalTo: uaRow.leadingAnchor, constant: 16),
-            uaLabel.centerYAnchor.constraint(equalTo: uaRow.centerYAnchor),
-            androidUASwitch.trailingAnchor.constraint(equalTo: uaRow.trailingAnchor, constant: -16),
-            androidUASwitch.centerYAnchor.constraint(equalTo: uaRow.centerYAnchor),
-            androidUASwitch.leadingAnchor.constraint(greaterThanOrEqualTo: uaLabel.trailingAnchor, constant: 14),
+            userAgentRow.heightAnchor.constraint(equalToConstant: 72),
+            userAgentLabel.leadingAnchor.constraint(equalTo: userAgentRow.leadingAnchor, constant: 16),
+            userAgentLabel.centerYAnchor.constraint(equalTo: userAgentRow.centerYAnchor),
+            userAgentChevronView.trailingAnchor.constraint(equalTo: userAgentRow.trailingAnchor, constant: -18),
+            userAgentChevronView.centerYAnchor.constraint(equalTo: userAgentRow.centerYAnchor),
+            userAgentChevronView.widthAnchor.constraint(equalToConstant: 14),
+            userAgentChevronView.heightAnchor.constraint(equalToConstant: 18),
+            userAgentChevronView.leadingAnchor.constraint(greaterThanOrEqualTo: userAgentLabel.trailingAnchor, constant: 12),
 
             timeAwareRow.heightAnchor.constraint(equalToConstant: 72),
             timeAwareLabel.leadingAnchor.constraint(equalTo: timeAwareRow.leadingAnchor, constant: 16),
@@ -877,8 +900,71 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
             chevronView.centerYAnchor.constraint(equalTo: downloadsRow.centerYAnchor),
             chevronView.widthAnchor.constraint(equalToConstant: 14),
             chevronView.heightAnchor.constraint(equalToConstant: 18),
+        ])
+    }
 
-            saveButtonHeightConstraint!,
+    private func configureUserAgentContent() {
+        let backButton = UIButton(type: .system)
+        backButton.setImage(UIImage(systemName: "chevron.left"), for: .normal)
+        backButton.tintColor = .label
+        backButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
+
+        let titleLabel = UILabel()
+        titleLabel.text = "User Agent"
+        titleLabel.font = .systemFont(ofSize: 22, weight: .semibold)
+
+        let closeButton = UIButton(type: .system)
+        closeButton.setImage(UIImage(systemName: "xmark"), for: .normal)
+        closeButton.tintColor = .label
+        closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
+
+        let header = UIStackView(arrangedSubviews: [backButton, titleLabel, closeButton])
+        header.translatesAutoresizingMaskIntoConstraints = false
+        header.axis = .horizontal
+        header.alignment = .center
+        header.spacing = 10
+
+        userAgentStackView.translatesAutoresizingMaskIntoConstraints = false
+        userAgentStackView.axis = .vertical
+        userAgentStackView.spacing = 12
+        userAgentStackView.addArrangedSubview(makeUserAgentValueRow())
+        userAgentStackView.addArrangedSubview(makeUserAgentOptionRow(title: "iOS", useAndroidUserAgent: false))
+        userAgentStackView.addArrangedSubview(makeUserAgentOptionRow(title: "Android", useAndroidUserAgent: true))
+
+        userAgentSaveButton.translatesAutoresizingMaskIntoConstraints = false
+        userAgentSaveButton.setTitle("Save", for: .normal)
+        userAgentSaveButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+        userAgentSaveButton.backgroundColor = .label
+        userAgentSaveButton.tintColor = .systemBackground
+        userAgentSaveButton.layer.cornerRadius = 14
+        userAgentSaveButton.layer.cornerCurve = .continuous
+        userAgentSaveButton.addTarget(self, action: #selector(saveUserAgentTapped), for: .touchUpInside)
+        userAgentSaveButton.isEnabled = false
+        userAgentSaveButton.alpha = 0
+        userAgentSaveButtonHeightConstraint = userAgentSaveButton.heightAnchor.constraint(equalToConstant: 0)
+
+        userAgentContent.addSubview(header)
+        userAgentContent.addSubview(userAgentStackView)
+        userAgentContent.addSubview(userAgentSaveButton)
+
+        NSLayoutConstraint.activate([
+            header.topAnchor.constraint(equalTo: userAgentContent.topAnchor, constant: 18),
+            header.leadingAnchor.constraint(equalTo: userAgentContent.leadingAnchor, constant: 14),
+            header.trailingAnchor.constraint(equalTo: userAgentContent.trailingAnchor, constant: -14),
+            backButton.widthAnchor.constraint(equalToConstant: 34),
+            backButton.heightAnchor.constraint(equalToConstant: 34),
+            closeButton.widthAnchor.constraint(equalToConstant: 34),
+            closeButton.heightAnchor.constraint(equalToConstant: 34),
+
+            userAgentStackView.leadingAnchor.constraint(equalTo: userAgentContent.leadingAnchor, constant: 16),
+            userAgentStackView.trailingAnchor.constraint(equalTo: userAgentContent.trailingAnchor, constant: -16),
+            userAgentStackView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 18),
+            userAgentStackView.bottomAnchor.constraint(lessThanOrEqualTo: userAgentSaveButton.topAnchor, constant: -12),
+
+            userAgentSaveButton.leadingAnchor.constraint(equalTo: userAgentContent.leadingAnchor, constant: 16),
+            userAgentSaveButton.trailingAnchor.constraint(equalTo: userAgentContent.trailingAnchor, constant: -16),
+            userAgentSaveButton.bottomAnchor.constraint(equalTo: userAgentContent.bottomAnchor, constant: -16),
+            userAgentSaveButtonHeightConstraint!,
         ])
     }
 
@@ -1224,6 +1310,82 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         return button
     }
 
+    private func makeUserAgentValueRow() -> UserAgentValueRow {
+        let row = UserAgentValueRow()
+        row.translatesAutoresizingMaskIntoConstraints = false
+        row.backgroundColor = .tertiarySystemBackground
+        row.layer.cornerRadius = 14
+        row.layer.cornerCurve = .continuous
+
+        let titleLabel = UILabel()
+        titleLabel.text = "User Agent:"
+        titleLabel.textColor = .label
+        titleLabel.font = .systemFont(ofSize: 17, weight: .medium)
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let valueLabel = UILabel()
+        valueLabel.textColor = .secondaryLabel
+        valueLabel.font = .systemFont(ofSize: 17, weight: .medium)
+        valueLabel.textAlignment = .right
+        valueLabel.translatesAutoresizingMaskIntoConstraints = false
+        row.valueLabel = valueLabel
+        userAgentValueRow = row
+
+        row.addSubview(titleLabel)
+        row.addSubview(valueLabel)
+
+        NSLayoutConstraint.activate([
+            row.heightAnchor.constraint(equalToConstant: 62),
+            titleLabel.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 16),
+            titleLabel.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            valueLabel.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -16),
+            valueLabel.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            valueLabel.leadingAnchor.constraint(greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: 14),
+        ])
+
+        return row
+    }
+
+    private func makeUserAgentOptionRow(title: String, useAndroidUserAgent: Bool) -> UserAgentOptionRow {
+        let row = UserAgentOptionRow()
+        row.useAndroidUserAgent = useAndroidUserAgent
+        row.translatesAutoresizingMaskIntoConstraints = false
+        row.backgroundColor = .tertiarySystemBackground
+        row.layer.cornerRadius = 14
+        row.layer.cornerCurve = .continuous
+        row.addTarget(self, action: #selector(userAgentOptionTapped(_:)), for: .touchUpInside)
+
+        let label = UILabel()
+        label.text = title
+        label.textColor = .label
+        label.font = .systemFont(ofSize: 17, weight: .medium)
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        let checkmarkView = UIImageView(image: UIImage(systemName: "checkmark"))
+        checkmarkView.translatesAutoresizingMaskIntoConstraints = false
+        checkmarkView.tintColor = .label
+        checkmarkView.contentMode = .scaleAspectFit
+        checkmarkView.isHidden = draftAndroidUserAgent != useAndroidUserAgent
+        row.checkmarkView = checkmarkView
+
+        row.addSubview(label)
+        row.addSubview(checkmarkView)
+        userAgentOptionRows.append(row)
+
+        NSLayoutConstraint.activate([
+            row.heightAnchor.constraint(equalToConstant: 62),
+            label.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 16),
+            label.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            checkmarkView.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -18),
+            checkmarkView.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            checkmarkView.widthAnchor.constraint(equalToConstant: 18),
+            checkmarkView.heightAnchor.constraint(equalToConstant: 18),
+            checkmarkView.leadingAnchor.constraint(greaterThanOrEqualTo: label.trailingAnchor, constant: 12),
+        ])
+
+        return row
+    }
+
     private func makeTimeAwareNavigationButton(title: String, action: Selector) -> UIControl {
         let row = UIControl()
         row.translatesAutoresizingMaskIntoConstraints = false
@@ -1332,14 +1494,15 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     private func updateCardHeight(animated: Bool) {
         let availableHeight = max(220, bounds.height - safeAreaInsets.top - safeAreaInsets.bottom - 80)
         let expandedHeight = min(560, availableHeight)
-        let saveHeight: CGFloat = androidUASwitch.isOn != savedAndroidUserAgent ? 60 : 0
         let homeRowCount: CGFloat = showsTimeAwareSettings ? 3 : 2
         let homeSpacing: CGFloat = showsTimeAwareSettings ? 24 : 12
-        let homeHeight: CGFloat = (homeRowCount * 72) + homeSpacing + saveHeight + 32
+        let homeHeight: CGFloat = (homeRowCount * 72) + homeSpacing + 32
         let targetHeight: CGFloat
         switch activePanel {
         case .home:
             targetHeight = homeHeight
+        case .userAgent:
+            targetHeight = userAgentPreferredHeight(maxHeight: expandedHeight)
         case .timeAware:
             targetHeight = timeAwarePreferredHeight(maxHeight: expandedHeight)
         case .timeZoneList:
@@ -1361,6 +1524,15 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
             applyHeight()
             self.layoutIfNeeded()
         }
+    }
+
+    private func userAgentPreferredHeight(maxHeight: CGFloat) -> CGFloat {
+        let saveHeight: CGFloat = hasUnsavedUserAgentChanges() ? 60 : 0
+        let rowHeight: CGFloat = 62
+        let rowSpacing: CGFloat = 24
+        let chromeHeight: CGFloat = 98
+        let contentHeight = (3 * rowHeight) + rowSpacing + chromeHeight + saveHeight
+        return min(maxHeight, max(320, contentHeight))
     }
 
     private func timeAwarePreferredHeight(maxHeight: CGFloat) -> CGFloat {
@@ -1399,15 +1571,18 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
             normalizedOverrideTimeZoneIdentifier(savedTimeAwareTimeZoneIdentifier)
     }
 
-    private func updateSaveButton(animated: Bool) {
-        let changed = androidUASwitch.isOn != savedAndroidUserAgent
+    private func hasUnsavedUserAgentChanges() -> Bool {
+        draftAndroidUserAgent != savedAndroidUserAgent
+    }
+
+    private func updateUserAgentSaveButton(animated: Bool) {
+        let changed = hasUnsavedUserAgentChanges()
         let updates = {
-            self.saveButton.alpha = changed ? 1 : 0
-            self.saveButton.isEnabled = changed
-            self.saveButtonHeightConstraint?.constant = changed ? 48 : 0
-            self.homeStackView.setCustomSpacing(changed ? 12 : 0, after: self.downloadsRow)
-            self.homeStackView.layoutIfNeeded()
-            self.homeContent.layoutIfNeeded()
+            self.userAgentSaveButton.alpha = changed ? 1 : 0
+            self.userAgentSaveButton.isEnabled = changed
+            self.userAgentSaveButtonHeightConstraint?.constant = changed ? 48 : 0
+            self.userAgentStackView.layoutIfNeeded()
+            self.userAgentContent.layoutIfNeeded()
             self.cardView.layoutIfNeeded()
             self.updateCardHeight(animated: false)
             self.layoutIfNeeded()
@@ -1446,6 +1621,16 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         let selectedIdentifier = normalizedOverrideTimeZoneIdentifier(draftTimeAwareTimeZoneIdentifier)
         let title = selectedIdentifier ?? "System: \(TimeZone.current.identifier)"
         timeZoneButton.setTitle(title, for: .normal)
+    }
+
+    private func updateUserAgentValueRow() {
+        userAgentValueRow?.valueLabel?.text = draftAndroidUserAgent ? "Android" : "iOS"
+    }
+
+    private func updateUserAgentOptionRows() {
+        userAgentOptionRows.forEach { row in
+            row.checkmarkView?.isHidden = row.useAndroidUserAgent != draftAndroidUserAgent
+        }
     }
 
     private func suggestedTimeZoneIdentifiers() -> [String] {
@@ -1625,18 +1810,24 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         updateTimeAwareSaveButton(animated: true)
     }
 
+    private func discardUserAgentDraft() {
+        guard hasUnsavedUserAgentChanges() else {
+            return
+        }
+        draftAndroidUserAgent = savedAndroidUserAgent
+        updateUserAgentValueRow()
+        updateUserAgentOptionRows()
+        updateUserAgentSaveButton(animated: false)
+    }
+
     @objc private func closeTapped() {
+        discardUserAgentDraft()
         onClose?()
     }
 
     @objc private func backgroundTapped() {
+        discardUserAgentDraft()
         onClose?()
-    }
-
-    @objc private func saveUserAgentTapped() {
-        savedAndroidUserAgent = androidUASwitch.isOn
-        updateSaveButton(animated: true)
-        onSaveUserAgent?(androidUASwitch.isOn)
     }
 
     @objc private func saveTimeAwareTapped() {
@@ -1645,6 +1836,27 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         ShellTimeAwareSettings.rememberTimeZoneIdentifier(savedTimeAwareTimeZoneIdentifier)
         updateTimeAwareSaveButton(animated: true)
         onSaveTimeAware?(timeAwareEnabledSwitch.isOn, savedTimeAwareTimeZoneIdentifier)
+    }
+
+    @objc private func saveUserAgentTapped() {
+        guard hasUnsavedUserAgentChanges() else {
+            return
+        }
+        savedAndroidUserAgent = draftAndroidUserAgent
+        updateUserAgentOptionRows()
+        updateUserAgentSaveButton(animated: true)
+        onSaveUserAgent?(savedAndroidUserAgent)
+    }
+
+    @objc private func userAgentTapped() {
+        showUserAgent(animated: true)
+    }
+
+    @objc private func userAgentOptionTapped(_ sender: UserAgentOptionRow) {
+        draftAndroidUserAgent = sender.useAndroidUserAgent
+        updateUserAgentValueRow()
+        updateUserAgentOptionRows()
+        updateUserAgentSaveButton(animated: true)
     }
 
     @objc private func downloadsTapped() {
@@ -1656,6 +1868,9 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     }
 
     @objc private func backTapped() {
+        if activePanel == .userAgent {
+            discardUserAgentDraft()
+        }
         showHome(animated: true)
     }
 
@@ -1685,10 +1900,6 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         setTimeZoneListMode(.region(regionIdentifier), animated: true)
     }
 
-    @objc private func androidUASwitchChanged() {
-        updateSaveButton(animated: true)
-    }
-
     @objc private func timeAwareSwitchChanged() {
         updateTimeAwareSaveButton(animated: true)
     }
@@ -1702,6 +1913,8 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         switch panel {
         case .home:
             return homeContent
+        case .userAgent:
+            return userAgentContent
         case .timeAware:
             return timeAwareContent
         case .timeZoneList:
