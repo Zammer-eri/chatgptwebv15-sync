@@ -806,6 +806,21 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         homeStackView.axis = .vertical
         homeStackView.spacing = 12
 
+        let titleLabel = UILabel()
+        titleLabel.text = "Settings"
+        titleLabel.font = .systemFont(ofSize: 22, weight: .semibold)
+
+        let closeButton = UIButton(type: .system)
+        closeButton.setImage(UIImage(systemName: "xmark"), for: .normal)
+        closeButton.tintColor = .label
+        closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
+
+        let header = UIStackView(arrangedSubviews: [titleLabel, closeButton])
+        header.translatesAutoresizingMaskIntoConstraints = false
+        header.axis = .horizontal
+        header.alignment = .center
+        header.spacing = 10
+
         userAgentRow.translatesAutoresizingMaskIntoConstraints = false
         userAgentRow.backgroundColor = .tertiarySystemBackground
         userAgentRow.layer.cornerRadius = 14
@@ -869,12 +884,19 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         if showsTimeAwareSettings {
             homeStackView.setCustomSpacing(12, after: timeAwareRow)
         }
+        homeContent.addSubview(header)
         homeContent.addSubview(homeStackView)
 
         NSLayoutConstraint.activate([
+            header.topAnchor.constraint(equalTo: homeContent.topAnchor, constant: 18),
+            header.leadingAnchor.constraint(equalTo: homeContent.leadingAnchor, constant: 16),
+            header.trailingAnchor.constraint(equalTo: homeContent.trailingAnchor, constant: -14),
+            closeButton.widthAnchor.constraint(equalToConstant: 34),
+            closeButton.heightAnchor.constraint(equalToConstant: 34),
+
             homeStackView.leadingAnchor.constraint(equalTo: homeContent.leadingAnchor, constant: 16),
             homeStackView.trailingAnchor.constraint(equalTo: homeContent.trailingAnchor, constant: -16),
-            homeStackView.centerYAnchor.constraint(equalTo: homeContent.centerYAnchor),
+            homeStackView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 18),
 
             userAgentRow.heightAnchor.constraint(equalToConstant: 72),
             userAgentLabel.leadingAnchor.constraint(equalTo: userAgentRow.leadingAnchor, constant: 16),
@@ -1496,7 +1518,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         let expandedHeight = min(560, availableHeight)
         let homeRowCount: CGFloat = showsTimeAwareSettings ? 3 : 2
         let homeSpacing: CGFloat = showsTimeAwareSettings ? 24 : 12
-        let homeHeight: CGFloat = (homeRowCount * 72) + homeSpacing + 32
+        let homeHeight: CGFloat = (homeRowCount * 72) + homeSpacing + 96
         let targetHeight: CGFloat
         switch activePanel {
         case .home:
