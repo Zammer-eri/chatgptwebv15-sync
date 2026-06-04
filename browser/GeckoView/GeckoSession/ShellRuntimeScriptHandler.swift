@@ -132,7 +132,13 @@ private final class ShellRuntimeScriptStore {
 
         return """
         ;(function(root) {
-          root.__reynardShellRuntimeSettings = \(json);
+          var settings = \(json);
+          root.__reynardShellRuntimeSettings = settings;
+          try {
+            if (root.window) {
+              root.window.__reynardShellRuntimeSettings = settings;
+            }
+          } catch (_) {}
         })(typeof globalThis !== "undefined" ? globalThis : this);
         """
     }

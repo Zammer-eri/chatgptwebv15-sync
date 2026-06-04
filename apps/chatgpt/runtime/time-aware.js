@@ -50,7 +50,9 @@
   };
 
   const nativeTimeAwareSettings = () =>
-    win.__reynardShellRuntimeSettings?.timeAware || {};
+    win.__reynardShellRuntimeSettings?.timeAware ||
+    root.__reynardShellRuntimeSettings?.timeAware ||
+    {};
 
   const syncNativeSettingsToStorage = () => {
     const settings = nativeTimeAwareSettings();
