@@ -548,8 +548,8 @@ private final class TimeZoneOptionButton: UIButton {
     var timeZoneIdentifier: String?
 }
 
-private final class TimeZoneRegionButton: UIButton {
-    var regionIdentifier: String?
+private final class TimeZoneNavigationRow: UIControl {
+    var value: String?
 }
 
 private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
@@ -567,7 +567,6 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     private let timeAwareScrollView = UIScrollView()
     private let homeStackView = UIStackView()
     private let timeAwareStackView = UIStackView()
-    private let suggestedTimeZoneStackView = UIStackView()
     private let timeZoneListStackView = UIStackView()
     private let timeZoneListTitleLabel = UILabel()
     private let timeAwareRow = UIControl()
@@ -586,7 +585,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     private var savedTimeAwareEnabled = true
     private var savedTimeAwareTimeZoneIdentifier: String?
     private var draftTimeAwareTimeZoneIdentifier: String?
-    private var activeTimeZoneRegionIdentifier: String?
+    private var timeZoneListMode = TimeZoneListMode.suggestions
     private let showsTimeAwareSettings = ShellConfig.current.target == .chatGPT
     private var activePanel: Panel = .home
 
@@ -595,6 +594,12 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         case timeAware
         case timeZoneList
         case downloads
+    }
+
+    private enum TimeZoneListMode {
+        case suggestions
+        case regions
+        case region(String)
     }
 
     override init(frame: CGRect) {
@@ -708,7 +713,6 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
             draftTimeAwareTimeZoneIdentifier = savedTimeAwareTimeZoneIdentifier
             timeAwareEnabledSwitch.isOn = savedTimeAwareEnabled
             updateTimeZoneButton()
-            refreshSuggestedTimeZones()
         }
         updateSaveButton(animated: false)
         if showsTimeAwareSettings {
@@ -741,7 +745,6 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     }
 
     func showTimeAware(animated: Bool) {
-        refreshSuggestedTimeZones()
         let previous = contentView(for: activePanel)
         activePanel = .timeAware
         switchContent(to: timeAwareContent, from: previous, animated: animated)
@@ -749,8 +752,8 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     }
 
     func showTimeZoneList(animated: Bool) {
-        activeTimeZoneRegionIdentifier = nil
-        refreshTimeZoneList()
+        timeZoneListMode = .suggestions
+        refreshTimeZoneList(animated: false)
         let previous = contentView(for: activePanel)
         activePanel = .timeZoneList
         switchContent(to: timeZoneListContent, from: previous, animated: animated)
@@ -929,6 +932,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
 
         timeZoneButton.translatesAutoresizingMaskIntoConstraints = false
         timeZoneButton.titleLabel?.font = .systemFont(ofSize: 15, weight: .medium)
+        timeZoneButton.titleLabel?.lineBreakMode = .byTruncatingMiddle
         timeZoneButton.contentHorizontalAlignment = .right
         timeZoneButton.tintColor = .label
         timeZoneButton.isUserInteractionEnabled = false
@@ -941,36 +945,13 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         timeZoneRow.addSubview(timeZoneLabel)
         timeZoneRow.addSubview(timeZoneButton)
 
-        let suggestedHeaderLabel = UILabel()
-        suggestedHeaderLabel.text = "Suggested Time Zones"
-        suggestedHeaderLabel.font = .systemFont(ofSize: 13, weight: .semibold)
-        suggestedHeaderLabel.textColor = .secondaryLabel
-        suggestedHeaderLabel.translatesAutoresizingMaskIntoConstraints = false
+        let chooseTimeZoneRow = makeTimeZoneNavigationButton(
+            title: "Choose Time Zone",
+            value: nil,
+            action: #selector(chooseTimeZoneTapped)
+        )
 
-        suggestedTimeZoneStackView.translatesAutoresizingMaskIntoConstraints = false
-        suggestedTimeZoneStackView.axis = .vertical
-        suggestedTimeZoneStackView.spacing = 8
-
-        let chooseOtherRow = UIControl()
-        chooseOtherRow.translatesAutoresizingMaskIntoConstraints = false
-        chooseOtherRow.backgroundColor = .tertiarySystemBackground
-        chooseOtherRow.layer.cornerRadius = 14
-        chooseOtherRow.layer.cornerCurve = .continuous
-        chooseOtherRow.addTarget(self, action: #selector(chooseOtherTimeZoneTapped), for: .touchUpInside)
-
-        let chooseOtherLabel = UILabel()
-        chooseOtherLabel.text = "Choose Other"
-        chooseOtherLabel.font = .systemFont(ofSize: 17, weight: .medium)
-        chooseOtherLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        let chooseOtherChevronView = UIImageView(image: UIImage(systemName: "chevron.right"))
-        chooseOtherChevronView.translatesAutoresizingMaskIntoConstraints = false
-        chooseOtherChevronView.tintColor = .secondaryLabel
-        chooseOtherChevronView.contentMode = .scaleAspectFit
-        chooseOtherRow.addSubview(chooseOtherLabel)
-        chooseOtherRow.addSubview(chooseOtherChevronView)
-
-        timeAwareHintLabel.text = "Suggestions share the current system UTC offset and learn recent saved choices. Choose Other lists regional zones."
+        timeAwareHintLabel.text = "System follows iOS by default. Choose Time Zone to use a fixed override."
         timeAwareHintLabel.font = .systemFont(ofSize: 12, weight: .regular)
         timeAwareHintLabel.textColor = .secondaryLabel
         timeAwareHintLabel.numberOfLines = 0
@@ -990,18 +971,14 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
 
         timeAwareStackView.addArrangedSubview(enableRow)
         timeAwareStackView.addArrangedSubview(timeZoneRow)
-        timeAwareStackView.addArrangedSubview(suggestedHeaderLabel)
-        timeAwareStackView.addArrangedSubview(suggestedTimeZoneStackView)
-        timeAwareStackView.addArrangedSubview(chooseOtherRow)
+        timeAwareStackView.addArrangedSubview(chooseTimeZoneRow)
         timeAwareStackView.addArrangedSubview(timeAwareHintLabel)
-        timeAwareStackView.addArrangedSubview(timeAwareSaveButton)
         timeAwareStackView.setCustomSpacing(8, after: timeZoneRow)
-        timeAwareStackView.setCustomSpacing(6, after: suggestedHeaderLabel)
-        timeAwareStackView.setCustomSpacing(0, after: timeAwareHintLabel)
 
         timeAwareScrollView.addSubview(timeAwareStackView)
         timeAwareContent.addSubview(header)
         timeAwareContent.addSubview(timeAwareScrollView)
+        timeAwareContent.addSubview(timeAwareSaveButton)
 
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: timeAwareContent.topAnchor, constant: 18),
@@ -1015,7 +992,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
             timeAwareScrollView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 14),
             timeAwareScrollView.leadingAnchor.constraint(equalTo: timeAwareContent.leadingAnchor, constant: 16),
             timeAwareScrollView.trailingAnchor.constraint(equalTo: timeAwareContent.trailingAnchor, constant: -16),
-            timeAwareScrollView.bottomAnchor.constraint(equalTo: timeAwareContent.bottomAnchor, constant: -16),
+            timeAwareScrollView.bottomAnchor.constraint(equalTo: timeAwareSaveButton.topAnchor, constant: -12),
 
             timeAwareStackView.topAnchor.constraint(equalTo: timeAwareScrollView.contentLayoutGuide.topAnchor),
             timeAwareStackView.leadingAnchor.constraint(equalTo: timeAwareScrollView.contentLayoutGuide.leadingAnchor),
@@ -1037,14 +1014,9 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
             timeZoneButton.centerYAnchor.constraint(equalTo: timeZoneRow.centerYAnchor),
             timeZoneButton.leadingAnchor.constraint(greaterThanOrEqualTo: timeZoneLabel.trailingAnchor, constant: 12),
 
-            chooseOtherRow.heightAnchor.constraint(equalToConstant: 54),
-            chooseOtherLabel.leadingAnchor.constraint(equalTo: chooseOtherRow.leadingAnchor, constant: 16),
-            chooseOtherLabel.centerYAnchor.constraint(equalTo: chooseOtherRow.centerYAnchor),
-            chooseOtherChevronView.trailingAnchor.constraint(equalTo: chooseOtherRow.trailingAnchor, constant: -18),
-            chooseOtherChevronView.centerYAnchor.constraint(equalTo: chooseOtherRow.centerYAnchor),
-            chooseOtherChevronView.widthAnchor.constraint(equalToConstant: 14),
-            chooseOtherChevronView.heightAnchor.constraint(equalToConstant: 18),
-
+            timeAwareSaveButton.leadingAnchor.constraint(equalTo: timeAwareContent.leadingAnchor, constant: 16),
+            timeAwareSaveButton.trailingAnchor.constraint(equalTo: timeAwareContent.trailingAnchor, constant: -16),
+            timeAwareSaveButton.bottomAnchor.constraint(equalTo: timeAwareContent.bottomAnchor, constant: -16),
             timeAwareSaveButtonHeightConstraint!,
         ])
     }
@@ -1147,23 +1119,87 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         ])
     }
 
-    private func refreshTimeZoneList() {
-        timeZoneListStackView.arrangedSubviews.forEach { view in
-            timeZoneListStackView.removeArrangedSubview(view)
-            view.removeFromSuperview()
+    private func setTimeZoneListMode(_ mode: TimeZoneListMode, animated: Bool) {
+        timeZoneListMode = mode
+        refreshTimeZoneList(animated: animated)
+    }
+
+    private func refreshTimeZoneList(animated: Bool) {
+        let rebuild = {
+            self.timeZoneListStackView.arrangedSubviews.forEach { view in
+                self.timeZoneListStackView.removeArrangedSubview(view)
+                view.removeFromSuperview()
+            }
+
+            switch self.timeZoneListMode {
+            case .suggestions:
+                self.timeZoneListTitleLabel.text = "Choose Time Zone"
+                self.timeZoneListStackView.addArrangedSubview(
+                    self.makeTimeZoneOptionButton(title: "Use System Default", identifier: nil)
+                )
+                for identifier in self.suggestedTimeZoneIdentifiers() {
+                    self.timeZoneListStackView.addArrangedSubview(
+                        self.makeTimeZoneOptionButton(title: identifier, identifier: identifier)
+                    )
+                }
+                self.timeZoneListStackView.addArrangedSubview(
+                    self.makeTimeZoneNavigationButton(
+                        title: "Other",
+                        value: nil,
+                        action: #selector(otherTimeZonesTapped)
+                    )
+                )
+
+            case .regions:
+                self.timeZoneListTitleLabel.text = "Other"
+                for regionIdentifier in self.timeZoneRegionIdentifiers() {
+                    self.timeZoneListStackView.addArrangedSubview(
+                        self.makeTimeZoneNavigationButton(
+                            title: regionIdentifier,
+                            value: regionIdentifier,
+                            action: #selector(timeZoneRegionTapped(_:))
+                        )
+                    )
+                }
+
+            case .region(let regionIdentifier):
+                self.timeZoneListTitleLabel.text = regionIdentifier
+                for identifier in self.timeZoneIdentifiers(in: regionIdentifier) {
+                    self.timeZoneListStackView.addArrangedSubview(
+                        self.makeTimeZoneOptionButton(title: identifier, identifier: identifier)
+                    )
+                }
+            }
         }
 
-        if let regionIdentifier = activeTimeZoneRegionIdentifier {
-            timeZoneListTitleLabel.text = regionIdentifier
-            for identifier in timeZoneIdentifiers(in: regionIdentifier) {
-                timeZoneListStackView.addArrangedSubview(makeTimeZoneOptionButton(title: identifier, identifier: identifier))
-            }
-        } else {
-            timeZoneListTitleLabel.text = "Choose Other"
-            for regionIdentifier in timeZoneRegionIdentifiers() {
-                timeZoneListStackView.addArrangedSubview(makeTimeZoneRegionButton(title: regionIdentifier, identifier: regionIdentifier))
-            }
+        guard animated else {
+            rebuild()
+            return
         }
+
+        let direction: CGFloat = 10
+        UIView.animate(
+            withDuration: 0.12,
+            delay: 0,
+            options: [.curveEaseInOut, .allowUserInteraction],
+            animations: {
+                self.timeZoneListStackView.alpha = 0
+                self.timeZoneListStackView.transform = CGAffineTransform(translationX: -direction, y: 0)
+            },
+            completion: { _ in
+                rebuild()
+                self.timeZoneListStackView.transform = CGAffineTransform(translationX: direction, y: 0)
+                UIView.animate(
+                    withDuration: 0.16,
+                    delay: 0,
+                    options: [.curveEaseInOut, .allowUserInteraction],
+                    animations: {
+                        self.timeZoneListStackView.alpha = 1
+                        self.timeZoneListStackView.transform = .identity
+                    }
+                )
+            }
+        )
     }
 
     private func makeTimeZoneOptionButton(title: String, identifier: String?) -> TimeZoneOptionButton {
@@ -1187,21 +1223,42 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         return button
     }
 
-    private func makeTimeZoneRegionButton(title: String, identifier: String) -> TimeZoneRegionButton {
-        let button = TimeZoneRegionButton(type: .system)
-        button.regionIdentifier = identifier
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.setTitle(title, for: .normal)
-        button.setTitleColor(.label, for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
-        button.contentHorizontalAlignment = .left
-        button.backgroundColor = .tertiarySystemBackground
-        button.layer.cornerRadius = 12
-        button.layer.cornerCurve = .continuous
-        button.contentEdgeInsets = UIEdgeInsets(top: 13, left: 14, bottom: 13, right: 14)
-        button.addTarget(self, action: #selector(timeZoneRegionTapped(_:)), for: .touchUpInside)
-        button.heightAnchor.constraint(greaterThanOrEqualToConstant: 48).isActive = true
-        return button
+    private func makeTimeZoneNavigationButton(title: String, value: String?, action: Selector) -> TimeZoneNavigationRow {
+        let row = TimeZoneNavigationRow()
+        row.value = value
+        row.translatesAutoresizingMaskIntoConstraints = false
+        row.backgroundColor = .tertiarySystemBackground
+        row.layer.cornerRadius = 14
+        row.layer.cornerCurve = .continuous
+        row.addTarget(self, action: action, for: .touchUpInside)
+
+        let label = UILabel()
+        label.text = title
+        label.textColor = .label
+        label.font = .systemFont(ofSize: 17, weight: .medium)
+        label.lineBreakMode = .byTruncatingMiddle
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        let chevronView = UIImageView(image: UIImage(systemName: "chevron.right"))
+        chevronView.translatesAutoresizingMaskIntoConstraints = false
+        chevronView.tintColor = .secondaryLabel
+        chevronView.contentMode = .scaleAspectFit
+
+        row.addSubview(label)
+        row.addSubview(chevronView)
+
+        NSLayoutConstraint.activate([
+            row.heightAnchor.constraint(greaterThanOrEqualToConstant: 54),
+            label.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 16),
+            label.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            chevronView.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -18),
+            chevronView.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            chevronView.widthAnchor.constraint(equalToConstant: 14),
+            chevronView.heightAnchor.constraint(equalToConstant: 18),
+            chevronView.leadingAnchor.constraint(greaterThanOrEqualTo: label.trailingAnchor, constant: 12),
+        ])
+
+        return row
     }
 
     private func switchContent(to incoming: UIView, from outgoing: UIView, animated: Bool) {
@@ -1297,7 +1354,6 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
             self.timeAwareSaveButton.alpha = changed ? 1 : 0
             self.timeAwareSaveButton.isEnabled = changed
             self.timeAwareSaveButtonHeightConstraint?.constant = changed ? 48 : 0
-            self.timeAwareStackView.setCustomSpacing(changed ? 12 : 0, after: self.timeAwareHintLabel)
             self.timeAwareStackView.layoutIfNeeded()
             self.timeAwareContent.layoutIfNeeded()
             self.cardView.layoutIfNeeded()
@@ -1337,21 +1393,6 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
             seen.insert(identifier)
             return identifier
         }.prefix(6))
-    }
-
-    private func refreshSuggestedTimeZones() {
-        suggestedTimeZoneStackView.arrangedSubviews.forEach { view in
-            suggestedTimeZoneStackView.removeArrangedSubview(view)
-            view.removeFromSuperview()
-        }
-
-        suggestedTimeZoneStackView.addArrangedSubview(
-            makeTimeZoneOptionButton(title: "Use System Default", identifier: nil)
-        )
-
-        for identifier in suggestedTimeZoneIdentifiers() {
-            suggestedTimeZoneStackView.addArrangedSubview(makeTimeZoneOptionButton(title: identifier, identifier: identifier))
-        }
     }
 
     private func matchingOffsetTimeZoneIdentifiers() -> [String?] {
@@ -1508,7 +1549,6 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     private func setDraftTimeZoneIdentifier(_ identifier: String?) {
         draftTimeAwareTimeZoneIdentifier = normalizedOverrideTimeZoneIdentifier(identifier)
         updateTimeZoneButton()
-        refreshSuggestedTimeZones()
         updateTimeAwareSaveButton(animated: true)
     }
 
@@ -1530,7 +1570,6 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         savedTimeAwareEnabled = timeAwareEnabledSwitch.isOn
         savedTimeAwareTimeZoneIdentifier = normalizedOverrideTimeZoneIdentifier(draftTimeAwareTimeZoneIdentifier)
         ShellTimeAwareSettings.rememberTimeZoneIdentifier(savedTimeAwareTimeZoneIdentifier)
-        refreshSuggestedTimeZones()
         updateTimeAwareSaveButton(animated: true)
         onSaveTimeAware?(timeAwareEnabledSwitch.isOn, savedTimeAwareTimeZoneIdentifier)
     }
@@ -1548,12 +1587,29 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     }
 
     @objc private func timeZoneListBackTapped() {
-        if activeTimeZoneRegionIdentifier != nil {
-            activeTimeZoneRegionIdentifier = nil
-            refreshTimeZoneList()
+        switch timeZoneListMode {
+        case .region(_):
+            setTimeZoneListMode(.regions, animated: true)
+        case .regions:
+            setTimeZoneListMode(.suggestions, animated: true)
+        case .suggestions:
+            showTimeAware(animated: true)
+        }
+    }
+
+    @objc private func chooseTimeZoneTapped() {
+        showTimeZoneList(animated: true)
+    }
+
+    @objc private func otherTimeZonesTapped() {
+        setTimeZoneListMode(.regions, animated: true)
+    }
+
+    @objc private func timeZoneRegionTapped(_ sender: TimeZoneNavigationRow) {
+        guard let regionIdentifier = sender.value else {
             return
         }
-        showTimeAware(animated: true)
+        setTimeZoneListMode(.region(regionIdentifier), animated: true)
     }
 
     @objc private func androidUASwitchChanged() {
@@ -1564,18 +1620,9 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         updateTimeAwareSaveButton(animated: true)
     }
 
-    @objc private func chooseOtherTimeZoneTapped() {
-        showTimeZoneList(animated: true)
-    }
-
     @objc private func timeZoneOptionTapped(_ sender: TimeZoneOptionButton) {
         setDraftTimeZoneIdentifier(sender.timeZoneIdentifier)
         showTimeAware(animated: true)
-    }
-
-    @objc private func timeZoneRegionTapped(_ sender: TimeZoneRegionButton) {
-        activeTimeZoneRegionIdentifier = sender.regionIdentifier
-        refreshTimeZoneList()
     }
 
     private func contentView(for panel: Panel) -> UIView {
