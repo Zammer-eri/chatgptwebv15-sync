@@ -122,6 +122,7 @@ private final class ShellRuntimeScriptStore {
             "timeAware": [
                 "enabled": timeAwareEnabled,
                 "timeZone": timeZone,
+                "systemTimeZone": TimeZone.current.identifier,
             ],
         ]
 

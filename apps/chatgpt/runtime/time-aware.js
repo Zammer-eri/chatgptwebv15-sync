@@ -145,12 +145,21 @@
   };
 
   const resolvedTimeZone = () => {
-    const nativeTimeZone = String(nativeTimeAwareSettings().timeZone || "").trim();
+    const settings = nativeTimeAwareSettings();
+    const nativeTimeZone = String(settings.timeZone || "").trim();
+    const nativeSystemTimeZone = String(settings.systemTimeZone || "").trim();
     const override = nativeTimeZone || storageValue("timeZone").trim();
     if (override) {
       try {
         new Intl.DateTimeFormat("en-US", { timeZone: override }).format(new Date());
         return override;
+      } catch (_) {}
+    }
+
+    if (nativeSystemTimeZone) {
+      try {
+        new Intl.DateTimeFormat("en-US", { timeZone: nativeSystemTimeZone }).format(new Date());
+        return nativeSystemTimeZone;
       } catch (_) {}
     }
 
