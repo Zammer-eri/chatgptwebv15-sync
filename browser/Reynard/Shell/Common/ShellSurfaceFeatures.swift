@@ -1146,7 +1146,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
                     self.makeTimeZoneNavigationButton(
                         title: "Other",
                         value: nil,
-                        action: #selector(otherTimeZonesTapped)
+                        action: #selector(self.otherTimeZonesTapped)
                     )
                 )
 
@@ -1157,7 +1157,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
                         self.makeTimeZoneNavigationButton(
                             title: regionIdentifier,
                             value: regionIdentifier,
-                            action: #selector(timeZoneRegionTapped(_:))
+                            action: #selector(self.timeZoneRegionTapped(_:))
                         )
                     )
                 }
