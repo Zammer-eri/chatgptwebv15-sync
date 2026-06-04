@@ -18,6 +18,7 @@ struct ShellFeatures {
     let prefersMobileUserAgent: Bool
     let requiresLocation: Bool
     let checksForAppUpdates: Bool
+    let usesAddons: Bool
     let runsAutomaticAddonUpdates: Bool
     let recordsBrowsingHistory: Bool
     let loadsFavicons: Bool
@@ -35,6 +36,7 @@ struct ShellFeatures {
         prefersMobileUserAgent: false,
         requiresLocation: false,
         checksForAppUpdates: true,
+        usesAddons: true,
         runsAutomaticAddonUpdates: true,
         recordsBrowsingHistory: true,
         loadsFavicons: true
@@ -53,6 +55,7 @@ struct ShellFeatures {
         prefersMobileUserAgent: false,
         requiresLocation: false,
         checksForAppUpdates: false,
+        usesAddons: false,
         runsAutomaticAddonUpdates: false,
         recordsBrowsingHistory: false,
         loadsFavicons: false

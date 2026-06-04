@@ -93,13 +93,15 @@ final class BrowserViewController: UIViewController {
         tabManager.createInitialTab()
         refreshAddressBar()
         
-        Task { @MainActor [weak self] in
-            guard let self else {
-                return
+        if ShellConfig.current.features.usesAddons {
+            Task { @MainActor [weak self] in
+                guard let self else {
+                    return
+                }
+
+                await self.addonController.start()
+                self.tabManager.selectedTab?.session.setAddonTabActive(true)
             }
-            
-            await self.addonController.start()
-            self.tabManager.selectedTab?.session.setAddonTabActive(true)
         }
         
         browserUI.applyChromeLayout(animated: false)

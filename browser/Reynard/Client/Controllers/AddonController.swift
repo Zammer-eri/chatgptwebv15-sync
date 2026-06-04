@@ -31,6 +31,10 @@ final class AddonController: NSObject, AddonEmbedderDelegate {
     }
     
     func start() async {
+        guard ShellConfig.current.features.usesAddons else {
+            return
+        }
+
         AddonRuntime.shared.delegate = self
         _ = try? await AddonRuntime.shared.list()
         if ShellConfig.current.features.runsAutomaticAddonUpdates {
@@ -40,6 +44,10 @@ final class AddonController: NSObject, AddonEmbedderDelegate {
     }
     
     func handleExternalResponse(_ response: ExternalResponseInfo) -> Bool {
+        guard ShellConfig.current.features.usesAddons else {
+            return false
+        }
+
         guard shouldInterceptAMOInstall(response) else {
             return false
         }
@@ -64,6 +72,10 @@ final class AddonController: NSObject, AddonEmbedderDelegate {
     }
     
     func handleTabSelectionChange(selectedIndex: Int, previousIndex: Int?) {
+        guard ShellConfig.current.features.usesAddons else {
+            return
+        }
+
         guard let controller else {
             return
         }
