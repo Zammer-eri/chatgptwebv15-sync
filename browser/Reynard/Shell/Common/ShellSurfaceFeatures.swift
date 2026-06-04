@@ -699,8 +699,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     override func layoutSubviews() {
         super.layoutSubviews()
         let availableWidth = max(220, bounds.width - 56)
-        let availableHeight = max(220, bounds.height - safeAreaInsets.top - safeAreaInsets.bottom - 80)
-        cardSideConstraint?.constant = min(336, min(availableWidth, availableHeight))
+        cardSideConstraint?.constant = min(360, availableWidth)
         updateCardHeight(animated: false)
     }
 
@@ -1211,7 +1210,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         button.translatesAutoresizingMaskIntoConstraints = false
         button.setTitle(isSelected ? "Selected: \(title)" : title, for: .normal)
         button.setTitleColor(.label, for: .normal)
-        button.titleLabel?.font = .systemFont(ofSize: 15, weight: isSelected ? .semibold : .regular)
+        button.titleLabel?.font = .systemFont(ofSize: 15, weight: isSelected ? .semibold : .medium)
         button.titleLabel?.lineBreakMode = .byTruncatingMiddle
         button.contentHorizontalAlignment = .left
         button.backgroundColor = .tertiarySystemBackground
@@ -1228,14 +1227,14 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         row.value = value
         row.translatesAutoresizingMaskIntoConstraints = false
         row.backgroundColor = .tertiarySystemBackground
-        row.layer.cornerRadius = 14
+        row.layer.cornerRadius = 12
         row.layer.cornerCurve = .continuous
         row.addTarget(self, action: action, for: .touchUpInside)
 
         let label = UILabel()
         label.text = title
         label.textColor = .label
-        label.font = .systemFont(ofSize: 17, weight: .medium)
+        label.font = .systemFont(ofSize: 15, weight: .medium)
         label.lineBreakMode = .byTruncatingMiddle
         label.translatesAutoresizingMaskIntoConstraints = false
 
@@ -1248,13 +1247,13 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         row.addSubview(chevronView)
 
         NSLayoutConstraint.activate([
-            row.heightAnchor.constraint(greaterThanOrEqualToConstant: 54),
-            label.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 16),
+            row.heightAnchor.constraint(greaterThanOrEqualToConstant: 46),
+            label.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 14),
             label.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            chevronView.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -18),
+            chevronView.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -14),
             chevronView.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            chevronView.widthAnchor.constraint(equalToConstant: 14),
-            chevronView.heightAnchor.constraint(equalToConstant: 18),
+            chevronView.widthAnchor.constraint(equalToConstant: 12),
+            chevronView.heightAnchor.constraint(equalToConstant: 16),
             chevronView.leadingAnchor.constraint(greaterThanOrEqualTo: label.trailingAnchor, constant: 12),
         ])
 
@@ -1293,7 +1292,9 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     }
 
     private func updateCardHeight(animated: Bool) {
-        let side = cardSideConstraint?.constant ?? 280
+        let width = cardSideConstraint?.constant ?? 280
+        let availableHeight = max(220, bounds.height - safeAreaInsets.top - safeAreaInsets.bottom - 80)
+        let expandedHeight = min(560, availableHeight)
         let saveHeight: CGFloat = androidUASwitch.isOn != savedAndroidUserAgent ? 60 : 0
         let homeRowCount: CGFloat = showsTimeAwareSettings ? 3 : 2
         let homeSpacing: CGFloat = showsTimeAwareSettings ? 24 : 12
@@ -1303,15 +1304,15 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         case .home:
             targetHeight = homeHeight
         case .timeAware:
-            targetHeight = side
+            targetHeight = min(expandedHeight, max(360, width + 48))
         case .timeZoneList:
-            targetHeight = side
+            targetHeight = expandedHeight
         case .downloads:
-            targetHeight = side
+            targetHeight = expandedHeight
         }
 
         let applyHeight = {
-            self.cardHeightConstraint?.constant = min(targetHeight, side)
+            self.cardHeightConstraint?.constant = min(targetHeight, expandedHeight)
         }
 
         guard animated else {
