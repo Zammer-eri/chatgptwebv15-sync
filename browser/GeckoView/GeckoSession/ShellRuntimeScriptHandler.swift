@@ -112,7 +112,6 @@ private final class ShellRuntimeScriptStore {
 
     private func runtimeSettingsBootstrapSource() -> String {
         let defaults = UserDefaults.standard
-        defaults.synchronize()
         let timeAwareEnabled = defaults.object(forKey: Defaults.timeAwareEnabledKey) == nil
             ? true
             : defaults.bool(forKey: Defaults.timeAwareEnabledKey)

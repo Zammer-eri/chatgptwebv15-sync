@@ -583,6 +583,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     private let userAgentRow = UIControl()
     private let timeAwareRow = UIControl()
     private let downloadsRow = UIControl()
+    private let jitStatusFooterLabel = UILabel()
     private let timeAwareEnabledSwitch = UISwitch()
     private let timeZoneButton = UIButton(type: .system)
     private let userAgentSaveButton = UIButton(type: .system)
@@ -733,6 +734,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         updateUserAgentValueRow()
         updateUserAgentOptionRows()
         updateUserAgentSaveButton(animated: false)
+        updateJITStatusFooter()
         if showsTimeAwareSettings {
             savedTimeAwareEnabled = ShellTimeAwareSettings.isEnabled
             savedTimeAwareTimeZoneIdentifier = ShellTimeAwareSettings.timeZoneIdentifier
@@ -758,6 +760,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     func showHome(animated: Bool) {
         let previous = contentView(for: activePanel)
         activePanel = .home
+        updateJITStatusFooter()
         switchContent(to: homeContent, from: previous, animated: animated)
         updateCardHeight(animated: animated)
     }
@@ -875,15 +878,24 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         downloadsRow.addSubview(downloadsLabel)
         downloadsRow.addSubview(chevronView)
 
+        jitStatusFooterLabel.translatesAutoresizingMaskIntoConstraints = false
+        jitStatusFooterLabel.font = .systemFont(ofSize: 12, weight: .regular)
+        jitStatusFooterLabel.textColor = .secondaryLabel
+        jitStatusFooterLabel.textAlignment = .center
+        jitStatusFooterLabel.numberOfLines = 1
+        jitStatusFooterLabel.setContentHuggingPriority(.required, for: .vertical)
+
         homeStackView.addArrangedSubview(userAgentRow)
         if showsTimeAwareSettings {
             homeStackView.addArrangedSubview(timeAwareRow)
         }
         homeStackView.addArrangedSubview(downloadsRow)
+        homeStackView.addArrangedSubview(jitStatusFooterLabel)
         homeStackView.setCustomSpacing(12, after: userAgentRow)
         if showsTimeAwareSettings {
             homeStackView.setCustomSpacing(12, after: timeAwareRow)
         }
+        homeStackView.setCustomSpacing(14, after: downloadsRow)
         homeContent.addSubview(header)
         homeContent.addSubview(homeStackView)
 
@@ -1518,7 +1530,9 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         let expandedHeight = min(560, availableHeight)
         let homeRowCount: CGFloat = showsTimeAwareSettings ? 3 : 2
         let homeSpacing: CGFloat = showsTimeAwareSettings ? 24 : 12
-        let homeHeight: CGFloat = (homeRowCount * 72) + homeSpacing + 96
+        let homeFooterHeight: CGFloat = 18
+        let homeFooterSpacing: CGFloat = 14
+        let homeHeight: CGFloat = (homeRowCount * 72) + homeSpacing + homeFooterHeight + homeFooterSpacing + 96
         let targetHeight: CGFloat
         switch activePanel {
         case .home:
@@ -1647,6 +1661,16 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
 
     private func updateUserAgentValueRow() {
         userAgentValueRow?.valueLabel?.text = draftAndroidUserAgent ? "Android" : "iOS"
+    }
+
+    private func updateJITStatusFooter() {
+        if JITController.shared.isJITLessModeActive {
+            jitStatusFooterLabel.text = "JIT: JIT-Less Mode"
+        } else if Prefs.JITSettings.isJITEnabled {
+            jitStatusFooterLabel.text = "JIT: Enabled"
+        } else {
+            jitStatusFooterLabel.text = "JIT: Disabled"
+        }
     }
 
     private func updateUserAgentOptionRows() {
