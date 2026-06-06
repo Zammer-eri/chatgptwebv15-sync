@@ -214,6 +214,17 @@ final class BrowserViewController: UIViewController {
         let targetTab = targetController.prepareTabForExternalLoad()
         targetController.tabManager.browse(to: url.absoluteString, in: targetTab)
     }
+
+    func setContentSessionActive(_ active: Bool) {
+        let targetController = activeContentController
+        guard targetController.isViewLoaded,
+              let session = targetController.tabManager.selectedTab?.session,
+              session.isOpen() else {
+            return
+        }
+
+        session.setActive(active)
+    }
     
     private var activeContentController: BrowserViewController {
         embeddedSplitController?.contentBrowserViewController ?? self

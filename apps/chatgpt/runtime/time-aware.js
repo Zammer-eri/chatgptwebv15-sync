@@ -16,6 +16,9 @@
   const listenerOptions = { capture: true, passive: false };
   const TIMESTAMP_PATTERN = /---\s*Timestamp:\s+[A-Z][a-z]{2},/;
   const SYNTHETIC_RETURN_MAX_FRAMES = 2;
+  const STAMP_COMMIT_MAX_FRAMES = 8;
+  const SEND_TARGET_MAX_FRAMES = 12;
+  const SEND_COMPLETE_MAX_FRAMES = 12;
 
   let dispatchingSyntheticReturn = false;
   let forwardingClick = false;
@@ -39,6 +42,23 @@
       }
     }
     return false;
+  };
+
+  const waitForText = async (editable, expectedText, maxFrames) => {
+    for (let frame = 0; frame < maxFrames; frame++) {
+      await nextFrame();
+      if (editableText(editable).includes(expectedText)) {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const setSendFlowBridgeActive = active => {
+    try {
+      doc.__reynardTimeAwareSendFlowActive = active;
+      win.__reynardTimeAwareSendFlowActive = active;
+    } catch (_) {}
   };
 
   const storageValue = key => {
@@ -399,7 +419,7 @@
     }
   };
 
-  const appendTimestampBlock = async editable => {
+  const appendTimestampBlock = async (editable, timestamp) => {
     if (!(await insertReturnKeyLineBreak(editable))) {
       return false;
     }
@@ -412,7 +432,7 @@
     if (!(await insertReturnKeyLineBreak(editable))) {
       return false;
     }
-    return insertEditorText(editable, timestampLine());
+    return insertEditorText(editable, timestamp);
   };
 
   const buttonLabel = button =>
@@ -494,18 +514,21 @@
       return false;
     }
 
-    return appendTimestampBlock(editable);
+    const timestamp = timestampLine();
+    if (!(await appendTimestampBlock(editable, timestamp))) {
+      return false;
+    }
+    return waitForText(editable, timestamp, STAMP_COMMIT_MAX_FRAMES);
   };
 
   const forwardClick = button => {
-    forwardingClick = true;
-    try {
-      button.click();
-    } finally {
-      win.setTimeout(() => {
-        forwardingClick = false;
-      }, 0);
+    if (!button?.isConnected || button.disabled) {
+      return false;
     }
+
+    forwardingClick = true;
+    button.click();
+    return true;
   };
 
   const forwardSubmit = form => {
@@ -514,14 +537,55 @@
     }
 
     forwardingSubmit = true;
-    try {
-      form.requestSubmit();
-    } finally {
-      win.setTimeout(() => {
-        forwardingSubmit = false;
-      }, 0);
-    }
+    form.requestSubmit();
     return true;
+  };
+
+  const liveComposer = editable =>
+    editable?.isConnected && visible(editable) && isComposerEditable(editable)
+      ? editable
+      : activeComposerEditable(doc);
+
+  const liveSendButton = editable => {
+    const liveEditable = liveComposer(editable);
+    const rootElement =
+      liveEditable?.closest(COMPOSER_ROOT_SELECTOR) || doc;
+    const buttons = Array.from(
+      rootElement.querySelectorAll?.("button,[role='button']") || []
+    );
+    for (let index = buttons.length - 1; index >= 0; index--) {
+      if (isLikelySendButton(buttons[index])) {
+        return buttons[index];
+      }
+    }
+    return null;
+  };
+
+  const forwardLiveSend = async (editable, originalForm) => {
+    for (let frame = 0; frame < SEND_TARGET_MAX_FRAMES; frame++) {
+      const button = liveSendButton(editable);
+      if (button && forwardClick(button)) {
+        return true;
+      }
+      await nextFrame();
+    }
+
+    const liveEditable = liveComposer(editable);
+    const form =
+      liveEditable?.closest("form") ||
+      (originalForm?.isConnected ? originalForm : null);
+    return forwardSubmit(form);
+  };
+
+  const waitForSendCompletion = async editable => {
+    for (let frame = 0; frame < SEND_COMPLETE_MAX_FRAMES; frame++) {
+      await nextFrame();
+      const current = liveComposer(editable);
+      if (!current || !editableText(current).trim()) {
+        return true;
+      }
+    }
+    return false;
   };
 
   const dismissKeyboard = editable => {
@@ -539,21 +603,27 @@
     }
   };
 
-  const runSendFlow = async (editable, forward) => {
+  const runSendFlow = async (editable, originalForm) => {
     if (sendFlowActive) {
       return;
     }
 
     sendFlowActive = true;
+    setSendFlowBridgeActive(true);
     try {
-      if (await stampComposer(editable)) {
-        await nextFrame();
+      await stampComposer(editable);
+      if (!(await forwardLiveSend(editable, originalForm))) {
+        return;
       }
-      forward();
-      dismissKeyboard(editable);
+      if (await waitForSendCompletion(editable)) {
+        dismissKeyboard(liveComposer(editable) || editable);
+      }
     } finally {
       win.setTimeout(() => {
+        forwardingClick = false;
+        forwardingSubmit = false;
         sendFlowActive = false;
+        setSendFlowBridgeActive(false);
       }, 0);
     }
   };
@@ -570,7 +640,7 @@
 
     event.preventDefault();
     event.stopImmediatePropagation();
-    runSendFlow(composerForButton(button), () => forwardClick(button));
+    runSendFlow(composerForButton(button), button.closest("form"));
   };
 
   const handleSubmit = event => {
@@ -592,14 +662,7 @@
 
     event.preventDefault();
     event.stopImmediatePropagation();
-    runSendFlow(editable, () => {
-      if (!forwardSubmit(form)) {
-        const button = form.querySelector?.("button[type='submit'],button,[role='button']");
-        if (button) {
-          forwardClick(button);
-        }
-      }
-    });
+    runSendFlow(editable, form);
   };
 
   doc.addEventListener("click", handleSendClick, listenerOptions);

@@ -36,8 +36,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
     
     func sceneDidBecomeActive(_ scene: UIScene) {
-        // Called when the scene has moved from an inactive state to an active state.
-        // Use this method to restart any tasks that were paused (or not yet started) when the scene was inactive.
+        (window?.rootViewController as? BrowserViewController)?.setContentSessionActive(true)
     }
     
     func sceneWillResignActive(_ scene: UIScene) {
@@ -51,9 +50,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
     
     func sceneDidEnterBackground(_ scene: UIScene) {
-        // Called as the scene transitions from the foreground to the background.
-        // Use this method to save data, release shared resources, and store enough scene-specific state information
-        // to restore the scene back to its current state.
+        (window?.rootViewController as? BrowserViewController)?.setContentSessionActive(false)
     }
     
     private func handleIncomingURLContexts(_ urlContexts: Set<UIOpenURLContext>) {

@@ -17,6 +17,11 @@
   let suppressComposerSubmitUntil = 0;
   const listenerOptions = { capture: true, passive: false };
   const passiveCaptureOptions = { capture: true, passive: true };
+  const timeAwareSendFlowActive = () =>
+    !!(
+      doc.__reynardTimeAwareSendFlowActive ||
+      win.__reynardTimeAwareSendFlowActive
+    );
 
   const editableElement = target => {
     const element =
@@ -208,6 +213,7 @@
 
   const handleReturn = event => {
     if (
+      timeAwareSendFlowActive() ||
       dispatchingSyntheticReturn ||
       event.key !== "Enter" ||
       event.isComposing ||
@@ -238,7 +244,7 @@
   };
 
   const handleBeforeInput = event => {
-    if (dispatchingSyntheticReturn) {
+    if (timeAwareSendFlowActive() || dispatchingSyntheticReturn) {
       return;
     }
 
@@ -254,6 +260,10 @@
   };
 
   const handleSubmit = event => {
+    if (timeAwareSendFlowActive()) {
+      return;
+    }
+
     if (
       win.performance.now() <= suppressComposerSubmitUntil &&
       (isComposerEditable(doc.activeElement) ||
