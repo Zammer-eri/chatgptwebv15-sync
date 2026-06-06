@@ -1666,7 +1666,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     private func updateJITStatusFooter() {
         if JITController.shared.isJITLessModeActive {
             jitStatusFooterLabel.text = "JIT: JIT-Less Mode"
-        } else if Prefs.JITSettings.isJITEnabled {
+        } else if JITController.shared.isJITEnabled {
             jitStatusFooterLabel.text = "JIT: Enabled"
         } else {
             jitStatusFooterLabel.text = "JIT: Disabled"
