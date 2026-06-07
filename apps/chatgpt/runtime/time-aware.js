@@ -35,6 +35,10 @@
     });
 
   const waitForTextChange = async (editable, beforeText, maxFrames) => {
+    if (editableText(editable) !== beforeText) {
+      return true;
+    }
+
     for (let frame = 0; frame < maxFrames; frame++) {
       await nextFrame();
       if (editableText(editable) !== beforeText) {
@@ -45,6 +49,10 @@
   };
 
   const waitForText = async (editable, expectedText, maxFrames) => {
+    if (editableText(editable).includes(expectedText)) {
+      return true;
+    }
+
     for (let frame = 0; frame < maxFrames; frame++) {
       await nextFrame();
       if (editableText(editable).includes(expectedText)) {
