@@ -41,6 +41,14 @@ final class GeckoSessionController {
             isDesktopMode(for: urlString, tabID: tabID)
         } ?? Prefs.BrowsingSettings.requestDesktopWebsite
         let requestedMode = requestDesktopWebsite ? SessionMode.desktop : SessionMode.mobile
+
+        if ShellConfig.current.userAgentPolicy == .androidMobile {
+            return GeckoSessionSettings(
+                userAgentOverride: androidMobileUserAgent,
+                userAgentMode: SessionMode.mobile,
+                viewportMode: SessionMode.mobile
+            )
+        }
         
         // Always use the Android mobile user agent for AMO to
         // allow addons installation.

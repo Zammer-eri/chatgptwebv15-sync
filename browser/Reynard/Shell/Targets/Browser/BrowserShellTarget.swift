@@ -10,6 +10,7 @@ enum BrowserShellTarget {
         target: .browser,
         displayName: "Browser",
         defaultURL: nil,
-        features: .browser
+        features: .browser,
+        userAgentPolicy: .configurable
     )
 }

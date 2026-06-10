@@ -274,14 +274,16 @@ extension BrowserViewController {
         panel.onClose = { [weak self] in
             self?.setShellUtilityPanelVisible(false, animated: true)
         }
-        panel.onSaveUserAgent = { [weak self] useAndroidUserAgent in
-            guard let self else {
-                return
-            }
+        if ShellConfig.current.userAgentPolicy == .configurable {
+            panel.onSaveUserAgent = { [weak self] useAndroidUserAgent in
+                guard let self else {
+                    return
+                }
 
-            Prefs.CompatibilitySettings.useAndroidUserAgent = useAndroidUserAgent
-            self.setShellUtilityPanelVisible(false, animated: true)
-            self.reloadSelectedTabWithCurrentSettings()
+                Prefs.CompatibilitySettings.useAndroidUserAgent = useAndroidUserAgent
+                self.setShellUtilityPanelVisible(false, animated: true)
+                self.reloadSelectedTabWithCurrentSettings()
+            }
         }
         panel.onSaveTimeAware = { [weak self] enabled, timeZoneIdentifier in
             guard let self else {
@@ -601,6 +603,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     private var userAgentOptionRows: [UserAgentOptionRow] = []
     private weak var userAgentValueRow: UserAgentValueRow?
     private var timeZoneListMode = TimeZoneListMode.suggestions
+    private let showsUserAgentSettings = ShellConfig.current.userAgentPolicy == .configurable
     private let showsTimeAwareSettings = ShellConfig.current.target == .chatGPT
     private var activePanel: Panel = .home
 
@@ -698,7 +701,9 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         ])
 
         configureHomeContent()
-        configureUserAgentContent()
+        if showsUserAgentSettings {
+            configureUserAgentContent()
+        }
         if showsTimeAwareSettings {
             configureTimeAwareContent()
             configureTimeZoneListContent()
@@ -729,11 +734,13 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     }
 
     func syncControls() {
-        savedAndroidUserAgent = Prefs.CompatibilitySettings.useAndroidUserAgent
-        draftAndroidUserAgent = savedAndroidUserAgent
-        updateUserAgentValueRow()
-        updateUserAgentOptionRows()
-        updateUserAgentSaveButton(animated: false)
+        if showsUserAgentSettings {
+            savedAndroidUserAgent = Prefs.CompatibilitySettings.useAndroidUserAgent
+            draftAndroidUserAgent = savedAndroidUserAgent
+            updateUserAgentValueRow()
+            updateUserAgentOptionRows()
+            updateUserAgentSaveButton(animated: false)
+        }
         updateJITStatusFooter()
         if showsTimeAwareSettings {
             savedTimeAwareEnabled = ShellTimeAwareSettings.isEnabled
@@ -885,13 +892,17 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         jitStatusFooterLabel.numberOfLines = 1
         jitStatusFooterLabel.setContentHuggingPriority(.required, for: .vertical)
 
-        homeStackView.addArrangedSubview(userAgentRow)
+        if showsUserAgentSettings {
+            homeStackView.addArrangedSubview(userAgentRow)
+        }
         if showsTimeAwareSettings {
             homeStackView.addArrangedSubview(timeAwareRow)
         }
         homeStackView.addArrangedSubview(downloadsRow)
         homeStackView.addArrangedSubview(jitStatusFooterLabel)
-        homeStackView.setCustomSpacing(12, after: userAgentRow)
+        if showsUserAgentSettings {
+            homeStackView.setCustomSpacing(12, after: userAgentRow)
+        }
         if showsTimeAwareSettings {
             homeStackView.setCustomSpacing(12, after: timeAwareRow)
         }
@@ -1528,11 +1539,14 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     private func updateCardHeight(animated: Bool) {
         let availableHeight = max(220, bounds.height - safeAreaInsets.top - safeAreaInsets.bottom - 80)
         let expandedHeight = min(560, availableHeight)
-        let homeRowCount: CGFloat = showsTimeAwareSettings ? 3 : 2
-        let homeSpacing: CGFloat = showsTimeAwareSettings ? 24 : 12
+        let homeRowCount =
+            1 +
+            (showsUserAgentSettings ? 1 : 0) +
+            (showsTimeAwareSettings ? 1 : 0)
+        let homeSpacing = CGFloat(max(0, homeRowCount - 1)) * 12
         let homeFooterHeight: CGFloat = 18
         let homeFooterSpacing: CGFloat = 14
-        let homeHeight: CGFloat = (homeRowCount * 72) + homeSpacing + homeFooterHeight + homeFooterSpacing + 96
+        let homeHeight: CGFloat = (CGFloat(homeRowCount) * 72) + homeSpacing + homeFooterHeight + homeFooterSpacing + 96
         let targetHeight: CGFloat
         switch activePanel {
         case .home:

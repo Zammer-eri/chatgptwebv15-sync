@@ -14,16 +14,19 @@
     'form,[data-testid*="composer"],[class*="composer"],main';
   const STORAGE_PREFIX = "reynard.timeAware.";
   const listenerOptions = { capture: true, passive: false };
+  const passiveCaptureOptions = { capture: true, passive: true };
   const TIMESTAMP_PATTERN = /---\s*Timestamp:\s+[A-Z][a-z]{2},/;
   const SYNTHETIC_RETURN_MAX_FRAMES = 2;
   const STAMP_COMMIT_MAX_FRAMES = 8;
-  const SEND_TARGET_MAX_FRAMES = 12;
-  const SEND_COMPLETE_MAX_FRAMES = 12;
+  const MISSING_CLICK_FALLBACK_MS = 32;
+  const SEND_PREPARATION_TIMEOUT_MS = 2000;
 
   let dispatchingSyntheticReturn = false;
   let forwardingClick = false;
   let forwardingSubmit = false;
   let sendFlowActive = false;
+  let allowingNativeSubmit = false;
+  let pendingSendPreparation = null;
 
   const nextFrame = () =>
     new Promise(resolve => {
@@ -529,72 +532,10 @@
     return waitForText(editable, timestamp, STAMP_COMMIT_MAX_FRAMES);
   };
 
-  const forwardClick = button => {
-    if (!button?.isConnected || button.disabled) {
-      return false;
-    }
-
-    forwardingClick = true;
-    button.click();
-    return true;
-  };
-
-  const forwardSubmit = form => {
-    if (typeof form?.requestSubmit !== "function") {
-      return false;
-    }
-
-    forwardingSubmit = true;
-    form.requestSubmit();
-    return true;
-  };
-
   const liveComposer = editable =>
     editable?.isConnected && visible(editable) && isComposerEditable(editable)
       ? editable
       : activeComposerEditable(doc);
-
-  const liveSendButton = editable => {
-    const liveEditable = liveComposer(editable);
-    const rootElement =
-      liveEditable?.closest(COMPOSER_ROOT_SELECTOR) || doc;
-    const buttons = Array.from(
-      rootElement.querySelectorAll?.("button,[role='button']") || []
-    );
-    for (let index = buttons.length - 1; index >= 0; index--) {
-      if (isLikelySendButton(buttons[index])) {
-        return buttons[index];
-      }
-    }
-    return null;
-  };
-
-  const forwardLiveSend = async (editable, originalForm) => {
-    for (let frame = 0; frame < SEND_TARGET_MAX_FRAMES; frame++) {
-      const button = liveSendButton(editable);
-      if (button && forwardClick(button)) {
-        return true;
-      }
-      await nextFrame();
-    }
-
-    const liveEditable = liveComposer(editable);
-    const form =
-      liveEditable?.closest("form") ||
-      (originalForm?.isConnected ? originalForm : null);
-    return forwardSubmit(form);
-  };
-
-  const waitForSendCompletion = async editable => {
-    for (let frame = 0; frame < SEND_COMPLETE_MAX_FRAMES; frame++) {
-      await nextFrame();
-      const current = liveComposer(editable);
-      if (!current || !editableText(current).trim()) {
-        return true;
-      }
-    }
-    return false;
-  };
 
   const dismissKeyboard = editable => {
     const blurTarget = isComposerEditable(doc.activeElement)
@@ -611,29 +552,176 @@
     }
   };
 
-  const runSendFlow = async (editable, originalForm) => {
-    if (sendFlowActive) {
+  const needsTimestamp = editable => {
+    syncNativeSettingsToStorage();
+    const currentText = editableText(editable);
+    return (
+      isEnabled() &&
+      !!editable &&
+      !!currentText.trim() &&
+      !TIMESTAMP_PATTERN.test(currentText)
+    );
+  };
+
+  const clearSendFlow = preparation => {
+    if (
+      preparation &&
+      pendingSendPreparation &&
+      preparation !== pendingSendPreparation
+    ) {
       return;
     }
 
+    pendingSendPreparation = null;
+    if (preparation?.timeoutID) {
+      win.clearTimeout(preparation.timeoutID);
+    }
+    forwardingClick = false;
+    forwardingSubmit = false;
+    allowingNativeSubmit = false;
+    sendFlowActive = false;
+    setSendFlowBridgeActive(false);
+  };
+
+  const finishSendFlow = (preparation, dismiss) => {
+    if (dismiss) {
+      dismissKeyboard(liveComposer(preparation?.editable) || preparation?.editable);
+    }
+    win.setTimeout(() => clearSendFlow(preparation), 0);
+  };
+
+  const beginSendPreparation = (button, form, editable, pointerID = null) => {
+    if (!needsTimestamp(editable)) {
+      return null;
+    }
+
+    if (
+      pendingSendPreparation &&
+      pendingSendPreparation.editable === editable
+    ) {
+      return pendingSendPreparation;
+    }
+
+    const preparation = {
+      button,
+      form,
+      editable,
+      complete: false,
+      clickHandled: false,
+      pointerID,
+      submitting: false,
+      promise: null,
+      timeoutID: null,
+    };
+
     sendFlowActive = true;
     setSendFlowBridgeActive(true);
-    try {
-      await stampComposer(editable);
-      if (!(await forwardLiveSend(editable, originalForm))) {
-        return;
+    preparation.promise = stampComposer(editable)
+      .catch(() => false)
+      .then(stamped => {
+        preparation.complete = true;
+        preparation.stamped = stamped;
+        return stamped;
+      });
+    preparation.timeoutID = win.setTimeout(() => {
+      if (!preparation.submitting) {
+        clearSendFlow(preparation);
       }
-      if (await waitForSendCompletion(editable)) {
-        dismissKeyboard(liveComposer(editable) || editable);
-      }
-    } finally {
-      win.setTimeout(() => {
-        forwardingClick = false;
+    }, SEND_PREPARATION_TIMEOUT_MS);
+    pendingSendPreparation = preparation;
+    return preparation;
+  };
+
+  const submitPreparedSend = preparation => {
+    const liveEditable = liveComposer(preparation.editable);
+    const form =
+      (preparation.form?.isConnected ? preparation.form : null) ||
+      liveEditable?.closest("form");
+
+    if (typeof form?.requestSubmit === "function") {
+      forwardingSubmit = true;
+      const submitter =
+        preparation.button?.isConnected &&
+        preparation.button.form === form &&
+        !preparation.button.disabled
+          ? preparation.button
+          : null;
+      try {
+        if (submitter) {
+          form.requestSubmit(submitter);
+        } else {
+          form.requestSubmit();
+        }
+        return true;
+      } catch (_) {
         forwardingSubmit = false;
-        sendFlowActive = false;
-        setSendFlowBridgeActive(false);
-      }, 0);
+      }
     }
+
+    if (preparation.button?.isConnected && !preparation.button.disabled) {
+      forwardingClick = true;
+      preparation.button.click();
+      return true;
+    }
+
+    return false;
+  };
+
+  const completePreparedSend = async preparation => {
+    if (preparation.submitting) {
+      return;
+    }
+    preparation.submitting = true;
+
+    try {
+      await preparation.promise;
+      if (submitPreparedSend(preparation)) {
+        finishSendFlow(preparation, true);
+      } else {
+        clearSendFlow(preparation);
+      }
+    } catch (_) {
+      clearSendFlow(preparation);
+    }
+  };
+
+  const handleSendPointerDown = event => {
+    if (forwardingClick || forwardingSubmit || sendFlowActive) {
+      return;
+    }
+
+    const button = findSendButton(event.target);
+    if (!button) {
+      return;
+    }
+
+    beginSendPreparation(
+      button,
+      button.closest("form"),
+      composerForButton(button),
+      event.pointerId
+    );
+  };
+
+  const handleSendPointerUp = event => {
+    const preparation = pendingSendPreparation;
+    if (
+      !preparation ||
+      preparation.pointerID !== event.pointerId ||
+      !findSendButton(event.target)
+    ) {
+      return;
+    }
+
+    win.setTimeout(() => {
+      if (
+        pendingSendPreparation === preparation &&
+        !preparation.clickHandled &&
+        !preparation.submitting
+      ) {
+        completePreparedSend(preparation);
+      }
+    }, MISSING_CLICK_FALLBACK_MS);
   };
 
   const handleSendClick = event => {
@@ -646,13 +734,33 @@
       return;
     }
 
+    const editable = composerForButton(button);
+    const preparation =
+      pendingSendPreparation ||
+      beginSendPreparation(button, button.closest("form"), editable);
+    if (!preparation) {
+      return;
+    }
+    preparation.clickHandled = true;
+
+    if (preparation.complete && preparation.stamped) {
+      preparation.submitting = true;
+      allowingNativeSubmit = true;
+      finishSendFlow(preparation, true);
+      return;
+    }
+
     event.preventDefault();
     event.stopImmediatePropagation();
-    runSendFlow(composerForButton(button), button.closest("form"));
+    completePreparedSend(preparation);
   };
 
   const handleSubmit = event => {
     if (forwardingClick || forwardingSubmit) {
+      return;
+    }
+
+    if (allowingNativeSubmit) {
       return;
     }
 
@@ -668,11 +776,18 @@
       return;
     }
 
+    const preparation = beginSendPreparation(null, form, editable);
+    if (!preparation) {
+      return;
+    }
+
     event.preventDefault();
     event.stopImmediatePropagation();
-    runSendFlow(editable, form);
+    completePreparedSend(preparation);
   };
 
+  doc.addEventListener("pointerdown", handleSendPointerDown, passiveCaptureOptions);
+  doc.addEventListener("pointerup", handleSendPointerUp, passiveCaptureOptions);
   doc.addEventListener("click", handleSendClick, listenerOptions);
   doc.addEventListener("submit", handleSubmit, listenerOptions);
   syncNativeSettingsToStorage();
