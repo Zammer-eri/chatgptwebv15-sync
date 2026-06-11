@@ -9,6 +9,11 @@
       "id": "chatgpt-time-aware",
       "file": "time-aware.js",
       "matches": ["chatgpt.com", "*.chatgpt.com"]
+    },
+    {
+      "id": "chatgpt-foreground-recovery",
+      "file": "foreground-recovery.js",
+      "matches": ["chatgpt.com", "*.chatgpt.com"]
     }
   ]
 }

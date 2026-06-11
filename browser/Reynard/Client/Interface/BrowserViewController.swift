@@ -223,7 +223,13 @@ final class BrowserViewController: UIViewController {
             return
         }
 
-        session.setActive(active)
+        if active {
+            session.setActive(true)
+            session.setFocused(true)
+        } else {
+            session.setFocused(false)
+            session.setActive(false)
+        }
     }
     
     private var activeContentController: BrowserViewController {
