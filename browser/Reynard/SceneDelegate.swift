@@ -10,6 +10,8 @@ import UIKit
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     
     var window: UIWindow?
+    private var enteredBackgroundAt: Date?
+    private let contentRecoveryDelay: TimeInterval = 5
     
     
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
@@ -36,11 +38,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     }
     
     func sceneDidBecomeActive(_ scene: UIScene) {
-        (window?.rootViewController as? BrowserViewController)?.setContentSessionActive(true)
+        let shouldRecoverContent = enteredBackgroundAt.map {
+            Date().timeIntervalSince($0) >= contentRecoveryDelay
+        } ?? false
+        enteredBackgroundAt = nil
+        (window?.rootViewController as? BrowserViewController)?
+            .resumeContentSession(recovering: shouldRecoverContent)
     }
     
-    func sceneWillResignActive(_ scene: UIScene) {
-        (window?.rootViewController as? BrowserViewController)?.setContentSessionActive(false)
+    func sceneDidEnterBackground(_ scene: UIScene) {
+        enteredBackgroundAt = Date()
     }
     
     private func handleIncomingURLContexts(_ urlContexts: Set<UIOpenURLContext>) {
