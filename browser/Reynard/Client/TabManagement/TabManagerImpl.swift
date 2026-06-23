@@ -1032,7 +1032,9 @@ extension TabManagerImplementation: ContentDelegate {
     
     func onFirstComposite(session: GeckoSession) {}
     
-    func onFirstContentfulPaint(session: GeckoSession) {}
+    func onFirstContentfulPaint(session: GeckoSession) {
+        delegate?.tabManager(self, didFirstContentfulPaintFor: session)
+    }
     
     func onPaintStatusReset(session: GeckoSession) {}
     

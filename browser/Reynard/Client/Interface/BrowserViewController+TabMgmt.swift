@@ -188,6 +188,10 @@ extension BrowserViewController: TabManagerDelegate {
         }
         applyFullscreenState(fullScreen, for: session)
     }
+
+    func tabManager(_ tabManager: TabManager, didFirstContentfulPaintFor session: GeckoSession) {
+        contentSessionDidPaintContent(session)
+    }
     
     func tabManager(_ tabManager: TabManager, didUpdateTabAt index: Int, reason: TabManagerUpdateReason) {
         let activeTabs = tabManager.selectedTabMode == .private ? tabManager.privateTabs : tabManager.regularTabs

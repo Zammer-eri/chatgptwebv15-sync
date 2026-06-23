@@ -12,6 +12,7 @@ final class BrowserViewController: UIViewController {
     lazy var tabManager: TabManager = TabManagerImplementation(delegate: self)
     private(set) var isInFullscreenMedia = false
     private var orientationBeforeFullscreen: UIInterfaceOrientation?
+    private var backgroundRecoveryCompletion: (() -> Void)?
     
     init(isSidebarContainerHost: Bool = true) {
         super.init(nibName: nil, bundle: nil)
@@ -213,6 +214,28 @@ final class BrowserViewController: UIViewController {
         targetController.loadViewIfNeeded()
         let targetTab = targetController.prepareTabForExternalLoad()
         targetController.tabManager.browse(to: url.absoluteString, in: targetTab)
+    }
+
+    func recoverContentAfterBackground(completion: @escaping () -> Void) {
+        let targetController = activeContentController
+        guard targetController.isViewLoaded,
+              let tab = targetController.tabManager.selectedTab else {
+            completion()
+            return
+        }
+
+        targetController.backgroundRecoveryCompletion = completion
+        targetController.tabManager.recover(tab)
+    }
+
+    func contentSessionDidPaintContent(_ session: GeckoSession) {
+        guard tabManager.selectedTab?.session === session,
+              let completion = backgroundRecoveryCompletion else {
+            return
+        }
+
+        backgroundRecoveryCompletion = nil
+        completion()
     }
 
     private var activeContentController: BrowserViewController {
