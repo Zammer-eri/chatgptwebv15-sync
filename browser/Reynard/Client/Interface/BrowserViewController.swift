@@ -215,26 +215,6 @@ final class BrowserViewController: UIViewController {
         targetController.tabManager.browse(to: url.absoluteString, in: targetTab)
     }
 
-    func resumeContentSession(recovering shouldRecover: Bool) {
-        let targetController = activeContentController
-        guard targetController.isViewLoaded,
-              let tab = targetController.tabManager.selectedTab else {
-            return
-        }
-
-        if shouldRecover,
-           ShellConfig.current.target == .chatGPT {
-            targetController.tabManager.recover(tab)
-            return
-        }
-
-        guard tab.session.isOpen() else {
-            return
-        }
-        tab.session.setActive(true)
-        tab.session.setFocused(true)
-    }
-    
     private var activeContentController: BrowserViewController {
         embeddedSplitController?.contentBrowserViewController ?? self
     }

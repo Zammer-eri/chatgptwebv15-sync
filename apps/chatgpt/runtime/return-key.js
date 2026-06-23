@@ -278,6 +278,7 @@
     const editable = editableElement(target);
     if (editable && isComposerEditable(editable)) {
       editable.setAttribute("enterkeyhint", "enter");
+      editable.setAttribute("autocorrect", "off");
     }
   };
 

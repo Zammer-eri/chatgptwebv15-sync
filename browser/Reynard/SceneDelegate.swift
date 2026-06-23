@@ -10,8 +10,6 @@ import UIKit
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     
     var window: UIWindow?
-    private var enteredBackgroundAt: Date?
-    private let contentRecoveryDelay: TimeInterval = 5
     
     
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
@@ -35,19 +33,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // This occurs shortly after the scene enters the background, or when its session is discarded.
         // Release any resources associated with this scene that can be re-created the next time the scene connects.
         // The scene may re-connect later, as its session was not necessarily discarded (see `application:didDiscardSceneSessions` instead).
-    }
-    
-    func sceneDidBecomeActive(_ scene: UIScene) {
-        let shouldRecoverContent = enteredBackgroundAt.map {
-            Date().timeIntervalSince($0) >= contentRecoveryDelay
-        } ?? false
-        enteredBackgroundAt = nil
-        (window?.rootViewController as? BrowserViewController)?
-            .resumeContentSession(recovering: shouldRecoverContent)
-    }
-    
-    func sceneDidEnterBackground(_ scene: UIScene) {
-        enteredBackgroundAt = Date()
     }
     
     private func handleIncomingURLContexts(_ urlContexts: Set<UIOpenURLContext>) {
