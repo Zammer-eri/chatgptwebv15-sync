@@ -36,19 +36,21 @@ struct ShellFeatures {
         loadsFavicons: true
     )
 
-    static let webApp = ShellFeatures(
-        restoresPreviousTabs: false,
-        loadDefaultURLOnFirstLaunch: true,
-        visuallyHidesBrowserChrome: true,
-        visualChromePhoneBottomHeight: 0,
-        usesShellGestures: true,
-        usesUtilityPanel: true,
-        usesSingleTabSession: true,
-        requiresLocation: false,
-        checksForAppUpdates: false,
-        usesAddons: false,
-        runsAutomaticAddonUpdates: false,
-        recordsBrowsingHistory: false,
-        loadsFavicons: false
-    )
+    static func webApp(visualChromePhoneBottomHeight: Int = 0) -> ShellFeatures {
+        ShellFeatures(
+            restoresPreviousTabs: false,
+            loadDefaultURLOnFirstLaunch: true,
+            visuallyHidesBrowserChrome: true,
+            visualChromePhoneBottomHeight: visualChromePhoneBottomHeight,
+            usesShellGestures: true,
+            usesUtilityPanel: true,
+            usesSingleTabSession: true,
+            requiresLocation: false,
+            checksForAppUpdates: false,
+            usesAddons: false,
+            runsAutomaticAddonUpdates: false,
+            recordsBrowsingHistory: false,
+            loadsFavicons: false
+        )
+    }
 }

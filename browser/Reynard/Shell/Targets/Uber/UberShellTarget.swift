@@ -12,7 +12,7 @@ enum UberShellTarget {
         target: .uber,
         displayName: "Uber",
         defaultURL: URL(string: "https://m.uber.com"),
-        features: .webApp,
+        features: .webApp(),
         userAgentPolicy: .configurable
     )
 }

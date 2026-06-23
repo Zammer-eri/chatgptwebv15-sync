@@ -12,7 +12,7 @@ enum ChatGPTShellTarget {
         target: .chatGPT,
         displayName: "ChatGPT",
         defaultURL: URL(string: "https://chatgpt.com"),
-        features: .webApp,
+        features: .webApp(visualChromePhoneBottomHeight: 94),
         userAgentPolicy: .androidMobile
     )
 }
