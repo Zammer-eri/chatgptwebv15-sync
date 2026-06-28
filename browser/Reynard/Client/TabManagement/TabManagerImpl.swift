@@ -105,7 +105,7 @@ final class TabManagerImplementation: NSObject, TabManager {
     }
 
     private var recoveryLoadFlags: Int {
-        GeckoSessionLoadFlags.bypassCache | GeckoSessionLoadFlags.replaceHistory
+        GeckoSessionLoadFlags.replaceHistory
     }
     
     private func selectedIndex(for mode: TabMode) -> Int {

@@ -15,6 +15,7 @@
   let insertingLineBreak = false;
   let dispatchingSyntheticReturn = false;
   let suppressComposerSubmitUntil = 0;
+  let composerObserver = null;
   const listenerOptions = { capture: true, passive: false };
   const passiveCaptureOptions = { capture: true, passive: true };
   const timeAwareSendFlowActive = () =>
@@ -274,11 +275,71 @@
     }
   };
 
+  const applyComposerKeyboardAttributes = editable => {
+    if (!editable || !isComposerEditable(editable)) {
+      return false;
+    }
+
+    editable.setAttribute("autocomplete", "off");
+    editable.setAttribute("autocorrect", "off");
+    editable.setAttribute("autocapitalize", "off");
+    editable.setAttribute("spellcheck", "false");
+    editable.setAttribute("enterkeyhint", "enter");
+    try {
+      editable.spellcheck = false;
+    } catch (_) {}
+    return true;
+  };
+
   const markComposerEditable = target => {
     const editable = editableElement(target);
-    if (editable && isComposerEditable(editable)) {
-      editable.setAttribute("enterkeyhint", "enter");
+    if (applyComposerKeyboardAttributes(editable)) {
+      return;
     }
+
+    const element = target instanceof win.Element ? target : null;
+    if (!element) {
+      return;
+    }
+
+    if (element.matches?.(COMPOSER_SELECTOR)) {
+      applyComposerKeyboardAttributes(element);
+    }
+
+    const descendants = element.querySelectorAll?.(COMPOSER_SELECTOR) || [];
+    for (const descendant of descendants) {
+      applyComposerKeyboardAttributes(descendant);
+    }
+  };
+
+  const markKnownComposers = () => {
+    markComposerEditable(doc.activeElement);
+    const editables = doc.querySelectorAll?.(COMPOSER_SELECTOR) || [];
+    for (const editable of editables) {
+      applyComposerKeyboardAttributes(editable);
+    }
+  };
+
+  const observeComposerReplacements = () => {
+    if (composerObserver || typeof win.MutationObserver !== "function") {
+      return;
+    }
+
+    const rootNode = doc.documentElement || doc.body;
+    if (!rootNode) {
+      return;
+    }
+
+    composerObserver = new win.MutationObserver(mutations => {
+      for (const mutation of mutations) {
+        for (const node of mutation.addedNodes || []) {
+          if (node instanceof win.Element) {
+            markComposerEditable(node);
+          }
+        }
+      }
+    });
+    composerObserver.observe(rootNode, { childList: true, subtree: true });
   };
 
   for (const target of [win, doc]) {
@@ -291,6 +352,10 @@
   doc.addEventListener("focusin", event => markComposerEditable(event.target), true);
   doc.addEventListener("touchstart", event => markComposerEditable(event.target), passiveCaptureOptions);
   doc.addEventListener("pointerdown", event => markComposerEditable(event.target), passiveCaptureOptions);
-  doc.addEventListener("DOMContentLoaded", () => markComposerEditable(doc.activeElement), true);
-  markComposerEditable(doc.activeElement);
+  doc.addEventListener("DOMContentLoaded", () => {
+    observeComposerReplacements();
+    markKnownComposers();
+  }, true);
+  observeComposerReplacements();
+  markKnownComposers();
 })(typeof globalThis !== "undefined" ? globalThis : this);

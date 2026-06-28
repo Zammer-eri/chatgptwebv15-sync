@@ -326,7 +326,7 @@ extension BrowserViewController {
         }
 
         setShellRecoveryOverlayVisible(true, animated: true)
-        reloadTabAfterClearingAppCache(tab)
+        reloadTabAfterClearingConversationState(tab)
     }
 
     @objc private func handleShellUtilityPanelGesture(_ gesture: UIScreenEdgePanGestureRecognizer) {
@@ -354,9 +354,9 @@ extension BrowserViewController {
         isShellKeyboardVisible = false
     }
 
-    private func reloadTabAfterClearingAppCache(_ tab: Tab) {
+    private func reloadTabAfterClearingConversationState(_ tab: Tab) {
         tab.session.stop()
-        clearAppCacheForReload { [weak self, weak tab] in
+        clearConversationStateForReload { [weak self, weak tab] in
             guard let self,
                   let tab else {
                 return
@@ -366,10 +366,9 @@ extension BrowserViewController {
         }
     }
 
-    private func clearAppCacheForReload(completion: @escaping () -> Void) {
+    private func clearConversationStateForReload(completion: @escaping () -> Void) {
         Task {
-            await clearGeckoSiteDataForReload()
-            await clearLocalAppCacheForReload()
+            await clearChatGPTDomStorageForReload()
 
             await MainActor.run {
                 completion()
@@ -377,18 +376,17 @@ extension BrowserViewController {
         }
     }
 
-    private func clearGeckoSiteDataForReload() async {
+    private func clearChatGPTDomStorageForReload() async {
         guard ShellConfig.current.target == .chatGPT else {
             return
         }
 
-        let flags = GeckoRuntime.ClearDataFlags.networkCache |
-            GeckoRuntime.ClearDataFlags.imageCache |
-            GeckoRuntime.ClearDataFlags.domStorages
-
         await withTaskGroup(of: Void.self) { group in
             group.addTask {
-                try? await GeckoRuntime.clearBaseDomainData("chatgpt.com", flags: flags)
+                try? await GeckoRuntime.clearBaseDomainData(
+                    "chatgpt.com",
+                    flags: GeckoRuntime.ClearDataFlags.domStorages
+                )
             }
             group.addTask {
                 try? await Task.sleep(nanoseconds: 1_500_000_000)
@@ -396,34 +394,6 @@ extension BrowserViewController {
 
             await group.next()
             group.cancelAll()
-        }
-    }
-
-    private func clearLocalAppCacheForReload() async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let fileManager = FileManager.default
-                let cacheURLs = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)
-                let temporaryURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-
-                URLCache.shared.removeAllCachedResponses()
-
-                for directoryURL in cacheURLs + [temporaryURL] {
-                    guard let contents = try? fileManager.contentsOfDirectory(
-                        at: directoryURL,
-                        includingPropertiesForKeys: nil,
-                        options: [.skipsSubdirectoryDescendants]
-                    ) else {
-                        continue
-                    }
-
-                    for itemURL in contents {
-                        try? fileManager.removeItem(at: itemURL)
-                    }
-                }
-
-                continuation.resume()
-            }
         }
     }
 
@@ -448,7 +418,7 @@ extension BrowserViewController {
         tab.session.updateSettings(
             GeckoSessionController.shared.sessionSettings(for: url, tabID: tab.id)
         )
-        tab.session.load(url, flags: GeckoSessionLoadFlags.bypassCache | GeckoSessionLoadFlags.replaceHistory)
+        tab.session.load(url, flags: GeckoSessionLoadFlags.replaceHistory)
     }
 
     private func setShellRecoveryOverlayVisible(_ visible: Bool, animated: Bool) {
