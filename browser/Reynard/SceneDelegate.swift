@@ -8,19 +8,18 @@
 import UIKit
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
-    
     var window: UIWindow?
     private var enteredBackgroundAt: Date?
     private var backgroundSnapshotView: UIImageView?
     private let contentRecoveryDelay: TimeInterval = 60
     private let recoverySnapshotTimeout: TimeInterval = 12
     
-    
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = (scene as? UIWindowScene) else { return }
         
         let browserViewController = BrowserViewController()
         let window = UIWindow(windowScene: windowScene)
+        window.overrideUserInterfaceStyle = AppAppearanceController.userInterfaceStyle(for: Prefs.AppearanceSettings.appAppearance)
         window.rootViewController = browserViewController
         window.makeKeyAndVisible()
         self.window = window
@@ -32,13 +31,8 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         handleIncomingURLContexts(URLContexts)
     }
     
-    func sceneDidDisconnect(_ scene: UIScene) {
-        // Called as the scene is being released by the system.
-        // This occurs shortly after the scene enters the background, or when its session is discarded.
-        // Release any resources associated with this scene that can be re-created the next time the scene connects.
-        // The scene may re-connect later, as its session was not necessarily discarded (see `application:didDiscardSceneSessions` instead).
-    }
-
+    func sceneDidDisconnect(_ scene: UIScene) {}
+    
     func sceneDidBecomeActive(_ scene: UIScene) {
         let backgroundDuration = enteredBackgroundAt.map { Date().timeIntervalSince($0) } ?? 0
         enteredBackgroundAt = nil
@@ -58,11 +52,13 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             self?.removeBackgroundSnapshot(snapshotView, animated: true)
         }
     }
-
+    
     func sceneWillResignActive(_ scene: UIScene) {
         installBackgroundSnapshotIfNeeded()
     }
-
+    
+    func sceneWillEnterForeground(_ scene: UIScene) {}
+    
     func sceneDidEnterBackground(_ scene: UIScene) {
         enteredBackgroundAt = Date()
     }
@@ -81,6 +77,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         
         DispatchQueue.main.async {
+            browserViewController.loadViewIfNeeded()
             browserViewController.openExternalURL(resolvedURL)
         }
     }

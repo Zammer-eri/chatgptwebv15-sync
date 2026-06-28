@@ -36,7 +36,6 @@ private enum ShellTimeAwareSettings {
         }
         set {
             UserDefaults.standard.set(newValue, forKey: enabledKey)
-            UserDefaults.standard.synchronize()
         }
     }
 
@@ -53,7 +52,6 @@ private enum ShellTimeAwareSettings {
             } else {
                 UserDefaults.standard.set(value, forKey: timeZoneKey)
             }
-            UserDefaults.standard.synchronize()
         }
     }
 
@@ -86,7 +84,6 @@ private enum ShellTimeAwareSettings {
         let values = ([identifier] + recentTimeZoneIdentifiers.filter { $0 != identifier })
             .prefix(maxRecentTimeZoneCount)
         UserDefaults.standard.set(Array(values), forKey: recentTimeZonesKey)
-        UserDefaults.standard.synchronize()
     }
 }
 
@@ -317,7 +314,7 @@ extension BrowserViewController {
         }
 
         if isShellKeyboardVisible {
-            dismissKeyboard()
+            view.endEditing(true)
             return
         }
 
@@ -403,9 +400,7 @@ extension BrowserViewController {
         }
 
         let url = tab.url ?? ShellConfig.current.defaultURL?.absoluteString ?? "about:blank"
-        tab.session.updateSettings(
-            GeckoSessionController.shared.sessionSettings(for: url, tabID: tab.id)
-        )
+        sessionManager.updateSettings(of: tab.session, for: url, tabID: tab.id)
         tabManager.reload(tab)
     }
 
@@ -415,9 +410,7 @@ extension BrowserViewController {
         }
 
         let url = tab.url ?? ShellConfig.current.defaultURL?.absoluteString ?? "about:blank"
-        tab.session.updateSettings(
-            GeckoSessionController.shared.sessionSettings(for: url, tabID: tab.id)
-        )
+        sessionManager.updateSettings(of: tab.session, for: url, tabID: tab.id)
         tab.session.load(url, flags: GeckoSessionLoadFlags.replaceHistory)
     }
 

@@ -21,25 +21,29 @@ protocol TabManager: AnyObject {
     var selectedTabIndex: Int { get }
     var selectedTab: Tab? { get }
     
-    func createInitialTab()
+    func createInitialTab(openingScreen: HomepageOpeningScreen)
     @discardableResult
     func addTab(selecting: Bool, windowId: String?, at index: Int?, isPrivate: Bool) -> Int
     @discardableResult
-    func addTab(using session: GeckoSession, url: String, title: String?, selecting: Bool, at index: Int?, isPrivate: Bool) -> Int
+    func addTransferredSession(_ session: GeckoSession, url: String, title: String?, selecting: Bool, at index: Int?, isPrivate: Bool) -> Int
     func selectTab(at index: Int, mode: TabMode?)
     func moveTab(from sourceIndex: Int, to destinationIndex: Int, mode: TabMode?)
     func removeTab(at index: Int, mode: TabMode?)
     func removeAllTabs(mode: TabMode?)
+    @discardableResult
+    func restoreRecentlyClosedTab(id: UUID) -> Bool
     func browse(to term: String)
     func browse(to term: String, in tab: Tab)
     func reload(_ tab: Tab)
     func recover(_ tab: Tab)
     func goBack()
     func goForward()
-    func replaceSession(with session: GeckoSession, url: String, title: String?)
+    func replaceSelectedSession(with session: GeckoSession, url: String, title: String?)
     func tabIndex(for session: GeckoSession) -> Int?
     func shareableURL(for tab: Tab) -> URL?
-    func updateThumbnail(_ image: UIImage?, forTabAt index: Int)
+    func updateThumbnail(_ image: UIImage?, forTabAt index: Int, mode: TabMode)
+    @discardableResult
+    func changeWebsiteModeForSelectedTab() -> Bool
 }
 
 enum TabManagerUpdateReason {
@@ -54,6 +58,7 @@ enum TabManagerUpdateReason {
 protocol TabManagerDelegate: AnyObject {
     func tabManagerDidChangeTabs(_ tabManager: TabManager)
     func tabManager(_ tabManager: TabManager, didSelectTabAt index: Int, previousIndex: Int?)
+    func tabManager(_ tabManager: TabManager, didReplaceSelectedSession previousSession: GeckoSession, with replacementSession: GeckoSession)
     func tabManager(_ tabManager: TabManager, didUpdateTabAt index: Int, reason: TabManagerUpdateReason)
     func tabManager(_ tabManager: TabManager, didChangeFullscreen fullScreen: Bool, for session: GeckoSession)
     func tabManager(_ tabManager: TabManager, didFirstContentfulPaintFor session: GeckoSession)
@@ -65,6 +70,7 @@ protocol TabManagerDelegate: AnyObject {
 }
 
 extension TabManagerDelegate {
+    func tabManager(_ tabManager: TabManager, didReplaceSelectedSession previousSession: GeckoSession, with replacementSession: GeckoSession) {}
     func tabManager(_ tabManager: TabManager, didChangeFullscreen fullScreen: Bool, for session: GeckoSession) {}
     func tabManager(_ tabManager: TabManager, didFirstContentfulPaintFor session: GeckoSession) {}
     func tabManager(_ tabManager: TabManager, animateNewTabSelectionAt index: Int, completion: @escaping () -> Void) {
@@ -72,7 +78,7 @@ extension TabManagerDelegate {
     }
     func tabManager(_ tabManager: TabManager, didRequestExternalOpen url: URL) {}
     func tabManager(_ tabManager: TabManager, shouldHandleExternalResponse response: ExternalResponseInfo, for session: GeckoSession) -> Bool {
-        false
+        return false
     }
     func tabManager(_ tabManager: TabManager, didRequestContextMenuAt point: CGPoint, for element: ContextElement, in session: GeckoSession) {}
 }

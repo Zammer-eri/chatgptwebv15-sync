@@ -140,7 +140,7 @@ if [ "$TROLLSTORE_ONLY" != "1" ]; then
 	zip -r "../$SHELL_PACKAGE_BASENAME.ipa" Payload -x "._*" -x ".DS_Store" -x "__MACOSX" # normal ipa
 fi
 
-PTRACE_JIT_SRC="$ROOT_DIR/browser/Reynard/TrollStore/JIT/ptrace_jit.c"
+PTRACE_JIT_SRC="$ROOT_DIR/browser/Reynard/JIT/Unsandboxed/ptrace_jit.c"
 PTRACE_JIT_OUT="Payload/Reynard.app/ptrace_jit"
 
 "$CLANG_PATH" \
@@ -155,7 +155,7 @@ chmod 0755 "$PTRACE_JIT_OUT"
 
 sign_macho_files
 
-ldid -S"$ROOT_DIR/browser/Reynard/TrollStore/JIT/ptrace_jit.entitlements" "$PTRACE_JIT_OUT"
+ldid -S"$ROOT_DIR/browser/Reynard/JIT/Unsandboxed/ptrace_jit.entitlements" "$PTRACE_JIT_OUT"
 ldid -S"$APP_ENTITLEMENTS" "Payload/Reynard.app/Reynard"
 ldid -S"$HELPER_ENTITLEMENTS" "Payload/Reynard.app/PlugIns/Reynard Helper.appex/Reynard Helper"
 if [ -d "Payload/Reynard.app/PlugIns/OpenIn.appex" ]; then

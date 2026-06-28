@@ -43,7 +43,7 @@ final class FaviconStore {
     
     private let fileManager: FileManager
     private let storage: StorageURLs
-    private let stateQueue = DispatchQueue(label: "com.minh-ton.favicon-store", qos: .utility)
+    private let stateQueue = DispatchQueue(label: "com.minh-ton.Reynard.FaviconStore.Queue", qos: .utility)
     private var database: OpaquePointer?
     private let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
     
@@ -69,6 +69,8 @@ final class FaviconStore {
     )
     
     private var activeRequests: [String: Task<UIImage?, Never>] = [:]
+    
+    // MARK: - Lifecycle
     
     init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
@@ -106,18 +108,20 @@ final class FaviconStore {
         }
     }
     
-    func cachedImage(for pageURL: URL) -> UIImage? {
+    // MARK: - Favicons
+    
+    func cachedFavicon(for pageURL: URL) -> UIImage? {
         stateQueue.sync {
             cachedImageLocked(for: pageURL, now: Date())
         }
     }
     
-    func resolveFavicon(for pageURL: URL) async -> UIImage? {
-        guard supportsFaviconLookup(for: pageURL) else {
+    func favicon(for pageURL: URL) async -> UIImage? {
+        guard URLUtils.isWebURL(pageURL) else {
             return nil
         }
         
-        if let cachedImage = cachedImage(for: pageURL) {
+        if let cachedImage = cachedFavicon(for: pageURL) {
             return cachedImage
         }
         
@@ -143,6 +147,31 @@ final class FaviconStore {
         }
         return await task.value
     }
+    
+    func clearCache() {
+        stateQueue.async {
+            self.activeRequests.values.forEach { $0.cancel() }
+            self.activeRequests.removeAll()
+            
+            let imageKeys = self.fetchImageKeysLocked()
+            _ = self.executeLocked(
+                """
+                DELETE FROM favicon_associations;
+                DELETE FROM favicon_sources;
+                DELETE FROM favicon_images;
+                """
+            )
+            
+            for imageKey in imageKeys {
+                let imageURL = self.imageFileURL(for: imageKey)
+                if self.fileManager.fileExists(atPath: imageURL.path) {
+                    try? self.fileManager.removeItem(at: imageURL)
+                }
+            }
+        }
+    }
+    
+    // MARK: - Storage
     
     private func prepareStorageLocked() {
         try? fileManager.createDirectory(at: storage.directoryURL, withIntermediateDirectories: true)
@@ -206,6 +235,8 @@ final class FaviconStore {
         _ = executeLocked(sql)
     }
     
+    // MARK: - Cache Lookup
+    
     private func cachedImageLocked(for pageURL: URL, now: Date) -> UIImage? {
         pruneExpiredEntriesLocked(now: now)
         
@@ -225,7 +256,7 @@ final class FaviconStore {
             candidates.append(contentsOf: iconURLs(in: document.html, baseURL: document.url))
         }
         
-        if let fallbackURL = fallbackFaviconURL(for: pageURL) {
+        if let fallbackURL = defaultFaviconURL(for: pageURL) {
             candidates.append(fallbackURL)
         }
         
@@ -267,7 +298,7 @@ final class FaviconStore {
                 return nil
             }
             
-            let scopeKey = scopeKey(for: pageURL, iconURL: iconURL)
+            let scopeKey = faviconScopeKey(for: pageURL, iconURL: iconURL)
             guard upsertAssociationLocked(scopeKey: scopeKey, imageKey: imageKey, iconURL: iconURL.absoluteString, now: now),
                   updateImageTimestampLocked(imageKey: imageKey, now: now) else {
                 return nil
@@ -277,6 +308,8 @@ final class FaviconStore {
         }
     }
     
+    // MARK: - Cache Persistence
+    
     private func storeLocked(remoteImage: RemoteImage, for pageURL: URL, now: Date) {
         let imageKey = Self.sha256(remoteImage.data)
         let imageURL = imageFileURL(for: imageKey)
@@ -285,7 +318,7 @@ final class FaviconStore {
             try? remoteImage.data.write(to: imageURL, options: .atomic)
         }
         
-        let scopeKey = scopeKey(for: pageURL, iconURL: remoteImage.url)
+        let scopeKey = faviconScopeKey(for: pageURL, iconURL: remoteImage.url)
         guard executeLocked("BEGIN IMMEDIATE TRANSACTION;") else {
             return
         }
@@ -302,6 +335,8 @@ final class FaviconStore {
             return
         }
     }
+    
+    // MARK: - Cache Maintenance
     
     private func pruneExpiredEntriesLocked(now: Date) {
         let imageKeysBeforePruning = Set(fetchImageKeysLocked())
@@ -330,7 +365,7 @@ final class FaviconStore {
     }
     
     private func lookupAssociationLocked(for pageURL: URL) -> SiteAssociation? {
-        for lookupKey in lookupKeys(for: pageURL) {
+        for lookupKey in faviconLookupKeys(for: pageURL) {
             if let association = associationLocked(scopeKey: lookupKey) {
                 return association
             }
@@ -589,85 +624,60 @@ final class FaviconStore {
         return sqlite3_step(statement) == SQLITE_DONE
     }
     
+    // MARK: - Cache Keys And URLs
+    
     private func imageFileURL(for imageKey: String) -> URL {
         storage.directoryURL.appendingPathComponent(Self.imageFilePrefix + imageKey, isDirectory: false)
     }
     
-    private func supportsFaviconLookup(for pageURL: URL) -> Bool {
-        guard let scheme = pageURL.scheme?.lowercased(),
-              let host = pageURL.host,
-              !host.isEmpty else {
-            return false
-        }
-        
-        return scheme == "http" || scheme == "https"
-    }
-    
     private func requestScopeKey(for pageURL: URL) -> String {
-        lookupKeys(for: pageURL).first ?? pageURL.absoluteString.lowercased()
+        faviconLookupKeys(for: pageURL).first ?? pageURL.absoluteString.lowercased()
     }
     
-    private func lookupKeys(for pageURL: URL) -> [String] {
-        guard let scheme = pageURL.scheme?.lowercased(),
-              let host = pageURL.host?.lowercased() else {
+    private func faviconLookupKeys(for pageURL: URL) -> [String] {
+        guard let origin = URLUtils.httpOriginString(for: pageURL) else {
             return []
         }
         
-        let base = scheme + "://" + host
-        let pathComponents = normalizedPathComponents(for: pageURL.path)
+        let pathComponents = pageURL.path.split(separator: "/").map(String.init)
         guard !pathComponents.isEmpty else {
-            return [base]
+            return [origin]
         }
         
-        var keys: [String] = []
-        for count in stride(from: pathComponents.count, through: 1, by: -1) {
-            keys.append(base + "/" + pathComponents.prefix(count).joined(separator: "/"))
+        var keys = stride(from: pathComponents.count, through: 1, by: -1).map {
+            origin + "/" + pathComponents.prefix($0).joined(separator: "/")
         }
-        keys.append(base)
+        keys.append(origin)
         return keys
     }
     
-    private func scopeKey(for pageURL: URL, iconURL: URL) -> String {
-        guard let scheme = pageURL.scheme?.lowercased(),
-              let host = pageURL.host?.lowercased() else {
+    private func faviconScopeKey(for pageURL: URL, iconURL: URL) -> String {
+        guard let origin = URLUtils.httpOriginString(for: pageURL),
+              let pageHost = URLUtils.normalizedHost(pageURL.host) else {
             return pageURL.absoluteString
         }
         
-        let base = scheme + "://" + host
-        guard iconURL.host?.lowercased() == host else {
-            return base
+        guard URLUtils.normalizedHost(iconURL.host) == pageHost else {
+            return origin
         }
         
-        let pagePathComponents = normalizedPathComponents(for: pageURL.path)
-        let iconPathComponents = normalizedDirectoryComponents(for: iconURL.path)
+        let pagePath = pageURL.path.split(separator: "/").map(String.init)
+        var iconDirectory = iconURL.path.split(separator: "/").map(String.init)
+        if !iconURL.path.hasSuffix("/"), !iconDirectory.isEmpty {
+            iconDirectory.removeLast()
+        }
         
-        var sharedComponents: [String] = []
-        for (pageComponent, iconComponent) in zip(pagePathComponents, iconPathComponents) {
+        var sharedPath: [String] = []
+        for (pageComponent, iconComponent) in zip(pagePath, iconDirectory) {
             guard pageComponent == iconComponent else {
                 break
             }
-            sharedComponents.append(pageComponent)
+            sharedPath.append(pageComponent)
         }
-        
-        guard !sharedComponents.isEmpty else {
-            return base
-        }
-        return base + "/" + sharedComponents.joined(separator: "/")
+        return sharedPath.isEmpty ? origin : origin + "/" + sharedPath.joined(separator: "/")
     }
     
-    private func normalizedPathComponents(for path: String) -> [String] {
-        path.split(separator: "/").map(String.init)
-    }
-    
-    private func normalizedDirectoryComponents(for path: String) -> [String] {
-        var components = normalizedPathComponents(for: path)
-        if !path.hasSuffix("/"), !components.isEmpty {
-            components.removeLast()
-        }
-        return components
-    }
-    
-    private func fallbackFaviconURL(for pageURL: URL) -> URL? {
+    private func defaultFaviconURL(for pageURL: URL) -> URL? {
         guard var components = URLComponents(url: pageURL, resolvingAgainstBaseURL: false) else {
             return nil
         }
@@ -677,6 +687,8 @@ final class FaviconStore {
         components.fragment = nil
         return components.url
     }
+    
+    // MARK: - Networking
     
     private func fetchHTMLDocument(for pageURL: URL, redirectDepth: Int) async -> HTMLDocument? {
         var request = URLRequest(url: pageURL)
@@ -743,6 +755,8 @@ final class FaviconStore {
             task.resume()
         }
     }
+    
+    // MARK: - HTML Parsing
     
     private func iconURLs(in html: String, baseURL: URL) -> [URL] {
         let nsHTML = html as NSString
@@ -831,7 +845,7 @@ final class FaviconStore {
     
     private func string(from data: Data, response: URLResponse) -> String {
         if let encodingName = response.textEncodingName,
-           let encoding = String.Encoding(ianaCharsetName: encodingName),
+           let encoding = String.Encoding.ianaCharacterSetName(encodingName),
            let string = String(data: data, encoding: encoding) {
             return string
         }
@@ -853,6 +867,8 @@ final class FaviconStore {
             .replacingOccurrences(of: "&quot;", with: "\"")
             .replacingOccurrences(of: "&#39;", with: "'")
     }
+    
+    // MARK: - SQLite
     
     private func executeLocked(_ sql: String) -> Bool {
         guard let database else {
@@ -897,16 +913,5 @@ final class FaviconStore {
     
     private static func sha256(_ data: Data) -> String {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
-    }
-}
-
-private extension String.Encoding {
-    init?(ianaCharsetName: String) {
-        let cfEncoding = CFStringConvertIANACharSetNameToEncoding(ianaCharsetName as CFString)
-        guard cfEncoding != kCFStringEncodingInvalidId else {
-            return nil
-        }
-        
-        self.init(rawValue: CFStringConvertEncodingToNSStringEncoding(cfEncoding))
     }
 }

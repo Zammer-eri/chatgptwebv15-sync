@@ -130,7 +130,7 @@ runs:
       run: |
         set -euo pipefail
         echo "REYNARD_ENGINE_FINGERPRINT=$(python3 tools/development/engine-fingerprint.py)" >> "$GITHUB_ENV"
-        echo "REYNARD_ENGINE_RELEASE_TAG=engine-0.4-rolling" >> "$GITHUB_ENV"
+        echo "REYNARD_ENGINE_RELEASE_TAG=engine-0.5-rolling" >> "$GITHUB_ENV"
         echo "REYNARD_ENGINE_ARTIFACT_RESTORED=0" >> "$GITHUB_ENV"
         echo "REYNARD_GECKO_SOURCE_BUILT=0" >> "$GITHUB_ENV"
 
@@ -147,9 +147,9 @@ runs:
         path: |
           engine/firefox/obj-aarch64-apple-ios
           ~/.mozbuild
-        key: reynard-gecko-source-0.4-${{ runner.os }}-${{ hashFiles('engine/release.txt', 'patches/**/*.patch', 'tools/development/build-gecko.sh') }}
+        key: reynard-gecko-source-0.5-${{ runner.os }}-${{ hashFiles('engine/release.txt', 'patches/**/*.patch', 'tools/development/build-gecko.sh') }}
         restore-keys: |
-          reynard-gecko-source-0.4-${{ runner.os }}-
+          reynard-gecko-source-0.5-${{ runner.os }}-
 
     - name: Restore Gecko dist release artifact
       if: inputs.stage == 'prepare-gecko' && steps.restore-gecko-cache.outputs.cache-hit != 'true'
