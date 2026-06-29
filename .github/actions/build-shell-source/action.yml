@@ -255,7 +255,7 @@ runs:
         path: |
           engine/firefox/obj-aarch64-apple-ios
           ~/.mozbuild
-        key: reynard-gecko-source-0.4-${{ runner.os }}-${{ hashFiles('engine/release.txt', 'patches/**/*.patch', 'tools/development/build-gecko.sh') }}
+        key: reynard-gecko-source-0.5-${{ runner.os }}-${{ hashFiles('engine/release.txt', 'patches/**/*.patch', 'tools/development/build-gecko.sh') }}
 
     - name: Upload Gecko build log
       if: inputs.stage == 'build-gecko' && failure()

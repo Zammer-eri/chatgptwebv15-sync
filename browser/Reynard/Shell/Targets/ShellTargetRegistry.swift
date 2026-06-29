@@ -12,8 +12,6 @@ enum ShellTargetRegistry {
             return BrowserShellTarget.profile
         case .chatGPT:
             return ChatGPTShellTarget.profile
-        case .uber:
-            return UberShellTarget.profile
         }
     }
 }

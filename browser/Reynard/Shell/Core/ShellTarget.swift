@@ -8,5 +8,4 @@
 enum ShellTarget: String {
     case browser
     case chatGPT = "chatgpt"
-    case uber
 }

@@ -28,6 +28,10 @@ final class JITController {
     private func usePtraceJIT() -> Bool {
         getEntitlementValue("com.apple.private.security.no-sandbox")
     }
+
+    var isJITEnabled: Bool {
+        !isJITLessModeActive && (usePtraceJIT() || Prefs.JITSettings.isJITEnabled)
+    }
     
     func start() {
         guard usePtraceJIT() || !isDDIMissing() else {

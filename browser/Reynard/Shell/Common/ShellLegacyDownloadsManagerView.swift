@@ -111,7 +111,7 @@ final class ShellLegacyDownloadsManagerView: UIView, UITableViewDataSource, UITa
     }
 
     private func reloadDownloads() {
-        let snapshot = DownloadStore.shared.snapshot()
+        let snapshot = DownloadStore.shared.currentSnapshot()
         hasStoredDownloads = !snapshot.items.isEmpty
         updateSearchBarVisibility()
 
@@ -438,7 +438,7 @@ final class ShellLegacyDownloadsManagerView: UIView, UITableViewDataSource, UITa
 
         case .completed:
             let deleteAction = UIContextualAction(style: .destructive, title: "Delete") { _, _, completion in
-                DownloadStore.shared.deleteDownloadedItem(id: item.id)
+                DownloadStore.shared.removeDownload(id: item.id)
                 completion(true)
             }
 
@@ -500,7 +500,7 @@ final class ShellLegacyDownloadsManagerView: UIView, UITableViewDataSource, UITa
         completion: @escaping (Bool) -> Void
     ) {
         guard let viewController = nearestViewController else {
-            DownloadStore.shared.cancelDownload(id: item.id)
+            DownloadStore.shared.cancel(id: item.id)
             completion(true)
             return
         }
@@ -514,7 +514,7 @@ final class ShellLegacyDownloadsManagerView: UIView, UITableViewDataSource, UITa
             completion(false)
         })
         alert.addAction(UIAlertAction(title: "Cancel Download", style: .destructive) { _ in
-            DownloadStore.shared.cancelDownload(id: item.id)
+            DownloadStore.shared.cancel(id: item.id)
             completion(true)
         })
         viewController.present(alert, animated: true)
