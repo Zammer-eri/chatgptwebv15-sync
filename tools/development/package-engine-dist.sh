@@ -18,7 +18,7 @@ if [ ! -f "$ENGINE_DIST_DIR/bin/XUL" ] || [ ! -f "$ENGINE_DIST_DIR/include/mozil
 fi
 
 mkdir -p "$OUT_DIR"
-tar -czf "$ARCHIVE_PATH" -C "$ENGINE_OBJ_DIR" dist
+tar -czhf "$ARCHIVE_PATH" -C "$ENGINE_OBJ_DIR" dist
 
 python3 - "$MANIFEST_PATH" "$FINGERPRINT" "$RELEASE_TAG" <<'PY'
 import json
@@ -30,6 +30,7 @@ Path(path).write_text(
     json.dumps(
         {
             "engine": "reynard-gecko",
+            "format": 2,
             "fingerprint": fingerprint,
             "release": release_tag,
             "archive": "reynard-engine-dist.tar.gz",

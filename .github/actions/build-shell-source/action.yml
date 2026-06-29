@@ -132,6 +132,8 @@ runs:
         echo "REYNARD_ENGINE_FINGERPRINT=$(python3 tools/development/engine-fingerprint.py)" >> "$GITHUB_ENV"
         echo "REYNARD_ENGINE_RELEASE_TAG=engine-0.5-rolling" >> "$GITHUB_ENV"
         echo "REYNARD_ENGINE_ARTIFACT_RESTORED=0" >> "$GITHUB_ENV"
+        echo "REYNARD_ENGINE_CACHE_RESTORED=0" >> "$GITHUB_ENV"
+        echo "REYNARD_ENGINE_REPACKAGE=0" >> "$GITHUB_ENV"
         echo "REYNARD_GECKO_SOURCE_BUILT=0" >> "$GITHUB_ENV"
 
     - name: Sync idevice source
@@ -147,9 +149,25 @@ runs:
         path: |
           engine/firefox/obj-aarch64-apple-ios
           ~/.mozbuild
-        key: reynard-gecko-source-0.5-${{ runner.os }}-${{ hashFiles('engine/release.txt', 'patches/**/*.patch', 'tools/development/build-gecko.sh') }}
+        key: reynard-gecko-source-0.5-v2-${{ runner.os }}-${{ hashFiles('engine/release.txt', 'patches/**/*.patch', 'tools/development/build-gecko.sh') }}
         restore-keys: |
-          reynard-gecko-source-0.5-${{ runner.os }}-
+          reynard-gecko-source-0.5-v2-${{ runner.os }}-
+          reynard-gecko-source-0.4-${{ runner.os }}-${{ hashFiles('engine/release.txt', 'patches/**/*.patch', 'tools/development/build-gecko.sh') }}
+
+    - name: Verify restored Gecko object cache
+      if: inputs.stage == 'prepare-gecko'
+      shell: bash
+      env:
+        EXACT_CACHE_HIT: ${{ steps.restore-gecko-cache.outputs.cache-hit }}
+      run: |
+        set -euo pipefail
+        if [ -f engine/firefox/obj-aarch64-apple-ios/dist/bin/XUL ] && \
+           [ -f engine/firefox/obj-aarch64-apple-ios/dist/include/mozilla-config.h ]; then
+          echo "REYNARD_ENGINE_CACHE_RESTORED=1" >> "$GITHUB_ENV"
+          if [ "$EXACT_CACHE_HIT" != "true" ]; then
+            echo "REYNARD_ENGINE_REPACKAGE=1" >> "$GITHUB_ENV"
+          fi
+        fi
 
     - name: Restore Gecko dist release artifact
       if: inputs.stage == 'prepare-gecko' && steps.restore-gecko-cache.outputs.cache-hit != 'true'
@@ -158,6 +176,11 @@ runs:
         GH_TOKEN: ${{ github.token }}
       run: |
         set -euo pipefail
+        if [ "${REYNARD_ENGINE_CACHE_RESTORED:-0}" = "1" ]; then
+          echo "Restored complete Gecko dist from object cache."
+          exit 0
+        fi
+
         mkdir -p dist/engine-artifact
 
         if ! gh release download "$REYNARD_ENGINE_RELEASE_TAG" \
@@ -170,8 +193,9 @@ runs:
         fi
 
         manifest_fingerprint="$(python3 -c 'import json, pathlib; print(json.loads(pathlib.Path("dist/engine-artifact/reynard-engine-dist.json").read_text(encoding="utf-8")).get("fingerprint", ""))')"
+        manifest_format="$(python3 -c 'import json, pathlib; print(json.loads(pathlib.Path("dist/engine-artifact/reynard-engine-dist.json").read_text(encoding="utf-8")).get("format", 0))')"
 
-        if [ "$manifest_fingerprint" != "$REYNARD_ENGINE_FINGERPRINT" ]; then
+        if [ "$manifest_fingerprint" != "$REYNARD_ENGINE_FINGERPRINT" ] || [ "$manifest_format" != "2" ]; then
           echo "Engine artifact unavailable; building engine."
           exit 0
         fi
@@ -222,13 +246,10 @@ runs:
     - name: Build Gecko from source
       if: inputs.stage == 'build-gecko'
       shell: bash
-      env:
-        GECKO_CACHE_HIT: ${{ inputs.gecko_cache_hit }}
       run: |
         set +e
         mkdir -p dist
-        if { [ "$GECKO_CACHE_HIT" = "true" ] || [ "${REYNARD_ENGINE_ARTIFACT_RESTORED:-0}" = "1" ]; } && \
-           [ -f engine/firefox/obj-aarch64-apple-ios/dist/bin/XUL ] && \
+        if [ -f engine/firefox/obj-aarch64-apple-ios/dist/bin/XUL ] && \
            [ -f engine/firefox/obj-aarch64-apple-ios/dist/include/mozilla-config.h ]; then
           echo "Verified Gecko dist exists. Skipping mach build." | tee dist/build-gecko.log
           exit 0
@@ -255,7 +276,7 @@ runs:
         path: |
           engine/firefox/obj-aarch64-apple-ios
           ~/.mozbuild
-        key: reynard-gecko-source-0.5-${{ runner.os }}-${{ hashFiles('engine/release.txt', 'patches/**/*.patch', 'tools/development/build-gecko.sh') }}
+        key: reynard-gecko-source-0.5-v2-${{ runner.os }}-${{ hashFiles('engine/release.txt', 'patches/**/*.patch', 'tools/development/build-gecko.sh') }}
 
     - name: Upload Gecko build log
       if: inputs.stage == 'build-gecko' && failure()
@@ -266,7 +287,7 @@ runs:
         if-no-files-found: ignore
 
     - name: Publish Gecko dist release artifact
-      if: inputs.stage == 'publish-engine' && env.REYNARD_GECKO_SOURCE_BUILT == '1'
+      if: inputs.stage == 'publish-engine' && (env.REYNARD_GECKO_SOURCE_BUILT == '1' || env.REYNARD_ENGINE_REPACKAGE == '1')
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
