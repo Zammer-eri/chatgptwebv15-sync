@@ -489,7 +489,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 01GECKO0052F2F289C001F0001 /* Reynard.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = "$(SHELL_APP_ICON)";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "$(SRCROOT)/Reynard/Entitlements/Reynard.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";
@@ -557,7 +557,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 01GECKO0052F2F289C001F0001 /* Reynard.xcconfig */;
 			buildSettings = {
-				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_APPICON_NAME = "$(SHELL_APP_ICON)";
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = "$(SRCROOT)/Reynard/Entitlements/Reynard.entitlements";
 				CODE_SIGN_IDENTITY = "Apple Development";

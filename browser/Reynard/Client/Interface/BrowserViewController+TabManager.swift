@@ -91,10 +91,6 @@ extension BrowserViewController: TabManagerDelegate {
         applyFullscreenState(fullScreen, for: session)
     }
 
-    func tabManager(_ tabManager: TabManager, didFirstContentfulPaintFor session: GeckoSession) {
-        contentSessionDidPaintContent(session)
-    }
-    
     func tabManager(_ tabManager: TabManager, didUpdateTabAt index: Int, reason: TabManagerUpdateReason) {
         guard tabManager.activeTabs.indices.contains(index) else {
             return

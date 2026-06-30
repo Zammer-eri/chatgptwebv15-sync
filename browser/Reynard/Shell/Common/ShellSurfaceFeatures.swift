@@ -19,6 +19,7 @@ private enum ShellSurfaceAssociatedKeys {
     static var recoveryToken = 0
     static var recoveryShownAt = 0
     static var keyboardVisible = 0
+    static var focusedInputRefreshToken = 0
 }
 
 private enum ShellTimeAwareSettings {
@@ -207,6 +208,20 @@ extension BrowserViewController {
         }
     }
 
+    private var shellFocusedInputRefreshToken: UUID? {
+        get {
+            objc_getAssociatedObject(self, &ShellSurfaceAssociatedKeys.focusedInputRefreshToken) as? UUID
+        }
+        set {
+            objc_setAssociatedObject(
+                self,
+                &ShellSurfaceAssociatedKeys.focusedInputRefreshToken,
+                newValue,
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+            )
+        }
+    }
+
     private func configureShellGestures() {
         let reloadGesture = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handleShellReloadGesture(_:)))
         reloadGesture.edges = .right
@@ -217,6 +232,15 @@ extension BrowserViewController {
         utilityGesture.edges = .left
         utilityGesture.cancelsTouchesInView = false
         view.addGestureRecognizer(utilityGesture)
+
+        let contentTapGesture = UITapGestureRecognizer(
+            target: self,
+            action: #selector(handleShellContentTapGesture(_:))
+        )
+        contentTapGesture.cancelsTouchesInView = false
+        contentTapGesture.delaysTouchesBegan = false
+        contentTapGesture.delaysTouchesEnded = false
+        view.addGestureRecognizer(contentTapGesture)
 
         NotificationCenter.default.addObserver(
             self,
@@ -336,6 +360,28 @@ extension BrowserViewController {
         }
 
         setShellUtilityPanelVisible(true, animated: true)
+    }
+
+    @objc private func handleShellContentTapGesture(_ gesture: UITapGestureRecognizer) {
+        guard gesture.state == .ended,
+              isShellKeyboardVisible,
+              !shellUtilityPanelVisible,
+              contentView.convert(contentView.bounds, to: view).contains(gesture.location(in: view)) else {
+            return
+        }
+
+        let token = UUID()
+        shellFocusedInputRefreshToken = token
+        for delay in [0.12, 0.55] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
+                guard let self,
+                      self.shellFocusedInputRefreshToken == token,
+                      self.isShellKeyboardVisible else {
+                    return
+                }
+                self.refreshFocusedInputRelocation()
+            }
+        }
     }
 
     @objc private func shellKeyboardWillChangeFrame(_ notification: Notification) {

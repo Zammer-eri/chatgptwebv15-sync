@@ -12,7 +12,6 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     private var enteredBackgroundAt: Date?
     private var backgroundSnapshotView: UIImageView?
     private let contentRecoveryDelay: TimeInterval = 60
-    private let recoverySnapshotTimeout: TimeInterval = 12
     
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let windowScene = (scene as? UIWindowScene) else { return }
@@ -34,22 +33,21 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func sceneDidDisconnect(_ scene: UIScene) {}
     
     func sceneDidBecomeActive(_ scene: UIScene) {
-        let backgroundDuration = enteredBackgroundAt.map { Date().timeIntervalSince($0) } ?? 0
+        let backgroundEntry = enteredBackgroundAt
+        let backgroundDuration = backgroundEntry.map { Date().timeIntervalSince($0) } ?? 0
         enteredBackgroundAt = nil
-        let snapshotView = backgroundSnapshotView
+        removeBackgroundSnapshot(backgroundSnapshotView, animated: false)
 
-        guard backgroundDuration >= contentRecoveryDelay,
+        guard backgroundEntry != nil,
               ShellConfig.current.target == .chatGPT,
               let browserViewController = window?.rootViewController as? BrowserViewController else {
-            removeBackgroundSnapshot(snapshotView, animated: false)
             return
         }
 
-        browserViewController.recoverContentAfterBackground { [weak self] in
-            self?.removeBackgroundSnapshot(snapshotView, animated: true)
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + recoverySnapshotTimeout) { [weak self] in
-            self?.removeBackgroundSnapshot(snapshotView, animated: true)
+        DispatchQueue.main.async {
+            browserViewController.resumeContentAfterBackground(
+                recoveringSession: backgroundDuration >= self.contentRecoveryDelay
+            )
         }
     }
     

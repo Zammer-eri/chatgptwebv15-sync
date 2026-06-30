@@ -29,7 +29,7 @@ final class BrowserViewController: UIViewController {
         sessionManager: sessionManager
     )
     private var preFullscreenOrientation: UIInterfaceOrientation?
-    private var backgroundRecoveryCompletion: (() -> Void)?
+    private var visibleKeyboardFrame: CGRect?
     weak var fullscreenSession: GeckoSession?
     private let allowsSidebarHosting: Bool
     private(set) var browserLayout = BrowserLayout.initial(
@@ -569,25 +569,20 @@ final class BrowserViewController: UIViewController {
 
     // MARK: - Shell Recovery
 
-    func recoverContentAfterBackground(completion: @escaping () -> Void) {
+    func resumeContentAfterBackground(recoveringSession: Bool) {
         guard isViewLoaded,
+              view.window != nil,
               let tab = tabManager.selectedTab else {
-            completion()
             return
         }
 
-        backgroundRecoveryCompletion = completion
-        tabManager.recover(tab)
-    }
-
-    func contentSessionDidPaintContent(_ session: GeckoSession) {
-        guard tabManager.selectedTab?.session === session,
-              let completion = backgroundRecoveryCompletion else {
+        if recoveringSession {
+            tabManager.recover(tab)
             return
         }
 
-        backgroundRecoveryCompletion = nil
-        completion()
+        contentView.restoreInteraction(for: tab.session)
+        sessionManager.activate(tab.session)
     }
     
     // MARK: - Sidebar
@@ -672,12 +667,14 @@ final class BrowserViewController: UIViewController {
         )
         let animation = keyboardAnimation(from: notification)
         if !searchOverlayCoordinator.isFocused && !tabOverview.isPresented && keyboardInset > 0 {
+            visibleKeyboardFrame = keyboardFrame
             contentView.relocateFocusedInput(
                 above: keyboardFrame,
                 animationDuration: animation.duration,
                 animationOptions: animation.curve
             )
         } else {
+            visibleKeyboardFrame = nil
             contentView.resetFocusedInputRelocation(
                 animationDuration: animation.duration,
                 animationOptions: animation.curve
@@ -694,12 +691,27 @@ final class BrowserViewController: UIViewController {
     
     @objc private func keyboardWillHide(_ notification: Notification) {
         let animation = keyboardAnimation(from: notification)
+        visibleKeyboardFrame = nil
         contentView.resetFocusedInputRelocation(
             animationDuration: animation.duration,
             animationOptions: animation.curve
         )
         browserChrome.dockAddressBar(offset: 0)
         animateLayout(animation)
+    }
+
+    func refreshFocusedInputRelocation() {
+        guard let keyboardFrame = visibleKeyboardFrame,
+              !searchOverlayCoordinator.isFocused,
+              !tabOverview.isPresented else {
+            return
+        }
+
+        contentView.relocateFocusedInput(
+            above: keyboardFrame,
+            animationDuration: UX.layoutAnimationDuration,
+            animationOptions: .curveEaseInOut
+        )
     }
     
     private func keyboardAnimation(from notification: Notification) -> KeyboardAnimation {
