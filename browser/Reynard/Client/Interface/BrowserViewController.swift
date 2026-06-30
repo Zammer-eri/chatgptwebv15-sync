@@ -671,7 +671,8 @@ final class BrowserViewController: UIViewController {
             contentView.relocateFocusedInput(
                 above: keyboardFrame,
                 animationDuration: animation.duration,
-                animationOptions: animation.curve
+                animationOptions: animation.curve,
+                allowsOverflowBeyondKeyboard: ShellConfig.current.features.visuallyHidesBrowserChrome
             )
         } else {
             visibleKeyboardFrame = nil
@@ -710,7 +711,8 @@ final class BrowserViewController: UIViewController {
         contentView.relocateFocusedInput(
             above: keyboardFrame,
             animationDuration: UX.layoutAnimationDuration,
-            animationOptions: .curveEaseInOut
+            animationOptions: .curveEaseInOut,
+            allowsOverflowBeyondKeyboard: ShellConfig.current.features.visuallyHidesBrowserChrome
         )
     }
     

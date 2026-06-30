@@ -161,7 +161,8 @@ final class ContentView: UIView {
     func relocateFocusedInput(
         above keyboardFrame: CGRect,
         animationDuration: TimeInterval,
-        animationOptions: UIView.AnimationOptions
+        animationOptions: UIView.AnimationOptions,
+        allowsOverflowBeyondKeyboard: Bool = false
     ) {
         focusedInputTask?.cancel()
         guard let session else {
@@ -179,7 +180,10 @@ final class ContentView: UIView {
             
             inputBottomRatio = bottomRatio
             superview?.layoutIfNeeded()
-            let newOffset = calculateFocusedInputOffset(keyboardFrame: keyboardFrame)
+            let newOffset = calculateFocusedInputOffset(
+                keyboardFrame: keyboardFrame,
+                allowsOverflowBeyondKeyboard: allowsOverflowBeyondKeyboard
+            )
             guard abs(newOffset - focusedInputOffset) > UX.focusedInputOffsetThreshold else {
                 return
             }
@@ -190,7 +194,10 @@ final class ContentView: UIView {
         }
     }
     
-    private func calculateFocusedInputOffset(keyboardFrame: CGRect) -> CGFloat {
+    private func calculateFocusedInputOffset(
+        keyboardFrame: CGRect,
+        allowsOverflowBeyondKeyboard: Bool
+    ) -> CGFloat {
         guard let inputBottomRatio else { return 0 }
         
         let unshiftedFrame = frame.offsetBy(dx: 0, dy: focusedInputOffset)
@@ -204,7 +211,11 @@ final class ContentView: UIView {
             0,
             unshiftedFrame.height - keyboardOverlap - UX.focusedInputBottomClearance
         )
-        return min(keyboardOverlap, max(0, focusBottom - visibleBottom))
+        let requestedOffset = max(0, focusBottom - visibleBottom)
+        if allowsOverflowBeyondKeyboard {
+            return requestedOffset
+        }
+        return min(keyboardOverlap, requestedOffset)
     }
     
     func resetFocusedInputRelocation(
