@@ -162,7 +162,8 @@ final class ContentView: UIView {
         above keyboardFrame: CGRect,
         animationDuration: TimeInterval,
         animationOptions: UIView.AnimationOptions,
-        allowsOverflowBeyondKeyboard: Bool = false
+        allowsOverflowBeyondKeyboard: Bool = false,
+        additionalBottomClearance: CGFloat = 0
     ) {
         focusedInputTask?.cancel()
         guard let session else {
@@ -182,7 +183,8 @@ final class ContentView: UIView {
             superview?.layoutIfNeeded()
             let newOffset = calculateFocusedInputOffset(
                 keyboardFrame: keyboardFrame,
-                allowsOverflowBeyondKeyboard: allowsOverflowBeyondKeyboard
+                allowsOverflowBeyondKeyboard: allowsOverflowBeyondKeyboard,
+                additionalBottomClearance: additionalBottomClearance
             )
             guard abs(newOffset - focusedInputOffset) > UX.focusedInputOffsetThreshold else {
                 return
@@ -196,7 +198,8 @@ final class ContentView: UIView {
     
     private func calculateFocusedInputOffset(
         keyboardFrame: CGRect,
-        allowsOverflowBeyondKeyboard: Bool
+        allowsOverflowBeyondKeyboard: Bool,
+        additionalBottomClearance: CGFloat
     ) -> CGFloat {
         guard let inputBottomRatio else { return 0 }
         
@@ -209,7 +212,7 @@ final class ContentView: UIView {
         let focusBottom = unshiftedFrame.height * inputBottomRatio
         let visibleBottom = max(
             0,
-            unshiftedFrame.height - keyboardOverlap - UX.focusedInputBottomClearance
+            unshiftedFrame.height - keyboardOverlap - UX.focusedInputBottomClearance - additionalBottomClearance
         )
         let requestedOffset = max(0, focusBottom - visibleBottom)
         if allowsOverflowBeyondKeyboard {

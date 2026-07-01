@@ -672,7 +672,8 @@ final class BrowserViewController: UIViewController {
                 above: keyboardFrame,
                 animationDuration: animation.duration,
                 animationOptions: animation.curve,
-                allowsOverflowBeyondKeyboard: ShellConfig.current.features.visuallyHidesBrowserChrome
+                allowsOverflowBeyondKeyboard: ShellConfig.current.features.visuallyHidesBrowserChrome,
+                additionalBottomClearance: shellFocusedInputAdditionalClearance()
             )
         } else {
             visibleKeyboardFrame = nil
@@ -712,7 +713,8 @@ final class BrowserViewController: UIViewController {
             above: keyboardFrame,
             animationDuration: UX.layoutAnimationDuration,
             animationOptions: .curveEaseInOut,
-            allowsOverflowBeyondKeyboard: ShellConfig.current.features.visuallyHidesBrowserChrome
+            allowsOverflowBeyondKeyboard: ShellConfig.current.features.visuallyHidesBrowserChrome,
+            additionalBottomClearance: shellFocusedInputAdditionalClearance()
         )
     }
     

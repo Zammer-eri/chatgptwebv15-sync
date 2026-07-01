@@ -88,6 +88,24 @@ private enum ShellTimeAwareSettings {
     }
 }
 
+private enum ShellComposerLiftSettings {
+    static let liftKey = "ReynardShell.ChatGPT.composerLift"
+    static let minimumLift = 0
+    static let maximumLift = 120
+    static let step = 4
+
+    static var liftPoints: Int {
+        get {
+            let value = UserDefaults.standard.integer(forKey: liftKey)
+            return min(max(value, minimumLift), maximumLift)
+        }
+        set {
+            let rounded = Int((Double(newValue) / Double(step)).rounded()) * step
+            UserDefaults.standard.set(min(max(rounded, minimumLift), maximumLift), forKey: liftKey)
+        }
+    }
+}
+
 extension BrowserViewController {
     func configureShellSurfaceFeatures() {
         guard ShellConfig.current.target != .browser else {
@@ -316,6 +334,15 @@ extension BrowserViewController {
             self.setShellUtilityPanelVisible(false, animated: true)
             self.reloadSelectedTabForRuntimeSettings()
         }
+        panel.onSaveComposerLift = { [weak self] liftPoints in
+            guard let self else {
+                return
+            }
+
+            ShellComposerLiftSettings.liftPoints = liftPoints
+            self.setShellUtilityPanelVisible(false, animated: true)
+            self.refreshFocusedInputRelocation()
+        }
 
         view.addSubview(panel)
         NSLayoutConstraint.activate([
@@ -326,6 +353,18 @@ extension BrowserViewController {
         ])
         panel.isHidden = true
         panel.alpha = 0
+    }
+
+    func shellFocusedInputAdditionalClearance() -> CGFloat {
+        guard ShellConfig.current.target == .chatGPT,
+              let urlString = tabManager.selectedTab?.url,
+              let url = URL(string: urlString),
+              url.host?.lowercased().hasSuffix("chatgpt.com") == true,
+              url.path.hasPrefix("/c/") else {
+            return 0
+        }
+
+        return CGFloat(ShellComposerLiftSettings.liftPoints)
     }
 
     @objc private func handleShellReloadGesture(_ gesture: UIScreenEdgePanGestureRecognizer) {
@@ -576,6 +615,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     var onClose: (() -> Void)?
     var onSaveUserAgent: ((Bool) -> Void)?
     var onSaveTimeAware: ((Bool, String?) -> Void)?
+    var onSaveComposerLift: ((Int) -> Void)?
 
     private let blurView = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
     private let dimView = UIView()
@@ -585,35 +625,45 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
     private let downloadsContent = UIView()
     private let timeAwareContent = UIView()
     private let timeZoneListContent = UIView()
+    private let composerLiftContent = UIView()
     private let timeAwareScrollView = UIScrollView()
     private let homeStackView = UIStackView()
     private let userAgentStackView = UIStackView()
     private let timeAwareStackView = UIStackView()
+    private let composerLiftStackView = UIStackView()
     private let timeZoneListStackView = UIStackView()
     private let timeZoneListTitleLabel = UILabel()
     private let userAgentRow = UIControl()
     private let timeAwareRow = UIControl()
+    private let composerLiftRow = UIControl()
     private let downloadsRow = UIControl()
     private let jitStatusFooterLabel = UILabel()
     private let timeAwareEnabledSwitch = UISwitch()
     private let timeZoneButton = UIButton(type: .system)
+    private let composerLiftValueLabel = UILabel()
+    private let composerLiftStepper = UIStepper()
     private let userAgentSaveButton = UIButton(type: .system)
     private let timeAwareHintLabel = UILabel()
     private let timeAwareSaveButton = UIButton(type: .system)
+    private let composerLiftSaveButton = UIButton(type: .system)
     private var cardSideConstraint: NSLayoutConstraint?
     private var cardHeightConstraint: NSLayoutConstraint?
     private var userAgentSaveButtonHeightConstraint: NSLayoutConstraint?
     private var timeAwareSaveButtonHeightConstraint: NSLayoutConstraint?
+    private var composerLiftSaveButtonHeightConstraint: NSLayoutConstraint?
     private var savedAndroidUserAgent = false
     private var draftAndroidUserAgent = false
     private var savedTimeAwareEnabled = true
     private var savedTimeAwareTimeZoneIdentifier: String?
     private var draftTimeAwareTimeZoneIdentifier: String?
+    private var savedComposerLiftPoints = 0
+    private var draftComposerLiftPoints = 0
     private var userAgentOptionRows: [UserAgentOptionRow] = []
     private weak var userAgentValueRow: UserAgentValueRow?
     private var timeZoneListMode = TimeZoneListMode.suggestions
     private let showsUserAgentSettings = ShellConfig.current.userAgentPolicy == .configurable
     private let showsTimeAwareSettings = ShellConfig.current.target == .chatGPT
+    private let showsComposerLiftSettings = ShellConfig.current.target == .chatGPT
     private var activePanel: Panel = .home
 
     private enum Panel {
@@ -621,6 +671,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         case userAgent
         case timeAware
         case timeZoneList
+        case composerLift
         case downloads
     }
 
@@ -642,6 +693,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         downloadsContent.translatesAutoresizingMaskIntoConstraints = false
         timeAwareContent.translatesAutoresizingMaskIntoConstraints = false
         timeZoneListContent.translatesAutoresizingMaskIntoConstraints = false
+        composerLiftContent.translatesAutoresizingMaskIntoConstraints = false
 
         dimView.backgroundColor = UIColor.black.withAlphaComponent(0.24)
 
@@ -661,6 +713,7 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         cardView.addSubview(userAgentContent)
         cardView.addSubview(timeAwareContent)
         cardView.addSubview(timeZoneListContent)
+        cardView.addSubview(composerLiftContent)
         cardView.addSubview(downloadsContent)
         cardSideConstraint = cardView.widthAnchor.constraint(equalToConstant: 280)
         cardHeightConstraint = cardView.heightAnchor.constraint(equalToConstant: 188)
@@ -703,6 +756,11 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
             timeZoneListContent.leadingAnchor.constraint(equalTo: cardView.leadingAnchor),
             timeZoneListContent.trailingAnchor.constraint(equalTo: cardView.trailingAnchor),
 
+            composerLiftContent.topAnchor.constraint(equalTo: cardView.topAnchor),
+            composerLiftContent.bottomAnchor.constraint(equalTo: cardView.bottomAnchor),
+            composerLiftContent.leadingAnchor.constraint(equalTo: cardView.leadingAnchor),
+            composerLiftContent.trailingAnchor.constraint(equalTo: cardView.trailingAnchor),
+
             downloadsContent.topAnchor.constraint(equalTo: cardView.topAnchor),
             downloadsContent.bottomAnchor.constraint(equalTo: cardView.bottomAnchor),
             downloadsContent.leadingAnchor.constraint(equalTo: cardView.leadingAnchor),
@@ -717,10 +775,14 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
             configureTimeAwareContent()
             configureTimeZoneListContent()
         }
+        if showsComposerLiftSettings {
+            configureComposerLiftContent()
+        }
         configureDownloadsContent()
         userAgentContent.isHidden = true
         timeAwareContent.isHidden = true
         timeZoneListContent.isHidden = true
+        composerLiftContent.isHidden = true
         downloadsContent.isHidden = true
 
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(backgroundTapped))
@@ -760,6 +822,13 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         }
         if showsTimeAwareSettings {
             updateTimeAwareSaveButton(animated: false)
+        }
+        if showsComposerLiftSettings {
+            savedComposerLiftPoints = ShellComposerLiftSettings.liftPoints
+            draftComposerLiftPoints = savedComposerLiftPoints
+            composerLiftStepper.value = Double(savedComposerLiftPoints)
+            updateComposerLiftValueLabel()
+            updateComposerLiftSaveButton(animated: false)
         }
     }
 
@@ -810,6 +879,13 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         let previous = contentView(for: activePanel)
         activePanel = .timeZoneList
         switchContent(to: timeZoneListContent, from: previous, animated: animated)
+        updateCardHeight(animated: animated)
+    }
+
+    func showComposerLift(animated: Bool) {
+        let previous = contentView(for: activePanel)
+        activePanel = .composerLift
+        switchContent(to: composerLiftContent, from: previous, animated: animated)
         updateCardHeight(animated: animated)
     }
 
@@ -876,6 +952,24 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         timeAwareRow.addSubview(timeAwareLabel)
         timeAwareRow.addSubview(timeAwareChevronView)
 
+        composerLiftRow.translatesAutoresizingMaskIntoConstraints = false
+        composerLiftRow.backgroundColor = .tertiarySystemBackground
+        composerLiftRow.layer.cornerRadius = 14
+        composerLiftRow.layer.cornerCurve = .continuous
+        composerLiftRow.addTarget(self, action: #selector(composerLiftTapped), for: .touchUpInside)
+
+        let composerLiftLabel = UILabel()
+        composerLiftLabel.text = "Composer Lift"
+        composerLiftLabel.font = .systemFont(ofSize: 17, weight: .medium)
+        composerLiftLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let composerLiftChevronView = UIImageView(image: UIImage(systemName: "chevron.right"))
+        composerLiftChevronView.translatesAutoresizingMaskIntoConstraints = false
+        composerLiftChevronView.tintColor = .secondaryLabel
+        composerLiftChevronView.contentMode = .scaleAspectFit
+        composerLiftRow.addSubview(composerLiftLabel)
+        composerLiftRow.addSubview(composerLiftChevronView)
+
         downloadsRow.translatesAutoresizingMaskIntoConstraints = false
         downloadsRow.backgroundColor = .tertiarySystemBackground
         downloadsRow.layer.cornerRadius = 14
@@ -907,6 +1001,9 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         if showsTimeAwareSettings {
             homeStackView.addArrangedSubview(timeAwareRow)
         }
+        if showsComposerLiftSettings {
+            homeStackView.addArrangedSubview(composerLiftRow)
+        }
         homeStackView.addArrangedSubview(downloadsRow)
         homeStackView.addArrangedSubview(jitStatusFooterLabel)
         if showsUserAgentSettings {
@@ -914,6 +1011,9 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         }
         if showsTimeAwareSettings {
             homeStackView.setCustomSpacing(12, after: timeAwareRow)
+        }
+        if showsComposerLiftSettings {
+            homeStackView.setCustomSpacing(12, after: composerLiftRow)
         }
         homeStackView.setCustomSpacing(14, after: downloadsRow)
         homeContent.addSubview(header)
@@ -946,6 +1046,14 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
             timeAwareChevronView.centerYAnchor.constraint(equalTo: timeAwareRow.centerYAnchor),
             timeAwareChevronView.widthAnchor.constraint(equalToConstant: 14),
             timeAwareChevronView.heightAnchor.constraint(equalToConstant: 18),
+
+            composerLiftRow.heightAnchor.constraint(equalToConstant: 72),
+            composerLiftLabel.leadingAnchor.constraint(equalTo: composerLiftRow.leadingAnchor, constant: 16),
+            composerLiftLabel.centerYAnchor.constraint(equalTo: composerLiftRow.centerYAnchor),
+            composerLiftChevronView.trailingAnchor.constraint(equalTo: composerLiftRow.trailingAnchor, constant: -18),
+            composerLiftChevronView.centerYAnchor.constraint(equalTo: composerLiftRow.centerYAnchor),
+            composerLiftChevronView.widthAnchor.constraint(equalToConstant: 14),
+            composerLiftChevronView.heightAnchor.constraint(equalToConstant: 18),
 
             downloadsRow.heightAnchor.constraint(equalToConstant: 72),
             downloadsLabel.leadingAnchor.constraint(equalTo: downloadsRow.leadingAnchor, constant: 16),
@@ -1158,6 +1266,121 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
             timeAwareSaveButton.trailingAnchor.constraint(equalTo: timeAwareContent.trailingAnchor, constant: -16),
             timeAwareSaveButton.bottomAnchor.constraint(equalTo: timeAwareContent.bottomAnchor, constant: -16),
             timeAwareSaveButtonHeightConstraint!,
+        ])
+    }
+
+    private func configureComposerLiftContent() {
+        let backButton = UIButton(type: .system)
+        backButton.setImage(UIImage(systemName: "chevron.left"), for: .normal)
+        backButton.tintColor = .label
+        backButton.addTarget(self, action: #selector(backTapped), for: .touchUpInside)
+
+        let titleLabel = UILabel()
+        titleLabel.text = "Composer Lift"
+        titleLabel.font = .systemFont(ofSize: 22, weight: .semibold)
+
+        let closeButton = UIButton(type: .system)
+        closeButton.setImage(UIImage(systemName: "xmark"), for: .normal)
+        closeButton.tintColor = .label
+        closeButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
+
+        let header = UIStackView(arrangedSubviews: [backButton, titleLabel, closeButton])
+        header.translatesAutoresizingMaskIntoConstraints = false
+        header.axis = .horizontal
+        header.alignment = .center
+        header.spacing = 10
+
+        composerLiftStackView.translatesAutoresizingMaskIntoConstraints = false
+        composerLiftStackView.axis = .vertical
+        composerLiftStackView.spacing = 12
+
+        let valueTitleLabel = UILabel()
+        valueTitleLabel.text = "Extra Lift"
+        valueTitleLabel.font = .systemFont(ofSize: 17, weight: .medium)
+        valueTitleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        composerLiftValueLabel.textColor = .secondaryLabel
+        composerLiftValueLabel.font = .systemFont(ofSize: 17, weight: .medium)
+        composerLiftValueLabel.textAlignment = .right
+        composerLiftValueLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let valueRow = UIView()
+        valueRow.translatesAutoresizingMaskIntoConstraints = false
+        valueRow.backgroundColor = .tertiarySystemBackground
+        valueRow.layer.cornerRadius = 14
+        valueRow.layer.cornerCurve = .continuous
+        valueRow.addSubview(valueTitleLabel)
+        valueRow.addSubview(composerLiftValueLabel)
+
+        composerLiftStepper.translatesAutoresizingMaskIntoConstraints = false
+        composerLiftStepper.minimumValue = Double(ShellComposerLiftSettings.minimumLift)
+        composerLiftStepper.maximumValue = Double(ShellComposerLiftSettings.maximumLift)
+        composerLiftStepper.stepValue = Double(ShellComposerLiftSettings.step)
+        composerLiftStepper.addTarget(self, action: #selector(composerLiftStepperChanged), for: .valueChanged)
+
+        let stepperRow = UIView()
+        stepperRow.translatesAutoresizingMaskIntoConstraints = false
+        stepperRow.backgroundColor = .tertiarySystemBackground
+        stepperRow.layer.cornerRadius = 14
+        stepperRow.layer.cornerCurve = .continuous
+        stepperRow.addSubview(composerLiftStepper)
+
+        let hintLabel = UILabel()
+        hintLabel.text = "Applies only on ChatGPT conversation pages."
+        hintLabel.font = .systemFont(ofSize: 12, weight: .regular)
+        hintLabel.textColor = .secondaryLabel
+        hintLabel.numberOfLines = 0
+        hintLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        composerLiftSaveButton.translatesAutoresizingMaskIntoConstraints = false
+        composerLiftSaveButton.setTitle("Save", for: .normal)
+        composerLiftSaveButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
+        composerLiftSaveButton.backgroundColor = .label
+        composerLiftSaveButton.tintColor = .systemBackground
+        composerLiftSaveButton.layer.cornerRadius = 14
+        composerLiftSaveButton.layer.cornerCurve = .continuous
+        composerLiftSaveButton.addTarget(self, action: #selector(saveComposerLiftTapped), for: .touchUpInside)
+        composerLiftSaveButton.isEnabled = false
+        composerLiftSaveButton.alpha = 0
+        composerLiftSaveButtonHeightConstraint = composerLiftSaveButton.heightAnchor.constraint(equalToConstant: 0)
+
+        composerLiftStackView.addArrangedSubview(valueRow)
+        composerLiftStackView.addArrangedSubview(stepperRow)
+        composerLiftStackView.addArrangedSubview(hintLabel)
+
+        composerLiftContent.addSubview(header)
+        composerLiftContent.addSubview(composerLiftStackView)
+        composerLiftContent.addSubview(composerLiftSaveButton)
+
+        NSLayoutConstraint.activate([
+            header.topAnchor.constraint(equalTo: composerLiftContent.topAnchor, constant: 18),
+            header.leadingAnchor.constraint(equalTo: composerLiftContent.leadingAnchor, constant: 14),
+            header.trailingAnchor.constraint(equalTo: composerLiftContent.trailingAnchor, constant: -14),
+            backButton.widthAnchor.constraint(equalToConstant: 34),
+            backButton.heightAnchor.constraint(equalToConstant: 34),
+            closeButton.widthAnchor.constraint(equalToConstant: 34),
+            closeButton.heightAnchor.constraint(equalToConstant: 34),
+
+            composerLiftStackView.leadingAnchor.constraint(equalTo: composerLiftContent.leadingAnchor, constant: 16),
+            composerLiftStackView.trailingAnchor.constraint(equalTo: composerLiftContent.trailingAnchor, constant: -16),
+            composerLiftStackView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 18),
+            composerLiftStackView.bottomAnchor.constraint(lessThanOrEqualTo: composerLiftSaveButton.topAnchor, constant: -12),
+
+            valueRow.heightAnchor.constraint(equalToConstant: 62),
+            valueTitleLabel.leadingAnchor.constraint(equalTo: valueRow.leadingAnchor, constant: 16),
+            valueTitleLabel.centerYAnchor.constraint(equalTo: valueRow.centerYAnchor),
+            composerLiftValueLabel.trailingAnchor.constraint(equalTo: valueRow.trailingAnchor, constant: -16),
+            composerLiftValueLabel.centerYAnchor.constraint(equalTo: valueRow.centerYAnchor),
+            composerLiftValueLabel.leadingAnchor.constraint(greaterThanOrEqualTo: valueTitleLabel.trailingAnchor, constant: 14),
+
+            stepperRow.heightAnchor.constraint(equalToConstant: 62),
+            composerLiftStepper.centerXAnchor.constraint(equalTo: stepperRow.centerXAnchor),
+            composerLiftStepper.centerYAnchor.constraint(equalTo: stepperRow.centerYAnchor),
+
+            composerLiftSaveButton.leadingAnchor.constraint(equalTo: composerLiftContent.leadingAnchor, constant: 16),
+            composerLiftSaveButton.trailingAnchor.constraint(equalTo: composerLiftContent.trailingAnchor, constant: -16),
+            composerLiftSaveButton.bottomAnchor.constraint(equalTo: composerLiftContent.bottomAnchor, constant: -16),
+            composerLiftSaveButtonHeightConstraint!,
         ])
     }
 
@@ -1551,7 +1774,8 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         let homeRowCount =
             1 +
             (showsUserAgentSettings ? 1 : 0) +
-            (showsTimeAwareSettings ? 1 : 0)
+            (showsTimeAwareSettings ? 1 : 0) +
+            (showsComposerLiftSettings ? 1 : 0)
         let homeSpacing = CGFloat(max(0, homeRowCount - 1)) * 12
         let homeFooterHeight: CGFloat = 18
         let homeFooterSpacing: CGFloat = 14
@@ -1566,6 +1790,8 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
             targetHeight = timeAwarePreferredHeight(maxHeight: expandedHeight)
         case .timeZoneList:
             targetHeight = timeZoneListPreferredHeight(maxHeight: expandedHeight)
+        case .composerLift:
+            targetHeight = composerLiftPreferredHeight(maxHeight: expandedHeight)
         case .downloads:
             targetHeight = expandedHeight
         }
@@ -1613,6 +1839,16 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         return min(maxHeight, max(260, chromeHeight + rowsHeight))
     }
 
+    private func composerLiftPreferredHeight(maxHeight: CGFloat) -> CGFloat {
+        let saveHeight: CGFloat = hasUnsavedComposerLiftChanges() ? 60 : 0
+        let rowHeight: CGFloat = 62
+        let rowSpacing: CGFloat = 24
+        let hintHeight: CGFloat = 34
+        let chromeHeight: CGFloat = 98
+        let contentHeight = (2 * rowHeight) + rowSpacing + hintHeight + chromeHeight + saveHeight
+        return min(maxHeight, max(300, contentHeight))
+    }
+
     private func timeZoneListRowCount() -> Int {
         switch timeZoneListMode {
         case .suggestions:
@@ -1632,6 +1868,10 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
 
     private func hasUnsavedUserAgentChanges() -> Bool {
         draftAndroidUserAgent != savedAndroidUserAgent
+    }
+
+    private func hasUnsavedComposerLiftChanges() -> Bool {
+        draftComposerLiftPoints != savedComposerLiftPoints
     }
 
     private func updateUserAgentSaveButton(animated: Bool) {
@@ -1676,10 +1916,35 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         UIView.animate(withDuration: 0.22, delay: 0, options: [.curveEaseInOut], animations: updates)
     }
 
+    private func updateComposerLiftSaveButton(animated: Bool) {
+        let changed = hasUnsavedComposerLiftChanges()
+        let updates = {
+            self.composerLiftSaveButton.alpha = changed ? 1 : 0
+            self.composerLiftSaveButton.isEnabled = changed
+            self.composerLiftSaveButtonHeightConstraint?.constant = changed ? 48 : 0
+            self.composerLiftStackView.layoutIfNeeded()
+            self.composerLiftContent.layoutIfNeeded()
+            self.cardView.layoutIfNeeded()
+            self.updateCardHeight(animated: false)
+            self.layoutIfNeeded()
+        }
+
+        guard animated else {
+            updates()
+            return
+        }
+
+        UIView.animate(withDuration: 0.22, delay: 0, options: [.curveEaseInOut], animations: updates)
+    }
+
     private func updateTimeZoneButton() {
         let selectedIdentifier = normalizedOverrideTimeZoneIdentifier(draftTimeAwareTimeZoneIdentifier)
         let title = selectedIdentifier ?? "System: \(TimeZone.current.identifier)"
         timeZoneButton.setTitle(title, for: .normal)
+    }
+
+    private func updateComposerLiftValueLabel() {
+        composerLiftValueLabel.text = "\(draftComposerLiftPoints) px"
     }
 
     private func updateUserAgentValueRow() {
@@ -1889,13 +2154,25 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         updateUserAgentSaveButton(animated: false)
     }
 
+    private func discardComposerLiftDraft() {
+        guard hasUnsavedComposerLiftChanges() else {
+            return
+        }
+        draftComposerLiftPoints = savedComposerLiftPoints
+        composerLiftStepper.value = Double(savedComposerLiftPoints)
+        updateComposerLiftValueLabel()
+        updateComposerLiftSaveButton(animated: false)
+    }
+
     @objc private func closeTapped() {
         discardUserAgentDraft()
+        discardComposerLiftDraft()
         onClose?()
     }
 
     @objc private func backgroundTapped() {
         discardUserAgentDraft()
+        discardComposerLiftDraft()
         onClose?()
     }
 
@@ -1917,6 +2194,15 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         onSaveUserAgent?(savedAndroidUserAgent)
     }
 
+    @objc private func saveComposerLiftTapped() {
+        guard hasUnsavedComposerLiftChanges() else {
+            return
+        }
+        savedComposerLiftPoints = draftComposerLiftPoints
+        updateComposerLiftSaveButton(animated: true)
+        onSaveComposerLift?(savedComposerLiftPoints)
+    }
+
     @objc private func userAgentTapped() {
         showUserAgent(animated: true)
     }
@@ -1936,9 +2222,21 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
         showTimeAware(animated: true)
     }
 
+    @objc private func composerLiftTapped() {
+        showComposerLift(animated: true)
+    }
+
+    @objc private func composerLiftStepperChanged() {
+        draftComposerLiftPoints = Int(composerLiftStepper.value)
+        updateComposerLiftValueLabel()
+        updateComposerLiftSaveButton(animated: true)
+    }
+
     @objc private func backTapped() {
         if activePanel == .userAgent {
             discardUserAgentDraft()
+        } else if activePanel == .composerLift {
+            discardComposerLiftDraft()
         }
         showHome(animated: true)
     }
@@ -1988,6 +2286,8 @@ private final class ShellUtilityPanelView: UIView, UIGestureRecognizerDelegate {
             return timeAwareContent
         case .timeZoneList:
             return timeZoneListContent
+        case .composerLift:
+            return composerLiftContent
         case .downloads:
             return downloadsContent
         }
